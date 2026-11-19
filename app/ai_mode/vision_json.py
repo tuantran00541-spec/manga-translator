@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass
 
 import numpy as np
 import requests
+from fastapi import HTTPException
 
 from app import api_proxy
-from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider, auth_headers
+from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS, AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.translation.cost import usage_cost_usd
@@ -64,26 +66,40 @@ def _merge_json_dicts(parts: list[dict]) -> dict:
             continue
         for key, value in part.items():
             if isinstance(value, list):
-                merged.setdefault(key, [])
-                if isinstance(merged[key], list):
-                    merged[key].extend(value)
+                copied = copy.deepcopy(value)
+                if isinstance(merged.get(key), list):
+                    merged[key].extend(copied)
                 else:
-                    merged[key] = list(value)
+                    merged[key] = copied
             elif isinstance(value, dict):
                 existing = merged.get(key)
-                merged[key] = _merge_json_dicts([existing, value]) if isinstance(existing, dict) else dict(value)
+                merged[key] = _merge_json_dicts([existing, value]) if isinstance(existing, dict) else copy.deepcopy(value)
             elif key not in merged or merged[key] in (None, "", []):
-                merged[key] = value
+                merged[key] = copy.deepcopy(value)
     return merged
+
+
+def sum_usage_dicts(into: dict, src: dict | None) -> None:
+    if not isinstance(src, dict):
+        return
+    for key, value in src.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            existing = into.get(key, 0)
+            if isinstance(existing, (int, float)) and not isinstance(existing, bool):
+                into[key] = existing + value
+        elif isinstance(value, dict):
+            sub = into.get(key)
+            if not isinstance(sub, dict):
+                sub = {}
+                into[key] = sub
+            sum_usage_dicts(sub, value)
 
 
 def _merge_vision_results(parts: list[VisionJSONResult]) -> VisionJSONResult:
     usage: dict = {}
     costs: list[float] = []
     for part in parts:
-        for key, value in (part.usage or {}).items():
-            if isinstance(value, (int, float)):
-                usage[key] = usage.get(key, 0) + value
+        sum_usage_dicts(usage, part.usage)
         if part.estimated_cost_usd is not None:
             costs.append(part.estimated_cost_usd)
     return VisionJSONResult(
@@ -187,38 +203,45 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     payload.update(provider.chat_completion_extras())
     if reasoning_effort and provider.id == CLOUD_PROVIDER_ID:
         payload["reasoning_effort"] = reasoning_effort
+    response = None
     try:
-        response, _, _ = api_proxy.proxy_post(
-            url=url,
-            headers={**auth_headers(provider, api_key), "Content-Type": "application/json",
-                     **stage_headers(provider, stage)},
-            payload=payload,
-            provider=provider,
-            api_key=api_key,
-            caller=f"ai_mode:{stage}" if stage else "ai_mode",
-            timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
-            stream=False,
-            is_gemini=False,
-            raise_on_image_split=len(encoded) > 1,
-            post_fn=requests.post,
-            allow_local=provider.builtin,
-        )
-    except requests.RequestException as exc:
-        raise RuntimeError(f"{provider.label} vision request failed") from exc
-    if 300 <= response.status_code < 400:
-        raise RuntimeError(f"{provider.label} redirected the image request")
-    if not response.ok:
-        raise RuntimeError(
-            f"{provider.label} HTTP {response.status_code}: {_safe_error_detail(response, api_key)}"
-        )
-    try:
-        body = response.json()
-        answer = _extract_output_text(body)
-    except (TypeError, KeyError, ValueError) as exc:
-        raise RuntimeError(f"{provider.label} returned no text") from exc
-    usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-    cost = usage_cost_usd(usage) if provider.tracks_cost else None
-    return VisionJSONResult(parse_json_object(answer), usage, cost)
+        try:
+            response, _, _ = api_proxy.proxy_post(
+                url=url,
+                headers={**auth_headers(provider, api_key), "Content-Type": "application/json",
+                         **stage_headers(provider, stage)},
+                payload=payload,
+                provider=provider,
+                api_key=api_key,
+                caller=f"ai_mode:{stage}" if stage else "ai_mode",
+                timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
+                stream=False,
+                is_gemini=False,
+                raise_on_image_split=len(encoded) > 1,
+                allow_image_strip=False,
+                post_fn=requests.post,
+                allow_local=provider.builtin,
+            )
+        except (requests.RequestException, HTTPException) as exc:
+            raise RuntimeError(f"{provider.label} vision request failed") from exc
+        status = int(getattr(response, "status_code", 0) or 0)
+        if 300 <= status < 400:
+            raise RuntimeError(f"{provider.label} redirected the image request")
+        if not api_proxy.is_success_response(response):
+            raise RuntimeError(
+                f"{provider.label} HTTP {status}: {_safe_error_detail(response, api_key)}"
+            )
+        try:
+            body = response.json()
+            answer = _extract_output_text(body)
+        except (TypeError, KeyError, ValueError) as exc:
+            raise RuntimeError(f"{provider.label} returned no text") from exc
+        usage = body.get("usage") if isinstance(body, dict) and isinstance(body.get("usage"), dict) else {}
+        cost = usage_cost_usd(usage) if provider.tracks_cost else None
+        return VisionJSONResult(parse_json_object(answer), usage, cost)
+    finally:
+        if response is not None and hasattr(response, "close"):
+            response.close()
 
 
 def _thinking_level(model: str) -> str:
@@ -240,28 +263,38 @@ def _gemini(model, api_key, prompt, encoded, *, schema, max_tokens) -> VisionJSO
         "response_format": response_format,
         "generation_config": {"thinking_level": _thinking_level(model), "max_output_tokens": max_tokens},
     }
+    response = None
     try:
-        response, _, _ = api_proxy.proxy_post(
-            url=GEMINI_INTERACTIONS_URL,
-            headers={"Content-Type": "application/json", "x-goog-api-key": api_key, "Api-Revision": "2026-05-20"},
-            payload=payload,
-            provider=None,
-            api_key=api_key,
-            caller="ai_mode:gemini",
-            timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
-            stream=False,
-            is_gemini=True,
-            raise_on_image_split=len(encoded) > 1,
-            post_fn=requests.post,
-        )
-    except requests.RequestException as exc:
-        raise RuntimeError("Gemini vision request failed") from exc
-    if not response.ok:
-        raise RuntimeError(f"Gemini HTTP {response.status_code}: {gemini_safe_error(response)}")
-    try:
-        body = response.json()
-        answer = gemini_output_text(body)
-    except (TypeError, KeyError, ValueError) as exc:
-        raise RuntimeError("Gemini returned no text") from exc
-    usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-    return VisionJSONResult(parse_json_object(answer), usage, None)
+        try:
+            response, _, _ = api_proxy.proxy_post(
+                url=GEMINI_INTERACTIONS_URL,
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key, "Api-Revision": "2026-05-20"},
+                payload=payload,
+                provider=PROVIDERS["gemini"],
+                api_key=api_key,
+                caller="ai_mode:gemini",
+                timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
+                stream=False,
+                is_gemini=True,
+                raise_on_image_split=len(encoded) > 1,
+                allow_image_strip=False,
+                post_fn=requests.post,
+                allow_local=True,
+            )
+        except (requests.RequestException, HTTPException) as exc:
+            raise RuntimeError("Gemini vision request failed") from exc
+        status = int(getattr(response, "status_code", 0) or 0)
+        if 300 <= status < 400:
+            raise RuntimeError("Gemini redirected the image request")
+        if not api_proxy.is_success_response(response):
+            raise RuntimeError(f"Gemini HTTP {status}: {gemini_safe_error(response, api_key)}")
+        try:
+            body = response.json()
+            answer = gemini_output_text(body)
+        except (TypeError, KeyError, ValueError) as exc:
+            raise RuntimeError("Gemini returned no text") from exc
+        usage = body.get("usage") if isinstance(body, dict) and isinstance(body.get("usage"), dict) else {}
+        return VisionJSONResult(parse_json_object(answer), usage, None)
+    finally:
+        if response is not None and hasattr(response, "close"):
+            response.close()

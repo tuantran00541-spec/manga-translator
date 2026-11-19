@@ -37,7 +37,7 @@ Everything on the cleanup path is a small ONNX model on the CPU. Nothing needs a
 
 **By hand.** Import a chapter and clean it, then correct, OCR, translate and letter it in the browser workbench. Every step can be redone.
 
-**A.I mode.** Paste a chapter URL with an AI key (or use Manga Cloud) and pick the target language: Vietnamese, English, Indonesian, Spanish, Portuguese, French or German. Four checkpoints run the chapter, and the lettered result opens in the same editor:
+**A.I mode.** Paste a single chapter URL or scan a series table of contents to run a sequential multi-chapter queue (up to 500 chapters, with skip-on-error) using your own AI key or Manga Cloud, choosing any supported vision model from a searchable per-provider picker and target language (Vietnamese, English, Indonesian, Spanish, Portuguese, French or German). Four checkpoints run the chapter, and the lettered result opens in the same editor:
 
 1. **Scan** the raw slices: skip credit and textless slices, keep series logos untouched.
 2. **Clean** the text (Kiuyha + LaMa). Meanwhile the chapter's names and terms are read into a glossary.
@@ -75,7 +75,7 @@ Across five chapters of five series, A.I mode cost about **$0.07** of model call
 
 ### Detection
 
-The Kiuyha ONNX text detector (`models/kiuyha-tuned-1023.onnx`) finds the text blocks of a slice. Each block gets an erase mask:
+The Kiuyha ONNX text detector (`models/kiuyha-tuned-1023.onnx` by default; optional `kiuyha-tuned-s-1023.onnx` and `kiuyha-tuned-transient-1024.onnx` selectable via `MANGA_KIUYHA_MODEL` and validated against the `[1, 3, 1280, 1280]` → `[1, 5, anchors]` contract) finds the text blocks of a slice. Each block gets an erase mask:
 
 - letters read by the mask head of comic-text-detector (`models/ctd_seg.onnx`), at full and half size
 - a thin outline round every letter, even one the same colour as the background
@@ -120,9 +120,13 @@ The browser workbench edits translated text, font, size, weight, stroke, backgro
 
 The renderer bundles **43 comic fonts** across dialogue, emphasis, thought, narration, skill, SFX, horror and romance. A.I mode letters each text in the font for its role and container (speech, narration, shouts, screens, SFX); every font choice is validated against the installed catalog rather than accepted as a file path. Wrapped lines are balanced so a line never leaves one word alone. See [comic-fonts.md](comic-fonts.md).
 
-### AI providers
+### AI providers, API Rescue Proxy & Chaos Agent
 
-Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery and A.I mode.
+Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery, A.I mode and Chaos Agent.
+
+- **Built-in API Rescue Proxy (`/api/proxy/v1`)**: inspects HTTP failures from upstream models and automatically recovers from oversized images/413s, tool/image/token limits, context overflows, unsupported optional parameters or endpoints, and malformed JSON while skipping 429/quota limits. Successful recoveries are auto-wrapped per `(api_base, model)` and visible in **Settings → Proxy API**.
+- **Chaos Agent**: an integrated sandboxed assistant (`read-only`, `workspace-write`, `full-access` via OS or Docker) with saved/resumable sessions, approval cards, MCP servers and workspace skills.
+- **Full-app UI language switch (`VI` / `EN`)**: toggle the entire workbench interface cleanly between Vietnamese and English from the header button or Settings → General without altering chapter source or translated bubble text.
 
 ### Revision-safe render and export
 
@@ -143,8 +147,9 @@ The supported baseline is CPU execution, tuned for bounded desktop-class workloa
 
 Safety is part of the processing model, not only of deployment. The app protects:
 
-- remote URL imports against SSRF and unsafe address ranges
-- managed files against path escape
+- remote URL imports and proxy/provider calls against SSRF, DNS rebinding (socket-time public-IP pinning), and cross-origin CSRF (`Origin`/`Sec-Fetch-Site`/loopback checks)
+- explicit proxy targets against reading stored provider keys (`Authorization: Bearer` required per call), with API secrets redacted from error logs
+- managed files, extension packaging and agent session stores against symlink and path escape
 - uploads and archives against oversized payloads
 - decoded images against excessive pixel counts
 - browser requests against unsafe remote targets

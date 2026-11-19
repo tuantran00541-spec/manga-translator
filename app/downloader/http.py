@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 import uuid
 
 import requests
@@ -57,6 +57,7 @@ class _PublicOnlyAdapter(HTTPAdapter):
 
 
 _ADAPTER = _PublicOnlyAdapter()
+PUBLIC_ADAPTER = _ADAPTER
 
 
 def _session() -> requests.Session:
@@ -66,6 +67,7 @@ def _session() -> requests.Session:
     return session
 
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+_SENSITIVE_REDIRECT_HEADERS = frozenset({"authorization", "x-goog-api-key", "api-key", "x-api-key", "cookie"})
 
 
 def safe_get(
@@ -98,7 +100,13 @@ def safe_get(
         redirects += 1
         if redirects > max_redirects:
             raise ValueError(f"Too many redirects (>{max_redirects})")
-        current = validate_url(urljoin(current, location))
+        next_url = validate_url(urljoin(current, location))
+        if headers and urlsplit(next_url).netloc.lower() != urlsplit(current).netloc.lower():
+            headers = {
+                k: v for k, v in headers.items()
+                if k.lower() not in _SENSITIVE_REDIRECT_HEADERS
+            }
+        current = next_url
 
 
 def read_response_limited(response: requests.Response, *, limit_bytes: int) -> bytes:

@@ -38,6 +38,8 @@ def test_only_the_app_page_can_open_the_extension_folder(monkeypatch):
     monkeypatch.setattr(extension.sys, "platform", "linux")
     http = client(monkeypatch)
     assert http.post("/api/extension/open", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert http.post("/api/extension/open", headers={"Sec-Fetch-Site": "cross-site", "Origin": "http://testserver"}).status_code == 403
+    assert http.post("/api/extension/open").status_code == 403
     assert opened == []
     assert http.post("/api/extension/open", headers={"Origin": "http://testserver"}).status_code == 200
     assert opened == [["xdg-open", str(extension.EXTENSION_DIR)]]

@@ -15,7 +15,14 @@ OPENROUTER_API_KEY
 EXPLABS_API_KEY
 ~~~
 
-The settings UI discovers a provider's models through `/models`, selects exact model IDs, and registers custom OpenAI-compatible providers. Custom endpoints must be public HTTPS URLs, and credentials are never accepted inside the API URL.
+The settings UI discovers a provider's models through `/models`, caches listings cleanly per provider, selects exact model IDs, and registers custom OpenAI-compatible providers. Custom endpoints must be public HTTPS URLs using `protocol="openai"`, and credentials are never accepted inside the API URL.
+
+### Built-in API Rescue Proxy (`/api/proxy/v1`)
+
+Internal A.I calls (translation, A.I mode, Chaos agent) and local OpenAI-compatible tools can route through `http://127.0.0.1:8000/api/proxy/v1/chat/completions`. The proxy automatically classifies and recovers from transient 5xx errors, 413 oversized payloads, excessive tool/image counts, rejected optional fields, unsupported `stream`/`system` fields, context overflows, malformed JSON responses, and alternate `/chat/completions` paths, skipping 429/quota errors cleanly and learning auto-wrap rules only after a 2xx response succeeds.
+
+- **Security boundaries**: `/api/proxy/*` accepts loopback same-origin requests only (`Sec-Fetch-Site`, `Origin`/`Referer`, and `Content-Type: application/json` enforced). Passing an explicit `X-Target-Base-URL`, `base_url`, or `target_base_url` strictly requires the caller's own `Authorization: Bearer <key>` and never reads keys from the app's secret store. Non-local traffic pins the validated public IP at socket connect time, and API secrets/query tokens are redacted from stored logs and error details.
+- **Monitoring**: view recent rescue events and manage auto-wrapped `(api_base, model)` rules in **Settings → Proxy API** (or `GET /api/proxy/status`, `POST /api/proxy/unwrap`, `POST /api/proxy/logs/clear`).
 
 ### Manga Cloud (experimental, off by default)
 
@@ -40,8 +47,10 @@ Detection, inpainting, OCR and rendering thresholds are fixed constants in `app/
 
 | Area | Variables |
 | --- | --- |
-| Processing | `MANGA_PIPELINE_DEFAULT_WORKERS`, `MANGA_PIPELINE_SLICE_WORKER_LIMIT`, `MANGA_USE_DYNAMIC_LAMA`, `MANGA_INPAINT_PRELOAD`, `MANGA_FIXED_LAMA_*` |
+| Models & Processing | `MANGA_KIUYHA_MODEL` (default `kiuyha-tuned-1023.onnx`; also supports `kiuyha-tuned-s-1023.onnx` or `kiuyha-tuned-transient-1024.onnx`), `MANGA_PIPELINE_DEFAULT_WORKERS`, `MANGA_PIPELINE_SLICE_WORKER_LIMIT`, `MANGA_USE_DYNAMIC_LAMA`, `MANGA_INPAINT`, `MANGA_INPAINT_PRELOAD`, `MANGA_FIXED_LAMA_*` |
 | ONNX Runtime | `MANGA_ORT_PROVIDER`, `MANGA_ORT_REQUIRE_PROVIDER`, `MANGA_ORT_INTRA_OP_THREADS`, `MANGA_ORT_OPENVINO_*`, `MANGA_ORT_CPU_MEM_ARENA`, `MANGA_ORT_MEM_PATTERN`, `MANGA_ORT_SERIALIZE_INFERENCE` |
 | OCR | `MANGA_PPOCRV6_TIER`, `MANGA_PPOCRV6_TEXTLINE_ORIENTATION`, `MANGA_OCR_TARGET_SELECTION`, `MANGA_OCR_IMAGE_CACHE_MB`, `MANGA_OCR_JOB_CONCURRENCY_LIMIT`, `MANGA_OCR_JOB_ACTIVE_LIMIT` |
-| Access | `MANGA_ALLOWED_HOSTS`: extra host names the app answers to, comma separated (loopback always works; add the machine's LAN name or IP to open it from another device) |
-| Network and AI | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS` |
+| AI Models & Timeouts | `GEMINI_VISUAL_QC_MODEL`, `GEMINI_VISUAL_QC_TIMEOUT_SECONDS`, `DEEPSEEK_VISUAL_QC_MODEL`, `MANGA_DEEPSEEK_TRANSLATION_MODEL`, `MANGA_MODEL_PRICES_JSON`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS` |
+| Chaos Agent | `MANGA_AGENT_MODE` (set `0`/`off` to disable), `MANGA_AGENT_SANDBOX`, `AGENT_STATE` |
+| Access & Server | `HOST`, `PORT`, `WORKERS`, `RELOAD`, `MANGA_ALLOWED_HOSTS` (extra host names, comma separated; loopback always works) |
+| Network & Downloads | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS` |

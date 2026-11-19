@@ -743,10 +743,13 @@ class AIModeJobManager:
             job.status = ("completed_with_blockers"
                           if report.get("editorial_blockers") or report.get("translate_out_of_budget")
                           else "completed")
-        except AIModeCancelled:
+        except (AIModeCancelled, asyncio.CancelledError) as exc:
+            job.cancel_requested = True
             job.status = "cancelled"
             if job.stage:
                 job.stages[job.stage]["status"] = "cancelled"
+            if isinstance(exc, asyncio.CancelledError):
+                raise
         except Exception as exc:
             logger.opt(exception=True).error("A.I mode job {} failed at {}: {}", job.job_id, job.stage, type(exc).__name__)
             job.status = "failed"

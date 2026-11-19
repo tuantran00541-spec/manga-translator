@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import os
 import shutil
@@ -12,10 +13,10 @@ from pydantic import BaseModel, Field
 from app.agent import mcp, sandbox, skill_install, skills
 from app.agent.session import MODES, AgentSessionManager
 from app.agent.tools import Workspace
-from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS, validate_model_name
+from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS, normalize_provider_id, validate_model_name
 from app.config import BASE_DIR
 from app.routers.visual_qc import _resolve_configured_provider
-from app.secret_store import SecretStoreUnavailable, get_provider_api_keys, list_provider_configs, provider_key_status
+from app.secret_store import SecretStoreUnavailable, get_provider_api_keys, get_provider_config, list_provider_configs, provider_key_status
 
 AGENT_HEADER = "1"
 
@@ -245,40 +246,80 @@ async def create_session(req: SessionRequest) -> dict:
     return session.snapshot()
 
 
+_RESUME_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _resume_lock(session_id: str) -> asyncio.Lock:
+    lock = _RESUME_LOCKS.get(session_id)
+    if lock is None:
+        if len(_RESUME_LOCKS) >= 256:
+            idle_key = next((k for k, lk in _RESUME_LOCKS.items() if not lk.locked()), None)
+            if idle_key is not None:
+                _RESUME_LOCKS.pop(idle_key, None)
+        lock = _RESUME_LOCKS.setdefault(session_id, asyncio.Lock())
+    return lock
+
+
+def _provider_label_offline(provider_id: str) -> str:
+    try:
+        normalized = normalize_provider_id(provider_id)
+    except ValueError:
+        return provider_id
+    if normalized in PROVIDERS:
+        return PROVIDERS[normalized].label
+    stored = get_provider_config(normalized)
+    if isinstance(stored, dict) and stored.get("label"):
+        return str(stored["label"])
+    return normalized
+
+
 @router.get("/sessions/{session_id}/view")
 def view_session(session_id: str) -> dict:
-    if session_id in agent_sessions.sessions:
-        return agent_sessions.sessions[session_id].snapshot()
+    live = agent_sessions.sessions.get(session_id)
+    if live is not None:
+        return live.snapshot()
     try:
         snap = agent_sessions.saved_snapshot(session_id)
     except (KeyError, OSError, ValueError) as exc:
         raise HTTPException(404, "Không tìm thấy phiên đã lưu.") from exc
     if snap.get("provider"):
-        try:
-            snap["provider_label"] = _resolve_configured_provider(snap["provider"]).label
-        except ValueError:
-            pass
+        snap["provider_label"] = _provider_label_offline(str(snap["provider"]))
     return snap
 
 
 @router.post("/sessions/{session_id}/resume")
 async def resume_session(session_id: str) -> dict:
-    if session_id in agent_sessions.sessions:
-        return agent_sessions.sessions[session_id].snapshot()
-    try:
-        data = agent_sessions.saved(session_id)
-    except (KeyError, OSError, ValueError) as exc:
-        raise HTTPException(404, "Không tìm thấy phiên đã lưu.") from exc
-    provider, api_key = await _provider_and_key(str(data.get("provider") or ""))
-    try:
-        mode, network = (data.get("sandbox") or ["workspace-write", False])[:2]
-        workspace = Workspace(data["workspace"], sandbox.Policy(mode, bool(network)))
-        session = await run_in_threadpool(agent_sessions.create, provider, api_key, str(data.get("model") or ""), workspace,
-                                          data.get("mode") if data.get("mode") in MODES else "edits", session_id=session_id)
-    except (ValueError, KeyError) as exc:
-        raise HTTPException(400, str(exc)) from exc
-    session.restore(data)
-    return session.snapshot()
+    live = agent_sessions.sessions.get(session_id)
+    if live is not None:
+        return live.snapshot()
+    async with _resume_lock(session_id):
+        live = agent_sessions.sessions.get(session_id)
+        if live is not None:
+            return live.snapshot()
+        try:
+            data = agent_sessions.saved(session_id)
+        except (KeyError, OSError, ValueError) as exc:
+            raise HTTPException(404, "Không tìm thấy phiên đã lưu.") from exc
+        provider, api_key = await _provider_and_key(str(data.get("provider") or ""))
+        try:
+            raw_sandbox = data.get("sandbox") or ["workspace-write", False]
+            if not isinstance(raw_sandbox, (list, tuple)) or len(raw_sandbox) < 2:
+                raise ValueError("Invalid saved sandbox state")
+            mode, network = raw_sandbox[:2]
+            workspace = Workspace(data["workspace"], sandbox.Policy(mode, bool(network)))
+            session = await run_in_threadpool(
+                agent_sessions.create,
+                provider,
+                api_key,
+                str(data.get("model") or ""),
+                workspace,
+                data.get("mode") if data.get("mode") in MODES else "edits",
+                session_id=session_id,
+                restore_data=data,
+            )
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return session.snapshot()
 
 
 @router.get("/sessions")
@@ -290,7 +331,7 @@ def _mcp_rows(workspace: str) -> dict:
     home, root = _skill_home(), Path(workspace.strip() or BASE_DIR)
     rows = [mcp.public(row) for row in mcp.configured(root, agent_sessions.home)]
     live = {}
-    for session in agent_sessions.sessions.values():
+    for session in list(agent_sessions.sessions.values()):
         if session.workspace.root == root.resolve():
             live.update({n: {"state": st["state"], "tools": st["tools"], "error": st["error"]} for n, st in session.mcp_status.items()})
             for n, server in session.mcp_servers.items():

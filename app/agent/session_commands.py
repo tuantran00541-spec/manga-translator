@@ -231,8 +231,13 @@ class AgentCommandsMixin:
                 os.chmod(tmp, 0o600)
                 os.replace(tmp, self.store)
                 meta = self.store.with_name(self.store.stem + ".meta.json")
-                meta.write_text(json.dumps(card, ensure_ascii=False), encoding="utf-8")
-                os.chmod(meta, 0o600)
+                meta_tmp = self.store.with_name(f"{self.store.stem}.meta.tmp-{os.getpid()}-{threading.get_ident()}")
+                try:
+                    meta_tmp.write_text(json.dumps(card, ensure_ascii=False), encoding="utf-8")
+                    os.chmod(meta_tmp, 0o600)
+                    os.replace(meta_tmp, meta)
+                finally:
+                    meta_tmp.unlink(missing_ok=True)
             except (OSError, TypeError, ValueError):
                 logger.opt(exception=True).warning("Could not save agent session {}", self.id)
             finally:

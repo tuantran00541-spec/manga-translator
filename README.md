@@ -27,9 +27,9 @@ Give it a chapter link, a ZIP/CBZ or a folder of images. It erases the original 
 
 | Clean | Translate | Edit |
 | :--- | :--- | :--- |
-| Erases letters, outlines and glow, keeps the art | **A.I mode** runs a whole chapter for about $0.07 | Undo/redo, brush, restore, find & replace |
-| Two full webtoon chapters: **0** text left | Vietnamese, English, Indonesian, Spanish, Portuguese, French, German | 43 comic fonts, style presets, keyboard proofreading |
-| Small ONNX models, runs on any laptop CPU | Any OpenAI-compatible provider, or your own key | Exports the stitched chapter as a ZIP |
+| Erases letters, outlines and glow, keeps the art | **A.I mode** runs single or multi-chapter queues (about $0.07/chapter) | Undo/redo, brush, restore, find & replace |
+| Two full webtoon chapters: **0** text left | Vietnamese, English, Indonesian, Spanish, Portuguese, French, German + **VI/EN UI switcher** | 43 comic fonts, style presets, keyboard proofreading |
+| Small ONNX models, runs on any laptop CPU | Built-in **API rescue proxy** (`/api/proxy/v1`) & sandboxed **Chaos Agent** | Exports the stitched chapter as a ZIP |
 
 [All features, benchmarks and limitations →](docs/FEATURES.md)
 
@@ -62,7 +62,9 @@ Manual install, Docker, the browser extension and uninstalling: [docs/INSTALL.md
 
 **By hand:** import a chapter, clean it, then fix, OCR, translate and letter it in the editor.
 
-**A.I mode:** paste a chapter link, pick a language and add an A.I key. It scans, cleans, reviews and translates the chapter, then opens the result in the same editor. Keys and providers: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+**A.I mode:** paste a chapter or series URL, pick a language and add an A.I key. It scans, cleans, reviews and translates single chapters or queues, auto-rescuing common provider limits via the built-in proxy, then opens the result in the same editor. Keys, proxy and providers: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+**UI language & workspace:** switch the entire app UI between **Vietnamese (`VI`)** and **English (`EN`)** from the top bar or Settings, or open **Chaos Agent** inside the app for sandboxed local scripting and workflow automation.
 
 Hand-drawn sound effects, text painted into the art and warped lettering still need a person; [the full list](docs/FEATURES.md#current-limitations).
 

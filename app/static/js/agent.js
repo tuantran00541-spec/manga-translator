@@ -8,6 +8,8 @@
     saveSkill, draftSkill, selectHubTab, showHub,
   } = UI;
   let session = null;
+  let sessionEpoch = 0;
+  let hydratePromise = null;
   let lastSeq = 0;
   let pollTimer = null;
   let pollGeneration = 0;
@@ -25,6 +27,7 @@
 
   function newGroup(anchor, targetLog) {
     const box = el("details", "agent-group");
+    if (store("get", "manga_agent_collapse_tools") === "keep_open") box.open = true;
     const summary = el("summary");
     const countBadge = el("span", "agent-group-count", "0");
     const label = el("span", "agent-group-label");
@@ -187,9 +190,13 @@
   }
 
   function decide(card, decision, note, doneText) {
+    const sid = session?.id;
+    const epoch = sessionEpoch;
+    if (!sid) return;
     const buttons = card.querySelectorAll("button");
     buttons.forEach((b) => { b.disabled = true; });
-    post(`/api/agent/sessions/${session.id}/approval`, { decision, note }).then(() => {
+    post(`/api/agent/sessions/${sid}/approval`, { decision, note }).then(() => {
+      if (epoch !== sessionEpoch || !session || session.id !== sid) return;
       if (doneText) card.replaceWith(el("p", "agent-note", doneText));
       else card.remove();
       if (decision === "allow_all") {
@@ -198,6 +205,7 @@
       }
       poll();
     }).catch((error) => {
+      if (epoch !== sessionEpoch || !session || session.id !== sid) return;
       window.showToast?.(error.message, "error");
       buttons.forEach((b) => { b.disabled = false; });
     });
@@ -277,9 +285,15 @@
   }
 
   async function trust(path) {
+    const sid = session?.id;
+    const epoch = sessionEpoch;
+    if (!sid) return;
     try {
-      showInfo(await post(`/api/agent/sessions/${session.id}/trust/${path}`));
+      const snap = await post(`/api/agent/sessions/${sid}/trust/${path}`);
+      if (epoch !== sessionEpoch || !session || session.id !== sid) return;
+      showInfo(snap);
     } catch (error) {
+      if (epoch !== sessionEpoch || !session || session.id !== sid) return;
       window.showToast?.(error.message, "error");
     }
   }
@@ -439,7 +453,10 @@
     trigger.type = "button";
     trigger.setAttribute("aria-haspopup", "menu");
     const right = el("span", "agent-submenu-meta");
-    right.append(el("span", "agent-submenu-val", valueText || ""), el("span", "agent-submenu-arrow", "›"));
+    right.append(
+      el("span", "agent-submenu-val", valueText || ""),
+      window.createUiIcon ? window.createUiIcon("chevron-right", "agent-row-svg") : el("span", "agent-submenu-arrow", ">"),
+    );
     trigger.append(el("span", "agent-submenu-label", title), right);
     const panel = el("div", "agent-subpop");
     panel.role = "menu";
@@ -633,10 +650,20 @@
     }
     keyDialog.dataset.shown = shown;
     const answer = (decision) => {
+      const sid = session?.id;
+      const epoch = sessionEpoch;
+      if (!sid) {
+        keyDialog.close();
+        return;
+      }
       keyDialog.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-      post(`/api/agent/sessions/${session.id}/key`, { decision })
-        .then(() => keyDialog.close())
+      post(`/api/agent/sessions/${sid}/key`, { decision })
+        .then(() => { keyDialog.close(); })
         .catch((error) => {
+          if (epoch !== sessionEpoch || !session || session.id !== sid) {
+            keyDialog.close();
+            return;
+          }
           keyDialog.querySelectorAll("button").forEach((b) => { b.disabled = false; });
           window.showToast?.(error.message, "error");
         });
@@ -731,8 +758,10 @@
       if ($("agent-provider").value !== provider) return;
       applyModelOptions(select, models, saved);
     } catch (_) {
+      if ($("agent-provider").value !== provider) return;
       if (!cached && !saved) select.replaceChildren(new Option("Không tải được mô hình", ""));
     }
+    if ($("agent-provider").value !== provider) return;
     loadEffort();
     showPicks();
   }
@@ -812,9 +841,12 @@
   }
 
   async function resume(id) {
+    const reqEpoch = ++sessionEpoch;
     try {
       const snap = await call(`/api/agent/sessions/${encodeURIComponent(id)}/view`);
+      if (reqEpoch !== sessionEpoch) return;
       resetLog();
+      const activeEpoch = sessionEpoch;
       session = snap;
       $("agent-mode").value = snap.mode;
       $("agent-sandbox").value = snap.sandbox.mode;
@@ -823,7 +855,12 @@
       showFolder();
       showSandboxLine(snap.sandbox);
       if (snap.provider && [...$("agent-provider").options].some((o) => o.value === snap.provider)) {
+        const providerChanged = $("agent-provider").value !== snap.provider;
         $("agent-provider").value = snap.provider;
+        if (providerChanged) {
+          await loadModels();
+          if (activeEpoch !== sessionEpoch || !session || session.id !== snap.id) return;
+        }
       }
       if (snap.model && ![...$("agent-model").options].some((o) => o.value === snap.model)) {
         $("agent-model").append(new Option(snap.model, snap.model));
@@ -833,6 +870,9 @@
       showPicks();
       const frag = document.createDocumentFragment();
       snap.events.forEach((event) => { if (event.type !== "approval") render(event, frag); lastSeq = Math.max(lastSeq, event.seq); });
+      if (!snap.saved_only && snap.status === "waiting" && snap.pending) {
+        frag.append(approvalCard(snap.pending));
+      }
       $("agent-log").replaceChildren(frag);
       showStatus(snap);
       showHub(false);
@@ -842,6 +882,7 @@
       if (!allSessions.some((row) => row.id === snap.id)) loadSessions();
       if (!snap.saved_only && snap.status !== "idle") poll();
     } catch (error) {
+      if (reqEpoch !== sessionEpoch) return;
       window.showToast?.(error.message, "error");
     }
   }
@@ -955,11 +996,14 @@
   }
 
   function resetLog() {
+    sessionEpoch += 1;
+    hydratePromise = null;
     clearTimeout(pollTimer);
     pollGeneration++;
     session = null;
     lastSeq = 0;
     infoRev = "";
+    if (keyDialog?.open) keyDialog.close();
     clearStepGroup();
     $("agent-log").replaceChildren(emptyState());
     $("agent-tools-info")?.replaceChildren();
@@ -971,20 +1015,34 @@
 
   async function hydrateSession() {
     if (!session?.saved_only) return session;
-    const hydrated = await post(`/api/agent/sessions/${encodeURIComponent(session.id)}/resume`);
-    hydrated.saved_only = false;
-    session = hydrated;
-    showInfo(hydrated);
-    return session;
+    if (hydratePromise) return hydratePromise;
+    const targetId = session.id;
+    const epoch = sessionEpoch;
+    hydratePromise = (async () => {
+      const hydrated = await post(`/api/agent/sessions/${encodeURIComponent(targetId)}/resume`);
+      if (epoch !== sessionEpoch || !session || session.id !== targetId) return null;
+      hydrated.saved_only = false;
+      session = hydrated;
+      showInfo(hydrated);
+      return session;
+    })();
+    try {
+      return await hydratePromise;
+    } finally {
+      if (epoch === sessionEpoch) hydratePromise = null;
+    }
   }
 
   async function ensureSession() {
     if (session) return hydrateSession();
+    const epoch = sessionEpoch;
     const body = {
       provider: $("agent-provider").value, model: $("agent-model").value.trim(), mode: $("agent-mode").value, effort: $("agent-effort").value,
       workspace: $("agent-workspace").value.trim(), sandbox: $("agent-sandbox").value, network: $("agent-network").checked,
     };
-    session = await post("/api/agent/sessions", body);
+    const created = await post("/api/agent/sessions", body);
+    if (epoch !== sessionEpoch || session) return session || null;
+    session = created;
     store("set", "manga_agent_provider", body.provider);
     store("set", `manga_agent_model_${body.provider}`, body.model);
     store("set", "manga_agent_workspace", body.workspace);
@@ -1030,9 +1088,12 @@
       return;
     }
     $("agent-send").disabled = true;
+    const sendEpoch = sessionEpoch;
     try {
-      await ensureSession();
-      const reply = await post(`/api/agent/sessions/${session.id}/messages`, { text });
+      const activeSession = await ensureSession();
+      if (!activeSession || sendEpoch !== sessionEpoch) return;
+      const reply = await post(`/api/agent/sessions/${activeSession.id}/messages`, { text });
+      if (sendEpoch !== sessionEpoch || !session || session.id !== activeSession.id) return;
       input.value = "";
       autosize();
       showHints();
@@ -1051,10 +1112,16 @@
 
   async function syncSession(changes) {
     if (!session) return;
+    const sid = session.id;
+    const epoch = sessionEpoch;
     try {
-      await hydrateSession();
-      showStatus(await post(`/api/agent/sessions/${session.id}`, changes, "PATCH"));
+      const hydrated = await hydrateSession();
+      if (!hydrated || epoch !== sessionEpoch || !session || session.id !== sid) return;
+      const snap = await post(`/api/agent/sessions/${sid}`, changes, "PATCH");
+      if (epoch !== sessionEpoch || !session || session.id !== sid) return;
+      showStatus(snap);
     } catch (error) {
+      if (epoch !== sessionEpoch || !session || session.id !== sid) return;
       window.showToast?.(error.message, "error");
     }
   }
@@ -1087,15 +1154,17 @@
       }
       const [config, settingsData] = await Promise.all([
         call("/api/agent/config"),
-        fetch("/api/visual_qc/settings").then((r) => window.parseApiResponse(r)).catch(() => null),
+        fetch("/api/visual_qc/settings").then((r) => (r.ok ? window.parseApiResponse(r) : null)).catch(() => null),
         loadSessions(),
       ]);
-      $("agent-workspace").value = launchFolder || store("get", "manga_agent_workspace") || config.workspace;
-      if (launchFolder) store("set", "manga_agent_workspace", launchFolder);
-      showFolder();
-      $("agent-sandbox-info").textContent = SANDBOX_TEXT[config.sandbox_backend] || "";
-      showEngine(config.engine || {});
-      await loadProviders(settingsData);
+      if (!session) {
+        $("agent-workspace").value = launchFolder || store("get", "manga_agent_workspace") || config.workspace;
+        if (launchFolder) store("set", "manga_agent_workspace", launchFolder);
+        showFolder();
+        $("agent-sandbox-info").textContent = SANDBOX_TEXT[config.sandbox_backend] || "";
+        showEngine(config.engine || {});
+        await loadProviders(settingsData);
+      }
     } catch (error) {
       loaded = false;
       $("agent-status").textContent = error.message;
@@ -1202,6 +1271,18 @@
     $("agent-sandbox").addEventListener("change", () => syncSession({ sandbox: $("agent-sandbox").value }));
     $("agent-network").addEventListener("change", () => syncSession({ network: $("agent-network").checked }));
     ["agent-mode", "agent-sandbox", "agent-network"].forEach((id) => $(id).addEventListener("change", showPicks));
+    document.addEventListener("agent-defaults-updated", () => {
+      if (session) return;
+      const modeVal = store("get", "manga_agent_default_mode");
+      if (modeVal && [...$("agent-mode").options].some((o) => o.value === modeVal)) {
+        $("agent-mode").value = modeVal;
+      }
+      const sandboxVal = store("get", "manga_agent_default_sandbox");
+      if (sandboxVal && [...$("agent-sandbox").options].some((o) => o.value === sandboxVal)) {
+        $("agent-sandbox").value = sandboxVal;
+      }
+      showPicks();
+    });
     document.querySelectorAll(".agent-menu").forEach((menu) => menu.addEventListener("toggle", () => {
       if (menu.open) {
         document.querySelectorAll(".agent-menu[open]").forEach((other) => { if (other !== menu) other.open = false; });

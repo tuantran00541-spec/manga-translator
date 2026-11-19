@@ -758,19 +758,26 @@ window.flushPreserveRegionSaves = flushPreserveRegionSaves;
     return true;
   }
 
+  const generations = new Map();
+
+  function getGeneration(provider) {
+    return generations.get(provider) || 0;
+  }
+
   async function requestFromServer(provider, force) {
     const key = `${provider}:${force ? "1" : "0"}`;
     if (inflight.has(key)) return inflight.get(key);
+    const reqGen = getGeneration(provider);
     const job = (async () => {
       const url = `/api/visual_qc/providers/${encodeURIComponent(provider)}/models${force ? "?refresh=1" : ""}`;
       const resp = await fetch(url);
       const data = await parseApiResponse(resp);
       if (!resp.ok) throw new Error(getErrorMessage(resp.status, data));
       const models = Array.isArray(data.models) ? data.models : [];
-      writeEntry(provider, models);
+      if (getGeneration(provider) === reqGen) writeEntry(provider, models);
       return models;
     })().finally(() => {
-      inflight.delete(key);
+      if (inflight.get(key) === job) inflight.delete(key);
     });
     inflight.set(key, job);
     return job;
@@ -778,12 +785,13 @@ window.flushPreserveRegionSaves = flushPreserveRegionSaves;
 
   async function fetchModels(provider, { force = false, onFresh } = {}) {
     if (!provider) return [];
+    const startGen = getGeneration(provider);
     const cached = force ? null : readEntry(provider);
     if (cached) {
       if (!cached.fresh) {
         requestFromServer(provider, false)
           .then((freshModels) => {
-            if (typeof onFresh === "function" && !sameList(cached.models, freshModels)) {
+            if (getGeneration(provider) === startGen && typeof onFresh === "function" && !sameList(cached.models, freshModels)) {
               onFresh(freshModels);
             }
           })
@@ -796,6 +804,9 @@ window.flushPreserveRegionSaves = flushPreserveRegionSaves;
 
   function invalidate(provider) {
     if (!provider) return;
+    generations.set(provider, getGeneration(provider) + 1);
+    inflight.delete(`${provider}:0`);
+    inflight.delete(`${provider}:1`);
     try {
       localStorage.removeItem(`${CACHE_PREFIX}${provider}`);
     } catch (_) {}

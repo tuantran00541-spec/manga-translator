@@ -137,13 +137,17 @@ Privacy text must clearly state when source/clean images or contact sheets are s
 
 ## Source ownership
 
-The shipped browser surface has one stylesheet entrypoint and one studio layer:
+The shipped browser surface shares one monochrome token system and four modular stylesheets:
 
-- `tokens.css` — design tokens only;
+- `tokens.css` — monochrome design tokens (`#000000` / `#ffffff` primitives and derived scales);
 - `foundation.css` — reset and global accessibility primitives;
 - `studio.css` — shell, controls, responsive panes, canvas, editor, preview and review styles;
+- `app.css` — AI Mode, queue panel, Chaos Agent UI, Settings modal, Proxy Monitor and header language toggle;
 - `page-navigator.js` — shared page navigation;
-- stage JS modules — domain behavior and their own DOM lifecycle.
+- `icons.js` — shared inline SVG icon factory (`window.createUiIcon`) instead of raw Unicode glyph arrows/icons;
+- `i18n.js` — live `VI` / `EN` interface localization preserving editable chapter textboxes (`.review-proof-source`, `.review-proof-translation`, `.translation-textarea`).
+
+`app.css`, `foundation.css` and `studio.css` must stay strictly monochrome without raw color literals (`#hex`, `rgb()`, `rgba()`, `color-mix()`, `hsl()`, `hsla()`, `oklch()`, `oklab()`, `hwb()`), verified by `tests/test_theme_picker_contract.py` and `scripts/browser_sanity.py`.
 
 The Editor owns its lifecycle directly. It must not be wrapped by shell or
 compatibility renderers, and overlay transforms must be installed explicitly

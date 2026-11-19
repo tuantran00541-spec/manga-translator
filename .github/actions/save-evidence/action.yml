@@ -16,10 +16,28 @@ runs:
         EVIDENCE_MESSAGE: ${{ inputs.message }}
       run: |
         keep=()
-        for p in $EVIDENCE_PATHS; do [ -e "$p" ] && keep+=("$p"); done
+        for p in $EVIDENCE_PATHS; do
+          case "$p" in
+            ""|/*|..|*/..|../*|*/../*)
+              echo "Skipping unsafe evidence path: $p" >&2
+              continue
+              ;;
+          esac
+          if [ -d "$p" ]; then
+            [ -n "$(ls -A "$p")" ] && keep+=("$p")
+          elif [ -e "$p" ]; then
+            keep+=("$p")
+          fi
+        done
         [ ${#keep[@]} -gt 0 ] || exit 0
         rm -rf /tmp/evidence && mkdir -p /tmp/evidence
-        for p in "${keep[@]}"; do mkdir -p "/tmp/evidence/$p" && cp -r "$p/." "/tmp/evidence/$p/"; done
+        for p in "${keep[@]}"; do
+          if [ -d "$p" ]; then
+            mkdir -p "/tmp/evidence/$p" && cp -a "$p/." "/tmp/evidence/$p/"
+          else
+            mkdir -p "$(dirname "/tmp/evidence/$p")" && cp -a "$p" "/tmp/evidence/$p"
+          fi
+        done
         grep -rlIZE 'hf_[A-Za-z0-9]{30,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}' /tmp/evidence \
           | xargs -0r sed -i -E 's/hf_[A-Za-z0-9]{30,}/hf_MASKED/g; s/gh([pousr])_[A-Za-z0-9]{30,}/gh\1_MASKED/g; s/github_pat_[A-Za-z0-9_]{30,}/github_pat_MASKED/g; s/AKIA[0-9A-Z]{16}/AKIA_MASKED/g' || true
         git config user.name 'github-actions[bot]'
@@ -29,7 +47,14 @@ runs:
           git fetch -q origin audit-evidence
           git worktree remove -f /tmp/evidence-wt 2>/dev/null || true
           git worktree add -q -f --detach /tmp/evidence-wt FETCH_HEAD
-          for p in "${keep[@]}"; do rm -rf "/tmp/evidence-wt/$p" && mkdir -p "/tmp/evidence-wt/$p" && cp -r "/tmp/evidence/$p/." "/tmp/evidence-wt/$p/"; done
+          for p in "${keep[@]}"; do
+            rm -rf "/tmp/evidence-wt/$p"
+            if [ -d "/tmp/evidence/$p" ]; then
+              mkdir -p "/tmp/evidence-wt/$p" && cp -a "/tmp/evidence/$p/." "/tmp/evidence-wt/$p/"
+            else
+              mkdir -p "$(dirname "/tmp/evidence-wt/$p")" && cp -a "/tmp/evidence/$p" "/tmp/evidence-wt/$p"
+            fi
+          done
           git -C /tmp/evidence-wt add -A -f "${keep[@]}"
           git -C /tmp/evidence-wt commit -qm "$EVIDENCE_MESSAGE" || exit 0
           git -C /tmp/evidence-wt push -q origin HEAD:audit-evidence && exit 0

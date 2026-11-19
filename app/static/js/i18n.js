@@ -8,7 +8,7 @@
 
   const viRegex = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/;
 
-  const EXACT = {
+  const EXACT = Object.assign(Object.create(null), {
     // Header & Navigation
     "Mở thanh điều hướng": "Open navigation sidebar",
     "Đóng thanh điều hướng": "Close navigation sidebar",
@@ -175,7 +175,6 @@
     "ở góc trên bên phải.": "at the top-right corner.",
     "Tải tệp tiện ích": "Download extension",
     "bên dưới rồi giải nén vào một thư mục dễ tìm (ví dụ": "below and extract it to an easy-to-find folder (e.g.",
-    "Chọn": "Select",
     "Tải tiện ích đã giải nén": "Load unpacked",
     "(Load unpacked) và chọn đúng thư mục vừa giải nén.": "and choose the extracted folder.",
     "Tải tiện ích (.zip)": "Download extension (.zip)",
@@ -657,12 +656,17 @@
     "Xử lý ảnh": "Image cleanup",
     "Hoàn tất": "Done",
     "Hoàn tất!": "Done!",
+    "Xong": "Done",
+    "Cứu:": "Rescued:",
+    "Mạng bật.": "Network on.",
+    "Mạng tắt.": "Network off.",
+    "Xóa tài khoản Manga Cloud? Địa chỉ email và phiên đăng nhập sẽ bị xóa. Số dư còn lại vẫn được bảo lưu và khôi phục khi bạn đăng nhập lại bằng đúng email này.": "Delete your Manga Cloud account? Your email address and sign-in sessions will be removed. Any remaining balance is preserved and restored if you sign back in with the same email.",
     "Đã khôi phục ảnh gốc ở các vùng được đánh dấu.": "Restored original art on marked regions.",
     "Đã làm sạch các vùng được đánh dấu.": "Cleaned marked regions.",
     "Không có vùng ảnh nào được cập nhật.": "No image regions were updated.",
     "Không còn thao tác để hoàn tác.": "Nothing to undo.",
     "Không còn thao tác để làm lại.": "Nothing to redo.",
-  };
+  });
 
   const PATTERNS = [
     // Numbers / counters
@@ -697,7 +701,7 @@
     [/^Đã hủy hàng đợi \((\d+)\/(\d+) chương đã xong\)$/, "Queue canceled ($1/$2 chapters completed)"],
     [/^Mỗi hàng đợi tối đa (\d+) chương \(hiện đang có (\d+)\)\.$/, "Maximum $1 chapters per queue (currently $2)."],
     [/^Đã nạp lại (\d+) chương chưa hoàn tất\.$/, "Reloaded $1 incomplete chapters."],
-    [/^ · chi phí ~\$(.+)$/, " · cost ~$$$1"],
+    [/^·\s*chi phí\s*~\$(.+)$/, "· cost ~$$$1"],
     [/^Tiến độ kế hoạch · (\d+)\/(\d+) hoàn tất$/, "Plan progress · $1/$2 done"],
     [/^(.+?) · chọn mô hình$/, "$1 · select model"],
     [/^Suy luận:\s*(.+)$/, (_, v) => `Reasoning: ${translateText(v)}`],
@@ -718,6 +722,8 @@
     [/^Luôn cho phép (.+)$/, "Always allow $1"],
     [/^Đã lưu luật:\s*(.+)$/, "Saved rule: $1"],
     [/^Việc cần làm trong (.+?)… \(\/ xem lệnh\)$/, "Task in $1… (/ for commands)"],
+    [/^Tác vụ con\s+(.+?)\s+yêu cầu$/, "Subagent $1 requests"],
+    [/^(.+?)\s+Mạng\s+(bật|tắt)\.$/, (_, head, st) => `${translateText(head)} Network ${st === "bật" ? "on" : "off"}.`],
     [/^Cho phép (.+?) (.+)\?$/, "Allow $1 $2?"],
     [/^Tác vụ con (.+?) yêu cầu (.+?) (.+)\?$/, "Subagent $1 requests $2 $3?"],
     [/^Bạn trả lời:\s*(.+)$/, "You answered: $1"],
@@ -729,7 +735,7 @@
     [/^Đã tải (\d+) mô hình\.$/, "Loaded $1 models."],
     [/^Đã lưu nhà cung cấp (.+)$/, "Saved provider $1"],
     [/^Đã xóa nhà cung cấp (.+)$/, "Removed provider $1"],
-    [/^(\d+) vùng chữ · (\d+) đã dịch$/, "$1 boxes · $2 translated"],
+    [/^(\d+) vùng chữ · (\d+(?:\/\d+)?) đã dịch$/, "$1 boxes · $2 translated"],
     [/^(\d+) vùng · (\d+) đã dịch$/, "$1 boxes · $2 translated"],
     [/^(\d+) \/ (\d+) vùng$/, "$1 / $2 regions"],
     [/^Trang (\d+) · Lát (\d+)\/(\d+)$/, "Page $1 · Slice $2/$3"],
@@ -763,7 +769,7 @@
     [/^Không hủy được hàng đợi:\s*(.*)$/, "Failed to cancel queue: $1"],
     [/^Không lưu được:\s*(.*)$/, "Failed to save: $1"],
     [/^Máy chủ trả về lỗi HTTP (.+)$/, "Server returned HTTP $1"],
-    [/^(\d+) vào · (\d+) ra(.*)$/, "$1 in · $2 out$3"],
+    [/^([\d.,]+[kKmMbB]?) vào · ([\d.,]+[kKmMbB]?) ra(.*)$/, "$1 in · $2 out$3"],
     [/^Bỏ mọi vùng đã làm sạch bằng cọ trên lát (\d+)\? Lát sẽ trở về kết quả xử lý tự động\.$/, "Discard all brush-cleaned regions on slice $1? It will revert to auto processing."],
     [/^([\s\S]+?)\nVẫn xuất chương\? Những vùng đó sẽ để trống chữ\.$/, "$1\nExport chapter anyway? Those boxes will have blank text."],
     [/^Đã áp kiểu "(.+)" cho (\d+) vùng\. Ctrl\+Z để hoàn tác\.$/, 'Applied style "$1" to $2 boxes. Ctrl+Z to undo.'],
@@ -804,9 +810,9 @@
 
   function translateRules(text) {
     return String(text || "")
-      .replace(/\bẢnh\b/g, "Images")
-      .replace(/\bGộp system\b/g, "Fold system")
-      .replace(/\bBỏ:/g, "Strip:");
+      .replace(/(^|[^A-Za-zÀ-ỹ0-9_])Ảnh(?=$|[^A-Za-zÀ-ỹ0-9_])/g, "$1Images")
+      .replace(/(^|[^A-Za-zÀ-ỹ0-9_])Gộp system(?=$|[^A-Za-zÀ-ỹ0-9_])/g, "$1Fold system")
+      .replace(/(^|[^A-Za-zÀ-ỹ0-9_])Bỏ:/g, "$1Strip:");
   }
 
   function translateText(raw) {
@@ -816,6 +822,7 @@
     const [, lead, core, trail] = m;
     if (!core) return str;
     if (EXACT[core]) return `${lead}${EXACT[core]}${trail}`;
+    if (!viRegex.test(core) && !/^(?:MCP\s|Hook:|·\s*\d)/i.test(core)) return str;
     for (let i = 0; i < PATTERNS.length; i += 1) {
       const [rx, repl] = PATTERNS[i];
       if (rx.test(core)) {
@@ -834,19 +841,37 @@
   const originText = new WeakMap();
   const originAttrs = new WeakMap();
   let observer = null;
-  let applying = false;
+  let applyDepth = 0;
 
-  function isSkippedElement(el) {
+  function beginApply() {
+    applyDepth += 1;
+  }
+
+  function endApply() {
+    if (applyDepth > 0) applyDepth -= 1;
+    if (applyDepth === 0 && observer) observer.takeRecords();
+  }
+
+  const TEXT_SKIP_SELECTOR = "[data-no-i18n], .agent-user, .agent-prose, .agent-pre, .agent-think-body, .agent-target, .ocr-textarea, .review-translation-input, .review-inline-translation, .proofing-source, .proofing-translation, .review-proof-source, .review-proof-translation, .translation-textarea";
+
+  function isHardSkippedElement(el) {
     if (!el || el.nodeType !== 1) return false;
     if (el.id === "lang-toggle") return true;
-    const tag = el.tagName;
-    if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") return true;
-    if (el.closest?.("[data-no-i18n], .agent-user, .agent-prose, .agent-pre, .agent-think-body, .agent-target, .ocr-textarea, .review-translation-input, .review-inline-translation, .proofing-source, .proofing-translation")) {
-      return true;
-    }
-    if (tag === "CODE" && !EXACT[el.textContent?.trim()]) {
-      return true;
-    }
+    const tag = (el.tagName || "").toUpperCase();
+    return tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "SVG";
+  }
+
+  function isSkippedTextElement(el) {
+    if (isHardSkippedElement(el)) return true;
+    if (el.tagName === "TEXTAREA") return true;
+    if (el.closest?.(TEXT_SKIP_SELECTOR)) return true;
+    if (el.tagName === "CODE" && !EXACT[el.textContent?.trim()]) return true;
+    return false;
+  }
+
+  function isSkippedAttrElement(el) {
+    if (isHardSkippedElement(el)) return true;
+    if (el.closest?.("[data-no-i18n]")) return true;
     return false;
   }
 
@@ -860,65 +885,86 @@
   function processTextNode(node) {
     if (!node || node.nodeType !== 3) return;
     const parent = node.parentElement;
-    if (!parent || isSkippedElement(parent)) return;
+    if (!parent || isSkippedTextElement(parent)) return;
     const val = node.nodeValue || "";
-    if (!val.trim()) return;
+    if (!val.trim()) {
+      if (currentLang === "en") originText.delete(node);
+      return;
+    }
 
     if (currentLang === "en") {
-      const base = originText.get(node);
-      if (base === undefined || viRegex.test(val) || EXACT[val.trim()]) {
-        if (val !== translateForNode(parent, val) || base === undefined) {
-          originText.set(node, val);
-        }
+      const entry = originText.get(node);
+      if (!entry || val !== entry.translated) {
+        const next = translateForNode(parent, val);
+        originText.set(node, { orig: val, translated: next });
+        if (next !== val) node.nodeValue = next;
       }
-      const source = originText.get(node) ?? val;
-      const next = translateForNode(parent, source);
-      if (next !== val) node.nodeValue = next;
     } else if (originText.has(node)) {
-      const orig = originText.get(node);
-      if (orig !== undefined && orig !== val) {
-        node.nodeValue = orig;
+      const entry = originText.get(node);
+      if (entry && val === entry.translated && entry.orig !== val) {
+        node.nodeValue = entry.orig;
       }
+      originText.delete(node);
     }
   }
 
   function processAttributes(el) {
-    if (!el || el.nodeType !== 1 || isSkippedElement(el)) return;
+    if (!el || el.nodeType !== 1 || isSkippedAttrElement(el)) return;
     let map = originAttrs.get(el);
     ATTRS.forEach((attr) => {
-      if (!el.hasAttribute(attr)) return;
+      if (!el.hasAttribute(attr)) {
+        if (map && attr in map) delete map[attr];
+        return;
+      }
       const val = el.getAttribute(attr) || "";
-      if (!val.trim()) return;
+      if (!val.trim()) {
+        if (map && attr in map && currentLang === "en") delete map[attr];
+        return;
+      }
       if (currentLang === "en") {
         if (!map) {
-          map = {};
+          map = Object.create(null);
           originAttrs.set(el, map);
         }
-        if (map[attr] === undefined || viRegex.test(val) || EXACT[val.trim()]) {
-          if (val !== translateText(val) || map[attr] === undefined) {
-            map[attr] = val;
-          }
+        const entry = map[attr];
+        if (!entry || val !== entry.translated) {
+          const next = translateText(val);
+          map[attr] = { orig: val, translated: next };
+          if (next !== val) el.setAttribute(attr, next);
         }
-        const source = map[attr] ?? val;
-        const next = translateText(source);
-        if (next !== val) el.setAttribute(attr, next);
-      } else if (map && map[attr] !== undefined && map[attr] !== val) {
-        el.setAttribute(attr, map[attr]);
+      } else if (map && map[attr]) {
+        const entry = map[attr];
+        if (val === entry.translated && entry.orig !== val) {
+          el.setAttribute(attr, entry.orig);
+        }
+        delete map[attr];
       }
     });
   }
 
   function applyTree(root) {
     if (!root) return;
-    applying = true;
+    beginApply();
     try {
       if (root.nodeType === 3) {
         processTextNode(root);
         return;
       }
       if (root.nodeType !== 1 && root !== document.body) return;
+      if (root.nodeType === 1 && isHardSkippedElement(root)) return;
       if (root.nodeType === 1) processAttributes(root);
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(n) {
+            if (n.nodeType === 1 && (isHardSkippedElement(n) || n.hasAttribute?.("data-no-i18n"))) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        },
+      );
       let node = walker.nextNode();
       while (node) {
         if (node.nodeType === 1) processAttributes(node);
@@ -926,7 +972,7 @@
         node = walker.nextNode();
       }
     } finally {
-      applying = false;
+      endApply();
     }
   }
 
@@ -950,23 +996,31 @@
     });
   }
 
+  function stopObserver() {
+    if (!observer) return;
+    observer.disconnect();
+    observer = null;
+  }
+
   function setUiLang(lang) {
     const normalized = SUPPORTED.has(lang) ? lang : DEFAULT_LANG;
     currentLang = normalized;
     try {
       localStorage.setItem(STORAGE_KEY, normalized);
     } catch (_) {}
+    if (normalized !== "en") stopObserver();
     if (document.body) applyTree(document.body);
+    if (normalized === "en") startObserver();
     syncLangControls();
     window.dispatchEvent(new CustomEvent("app-lang-change", { detail: { lang: normalized } }));
     return normalized;
   }
 
   function startObserver() {
-    if (observer || !document.body) return;
+    if (currentLang !== "en" || observer || !document.body) return;
     observer = new MutationObserver((mutations) => {
-      if (applying || currentLang !== "en") return;
-      applying = true;
+      if (applyDepth > 0 || currentLang !== "en") return;
+      beginApply();
       try {
         for (const m of mutations) {
           if (m.type === "characterData") {
@@ -981,7 +1035,7 @@
           }
         }
       } finally {
-        applying = false;
+        endApply();
       }
     });
     observer.observe(document.body, {

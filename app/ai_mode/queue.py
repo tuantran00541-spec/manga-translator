@@ -132,6 +132,13 @@ class AIModeQueueManager:
                     stopped_early = True
 
             self._finalize_queue_status(queue)
+        except asyncio.CancelledError:
+            queue.cancel_requested = True
+            for item in queue.items:
+                if item.status in {"pending", "running"}:
+                    item.status = "cancelled"
+            queue.status = "cancelled"
+            raise
         except Exception as exc:
             logger.opt(exception=True).error("Queue {} crashed: {}", queue.queue_id, type(exc).__name__)
             queue.status = "failed"
@@ -151,7 +158,11 @@ class AIModeQueueManager:
         if job is not None and job.task is not None:
             try:
                 await job.task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                self._safe_cancel_job(job_id)
+                if not job.task.cancelled():
+                    raise
+            except Exception:
                 pass
         else:
             while True:

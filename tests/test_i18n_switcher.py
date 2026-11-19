@@ -18,3 +18,10 @@ def test_i18n_switcher_wiring_and_contracts():
     assert "window.setUiLang = setUiLang" in i18n_js
     assert "window.getUiLang = () => currentLang" in i18n_js
     assert "MutationObserver" in i18n_js
+    assert "Object.create(null)" in i18n_js
+    assert "NodeFilter.FILTER_REJECT" in i18n_js
+    assert ".review-proof-source" in i18n_js
+    assert ".translation-textarea" in i18n_js
+    assert '"Xong": "Done"' in i18n_js
+    assert '"Cứu:": "Rescued:"' in i18n_js
+    assert i18n_js.count('"Chọn":') == 1

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 
 from fastapi import APIRouter, HTTPException
@@ -20,6 +21,7 @@ from app.security import MAX_REMOTE_URL_LENGTH, validate_chapter_id, validate_ur
 router = APIRouter(prefix="/api/ai_mode", tags=["ai-mode"])
 ai_mode_jobs = AIModeJobManager()
 ai_mode_queues = AIModeQueueManager(ai_mode_jobs)
+_START_LOCK = asyncio.Lock()
 
 
 class _AIModeBaseRequest(BaseModel):
@@ -247,35 +249,36 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         await run_in_threadpool(load_manifest_raw, req.chapter_id)
     else:
         await run_in_threadpool(validate_url, req.url)
-    _ensure_idle()
-    if req.provider == cloud.CLOUD_PROVIDER_ID:
-        if req.chapter_id:
-            raise HTTPException(400, "chapter_id chỉ dùng cục bộ; Manga Cloud bắt đầu từ URL.")
-        translate_provider_id, translate_model_name = _validate_cloud_translate(req)
+    async with _START_LOCK:
+        _ensure_idle()
+        if req.provider == cloud.CLOUD_PROVIDER_ID:
+            if req.chapter_id:
+                raise HTTPException(400, "chapter_id chỉ dùng cục bộ; Manga Cloud bắt đầu từ URL.")
+            translate_provider_id, translate_model_name = _validate_cloud_translate(req)
+            try:
+                return await _start_cloud_job(req.url or "", req, translate_provider_id, translate_model_name)
+            except RuntimeError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
+        provider, api_key, base_settings = await run_in_threadpool(_resolve_direct_execution, req)
+        settings = AIModeSettings(
+            url=req.url or "",
+            chapter_id=req.chapter_id,
+            provider=base_settings.provider,
+            model=base_settings.model,
+            target_lang=base_settings.target_lang,
+            budget_usd=base_settings.budget_usd,
+            workers=base_settings.workers,
+            story_notes=base_settings.story_notes,
+            polish=base_settings.polish,
+            images_per_request=base_settings.images_per_request,
+            translate_provider=base_settings.translate_provider,
+            translate_model=base_settings.translate_model,
+        )
         try:
-            return await _start_cloud_job(req.url or "", req, translate_provider_id, translate_model_name)
+            return ai_mode_jobs.start(settings, provider=provider, api_key=api_key)
         except RuntimeError as exc:
             raise HTTPException(409, str(exc)) from exc
-
-    provider, api_key, base_settings = _resolve_direct_execution(req)
-    settings = AIModeSettings(
-        url=req.url or "",
-        chapter_id=req.chapter_id,
-        provider=base_settings.provider,
-        model=base_settings.model,
-        target_lang=base_settings.target_lang,
-        budget_usd=base_settings.budget_usd,
-        workers=base_settings.workers,
-        story_notes=base_settings.story_notes,
-        polish=base_settings.polish,
-        images_per_request=base_settings.images_per_request,
-        translate_provider=base_settings.translate_provider,
-        translate_model=base_settings.translate_model,
-    )
-    try:
-        return ai_mode_jobs.start(settings, provider=provider, api_key=api_key)
-    except RuntimeError as exc:
-        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post("/queue/discover")
@@ -289,43 +292,44 @@ async def discover_queue_chapters(req: AIModeDiscoverRequest) -> dict:
 async def start_ai_mode_queue(req: AIModeQueueStartRequest) -> dict:
     for url in req.urls:
         await run_in_threadpool(validate_url, url)
-    _ensure_idle()
+    async with _START_LOCK:
+        _ensure_idle()
 
-    if req.provider == cloud.CLOUD_PROVIDER_ID:
-        translate_provider_id, translate_model_name = _validate_cloud_translate(req)
-        base_settings = AIModeSettings(
-            url=req.urls[0],
-            provider=cloud.CLOUD_PROVIDER_ID,
-            model="",
-            target_lang=req.target_lang,
-            budget_usd=req.budget_usd,
-            workers=req.workers,
-            story_notes=req.story_notes,
-            polish=req.polish,
-            images_per_request=2,
-            translate_provider=translate_provider_id,
-            translate_model=translate_model_name,
-        )
+        if req.provider == cloud.CLOUD_PROVIDER_ID:
+            translate_provider_id, translate_model_name = _validate_cloud_translate(req)
+            base_settings = AIModeSettings(
+                url=req.urls[0],
+                provider=cloud.CLOUD_PROVIDER_ID,
+                model="",
+                target_lang=req.target_lang,
+                budget_usd=req.budget_usd,
+                workers=req.workers,
+                story_notes=req.story_notes,
+                polish=req.polish,
+                images_per_request=2,
+                translate_provider=translate_provider_id,
+                translate_model=translate_model_name,
+            )
 
-        async def starter(item_settings: AIModeSettings) -> dict:
-            return await _start_cloud_job(item_settings.url, req, translate_provider_id, translate_model_name)
-    else:
-        provider, api_key, base_settings = _resolve_direct_execution(req)
+            async def starter(item_settings: AIModeSettings) -> dict:
+                return await _start_cloud_job(item_settings.url, req, translate_provider_id, translate_model_name)
+        else:
+            provider, api_key, base_settings = await run_in_threadpool(_resolve_direct_execution, req)
 
-        async def starter(item_settings: AIModeSettings) -> dict:
-            return ai_mode_jobs.start(item_settings, provider=provider, api_key=api_key)
+            async def starter(item_settings: AIModeSettings) -> dict:
+                return ai_mode_jobs.start(item_settings, provider=provider, api_key=api_key)
 
-    try:
-        return ai_mode_queues.start(
-            req.urls,
-            base_settings,
-            item_starter=starter,
-            continue_on_error=req.continue_on_error,
-        )
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(409, str(exc)) from exc
+        try:
+            return ai_mode_queues.start(
+                req.urls,
+                base_settings,
+                item_starter=starter,
+                continue_on_error=req.continue_on_error,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/active")

@@ -18,6 +18,7 @@
   let timer = null;
   let hostMounted = false;
   let lastSnapshotKey = "";
+  let requestSeq = 0;
 
   const el = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -73,8 +74,10 @@
     clearBtn.type = "button";
     clearBtn.addEventListener("click", async () => {
       try {
+        requestSeq += 1;
+        lastSnapshotKey = "";
         await fetch("/api/proxy/logs/clear", { method: "POST" });
-        await loadProxyStatus();
+        await loadProxyStatus(true);
       } catch (_) {}
     });
     actions.append(refreshBtn, clearBtn);
@@ -182,18 +185,20 @@
   }
 
   async function loadProxyStatus(force = false) {
+    const seq = ++requestSeq;
     try {
       const resp = await fetch("/api/proxy/status?limit=60");
-      if (!resp.ok) return;
+      if (!resp.ok || seq !== requestSeq) return;
       const data = await window.parseApiResponse(resp);
+      if (seq !== requestSeq) return;
       renderMonitor(data, force);
     } catch (_) {}
   }
 
-  function startRefresh() {
+  function startRefresh(force = true) {
     const host = document.getElementById("proxy-monitor-host");
     const visible = Boolean(host && !host.closest("[hidden]"));
-    if (visible) loadProxyStatus(true);
+    if (visible) loadProxyStatus(force);
     clearInterval(timer);
     timer = setInterval(() => {
       const currentHost = document.getElementById("proxy-monitor-host");
@@ -205,7 +210,14 @@
     }, 3000);
   }
 
-  window.refreshProxyMonitor = (force = false) => loadProxyStatus(force);
+  window.refreshProxyMonitor = (force = false) => {
+    const host = document.getElementById("proxy-monitor-host");
+    if (document.body.classList.contains("settings-open") && host && !host.closest("[hidden]")) {
+      startRefresh(force);
+    } else {
+      void loadProxyStatus(force);
+    }
+  };
 
   document.addEventListener("DOMContentLoaded", () => {
     if (!hostMounted && document.getElementById("proxy-monitor-host")) {

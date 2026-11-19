@@ -250,7 +250,6 @@
   .ai-mode-model-trigger:disabled { opacity: .55; cursor: not-allowed; }
   .ai-mode-model-trigger > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ai-mode-model-caret { flex: 0 0 auto; width: 14px; height: 14px; fill: none; stroke: var(--text-secondary); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .ai-mode-model-pop { left: 0; width: min(320px, 88vw); padding: 8px; gap: 6px; z-index: var(--z-popover); }
   .ai-mode-model-pop .agent-subpop-list { max-height: 260px; }
   .ai-mode-form :is(.ai-mode-polish, .ai-mode-continue-error) input { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; }
   .ai-mode-form .ai-mode-continue-error input { margin: 0; }
@@ -272,10 +271,10 @@
   .ai-mode-queue-item.is-failed { border-color: var(--danger); }
   .ai-mode-queue-indicator { flex: 0 0 18px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
   .ai-mode-queue-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
-  .ai-mode-queue-dot.is-running { background: hsl(213 92% 58%); animation: ai-queue-pulse 1.3s ease-in-out infinite; }
+  .ai-mode-queue-dot.is-running { background: var(--accent); animation: ai-queue-pulse 1.3s ease-in-out infinite; }
   .ai-mode-queue-icon { width: 15px; height: 15px; fill: none; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
-  .ai-mode-queue-icon.is-done { stroke: hsl(142 71% 45%); }
-  .ai-mode-queue-icon.is-failed { stroke: hsl(0 84% 58%); }
+  .ai-mode-queue-icon.is-done { stroke: var(--text-primary); }
+  .ai-mode-queue-icon.is-failed { stroke: var(--text-muted); }
   @keyframes ai-queue-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .28; transform: scale(.86); } }
   .ai-mode-queue-meta { flex: 1 1 auto; display: grid; gap: 2px; min-width: 0; }
   .ai-mode-queue-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -497,6 +496,7 @@
     .agent-pop, .agent-pop-wide { position: fixed; top: 92px; right: 16px; left: 16px; width: auto; max-height: calc(100vh - 200px); }
     .agent-pop.agent-pop-up { top: auto; bottom: 120px; }
   }
+  .ai-mode-model-pop { left: 0; width: min(320px, 88vw); padding: 8px; gap: 6px; z-index: var(--z-popover); }
   @media (max-width: 900px) {
     .agent-side { position: fixed; z-index: calc(var(--z-toolbar) + 10); top: var(--ps-topbar, 44px); left: var(--ps-tool-rail, 52px); bottom: 0; width: min(272px, 80vw); height: auto; background: var(--surface-panel); box-shadow: var(--shadow-float); }
   }
@@ -637,6 +637,7 @@
   .agent-target { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font: 500 13px/1.35 var(--font-ui); transition: color var(--motion-fast); }
   .agent-row > summary:hover .agent-target { color: var(--text-primary); }
   .agent-row-failed .agent-verb::after { content: " · lỗi"; color: var(--text-primary); font-weight: 600; }
+  html[data-ui-lang="en"] .agent-row-failed .agent-verb::after { content: " · failed"; }
   .agent-row-body { display: grid; min-width: 0; gap: 6px; padding: 4px 8px 8px 28px; }
   .agent-row-body .agent-pre { max-height: 280px; border: 1px solid var(--line-quiet); border-radius: 8px; background: var(--surface-quiet); font-size: 12px; }
   .agent-old { opacity: .65; text-decoration: line-through; }

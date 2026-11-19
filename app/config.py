@@ -9,7 +9,18 @@ OUTPUT_DIR = BASE_DIR / "data" / "output"
 MODELS_DIR = BASE_DIR / "models"
 LOGS_DIR = BASE_DIR / "logs"
 
-KIUYHA_TEXT_MODEL = MODELS_DIR / "kiuyha-tuned-1023.onnx"
+import os
+
+KIUYHA_TEXT_MODELS = (
+    "kiuyha-tuned-1023.onnx",
+    "kiuyha-tuned-transient-1024.onnx",
+)
+_kiuyha_override = os.getenv("MANGA_KIUYHA_MODEL", "").strip()
+KIUYHA_TEXT_MODEL = (
+    (Path(_kiuyha_override) if os.path.isabs(_kiuyha_override) else MODELS_DIR / _kiuyha_override)
+    if _kiuyha_override
+    else MODELS_DIR / KIUYHA_TEXT_MODELS[0]
+)
 LAMA_MODEL = MODELS_DIR / "lama.onnx"
 LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
 MIGAN_MODEL = MODELS_DIR / "migan_pipeline_v2.onnx"

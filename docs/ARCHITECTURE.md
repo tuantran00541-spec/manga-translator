@@ -12,7 +12,7 @@ flowchart TB
 
     subgraph Server["FastAPI (app/main.py)"]
         MW["RequestSizeLimitMiddleware"]
-        RTR["Routers<br/>chapters · editor · render · image"]
+        RTR["Routers (15)<br/>chapters · automation · translation · ocr · editor<br/>render_commit · render · image · export · visual_qc<br/>ai_mode · account · agent · api_proxy · extension"]
     end
 
     subgraph Core["Core business"]
@@ -21,12 +21,15 @@ flowchart TB
         PAGE["page_processing.py — detection/inpaint per page"]
         EDIT["pipeline_editing.py — review/editor mutations"]
         OCR["ocr/multi_lang_ocr.py — MultiLangOCR"]
+        PRX["api_proxy.py — error rescue & auto-wrap"]
+        AGT["agent/ — Chaos sandboxed local agent"]
         MAN["manifest_utils.py — manifest.json + file locks"]
         SEC["security.py — SSRF / path traversal / size limits"]
     end
 
     subgraph AI["AI modules (CPU / ONNX Runtime)"]
         DET["detector/kiuyha_detector.py — KiuyhaTextDetector"]
+        MC["model_contracts.py — LaMa & Kiuyha I/O contracts"]
         BOX["detector/boxes.py — BubbleBox, NMS"]
         MB["detector/mask_builder.py"]
         LAMA["inpaint/lama_inpainter.py — Inpainter"]
@@ -85,7 +88,7 @@ flowchart TD
     D --> E["main.py: lifespan"]
     E --> F["check_models() → log trạng thái"]
     E --> G["mount /static → app/static/"]
-    E --> H["include_router × 14: chapters · automation · translation · OCR · editor · render_commit · render · image · export · visual_qc · ai_mode · account · agent · extension"]
+    E --> H["include_router × 15: chapters · automation · translation · ocr · editor · render_commit · render · image · export · visual_qc · ai_mode · account · agent · api_proxy · extension"]
     E --> I["thêm RequestSizeLimitMiddleware"]
     E --> J["GET /health → {status, models_missing}"]
     E --> K["GET / → app/templates/index.html"]
@@ -145,7 +148,7 @@ sequenceDiagram
     participant PL as pipeline.process_pages()
     participant LK as manifest_utils (lock + snapshot)
     participant PP as _process_page() (worker thread ×2–8)
-    participant DET as OneShotProductionDetector
+    participant DET as KiuyhaTextDetector
     participant LAMA as Inpainter (LaMa)
     participant MAN as save_manifest_raw
 
@@ -286,7 +289,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["index.html — nạp CSS + JS theo thứ tự:<br/>toast → api → upload → preview → review<br/>→ review-workspace → editor → editor-geometry → main"] --> B["main.js bootstrap:<br/>gán nút Tải chapter, initUpload, loadRecentChapters, loadFonts"]
+    A["index.html — nạp 4 CSS + 34 JS:<br/>icons · toast · theme · api · ui-shell · upload · preview · brush<br/>review · review-workspace · editor* · ai-mode · agent* · proxy-monitor · i18n · main"] --> B["main.js bootstrap:<br/>gán nút Tải chapter, initUpload, loadRecentChapters, loadFonts"]
     B --> C["api.js — lớp gọi /api/*"]
     C --> D["preview.js — renderPreview():<br/>xem các trang sau slice, chọn trang để xử lý"]
     D --> E["review.js — renderReview():<br/>kiểm tra/điều chỉnh box + brush/magic wand"]
@@ -311,6 +314,13 @@ flowchart TD
     A --> E["capture_processing_state → snapshot canonical inputs<br/>(original, skipped, excluded_regions, boxes, manual_mask)"]
     E --> F["is_processing_state_current: sau khi xử lý xong<br/>so lại snapshot → discard nếu stale"]
 ```
+
+## 13. API Rescue Proxy, A.I Queue, Chaos Agent & i18n
+
+- **API Rescue Proxy (`app/api_proxy.py`, `app/routers/api_proxy.py`, `proxy-monitor.js`)**: Mọi lời gọi AI nội bộ và endpoint local `/api/proxy/v1/chat/completions` đều đi qua `proxy_post()`. Khi gặp lỗi (rate limit 429/quota bỏ qua ngay, vượt số tool/ảnh, 413 nén ảnh, stream không hỗ trợ, context overflow, trường tùy chọn bị từ chối, 404/405 endpoint chat, JSON lỗi), proxy tự phục hồi và chỉ ghi nhớ quy tắc auto-wrap per `(api_base, model)` sau khi retry đạt HTTP 2xx (`MAX_LEARNED_ENTRIES = 256`). Non-local request dùng `_PublicOnlyAdapter` pin IP chống DNS rebinding; target tường minh (`X-Target-Base-URL` / `base_url`) bắt buộc `Authorization: Bearer` của caller và không bao giờ đọc keyring nội bộ; các route `/api/proxy/*` chặn cross-origin (`Origin`/`Referer`/`Sec-Fetch-Site`/JSON `Content-Type`) và redacting secret trước khi log.
+- **A.I Mode Queue (`app/ai_mode/queue.py`, `app/routers/ai_mode.py`)**: Quét mục lục series và chạy tuần tự tới 500 chương, dùng `_START_LOCK` chống start song song và thu hồi trạng thái `cancelled` an toàn khi task bị hủy.
+- **Chaos Agent (`app/agent/*`, `app/routers/agent.py`)**: Agent viết/kiểm thử code cục bộ trong sandbox (`read-only`, `workspace-write`, `full-access` qua OS hoặc Docker), lưu/khôi phục phiên nguyên tử kèm kiểm tra symlink và khóa resume theo phiên.
+- **Đa ngôn ngữ giao diện (`app/static/js/i18n.js`)**: Hỗ trợ chuyển `VI` ↔ `EN` trực tiếp cho toàn bộ chrome, Settings, AI Mode, Proxy Monitor và Chaos UI qua `MutationObserver` (tự ngắt khi ở `VI`) mà không làm biến đổi nội dung truyện/ô soát chữ.
 
 ## Ghi chú phát hiện khi rà soát
 

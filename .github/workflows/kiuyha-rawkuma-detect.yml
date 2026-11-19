@@ -18,6 +18,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: kiuyha-rawkuma-detect
+  cancel-in-progress: false
+
 jobs:
   detect:
     runs-on: ubuntu-22.04
@@ -46,6 +50,25 @@ jobs:
             onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
             beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20
+          python -m playwright install chromium --with-deps
+
+      - name: Validate workflow inputs and helper scripts
+        id: prep
+        env:
+          OUT_DIR_INPUT: ${{ inputs.out_dir }}
+        run: |
+          raw="${OUT_DIR_INPUT:-rawkuma-detect}"
+          if [ -z "$raw" ] || ! [[ "$raw" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "$raw" = /* ]] || [[ "$raw" == *".."* ]]; then
+            echo "Invalid out_dir: $raw" >&2
+            exit 1
+          fi
+          for req in scripts/download_rawkuma.py scripts/detect_chapter_zip.py; do
+            if [ ! -f "$req" ]; then
+              echo "Missing required batch script on this branch: $req" >&2
+              exit 1
+            fi
+          done
+          echo "out_dir=audit-results/$raw" >> "$GITHUB_OUTPUT"
 
       - name: Restore detector models
         uses: actions/cache/restore@v4
@@ -64,13 +87,15 @@ jobs:
           test -f models/kiuyha-tuned-1023.onnx
 
       - name: Download all chapters (4-way parallel)
+        env:
+          CHAPTER_URLS: ${{ inputs.chapter_urls }}
+          OUT: ${{ steps.prep.outputs.out_dir }}
         run: |
-          cat > /tmp/chapter-urls.txt <<'URLS_EOF'
-          ${{ inputs.chapter_urls }}
-          URLS_EOF
-          grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' /tmp/chapter-urls.txt > /tmp/urls-clean.txt
-          echo "chapters: $(wc -l < /tmp/urls-clean.txt)"
-          OUT="audit-results/${{ inputs.out_dir }}"
+          printf '%s\n' "$CHAPTER_URLS" > /tmp/chapter-urls.txt
+          grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' /tmp/chapter-urls.txt > /tmp/urls-clean.txt || true
+          total_urls=$(wc -l < /tmp/urls-clean.txt)
+          echo "chapters: $total_urls"
+          [ "$total_urls" -gt 0 ] || { echo "No chapter URLs provided" >&2; exit 1; }
           mkdir -p "$OUT"
           rm -f /tmp/urls-part-*
           split -n l/4 -d /tmp/urls-clean.txt /tmp/urls-part-
@@ -87,23 +112,30 @@ jobs:
           FAILED=0
           for pid in $PIDS; do wait "$pid" || FAILED=1; done
           grep -h "batch done" /tmp/dl-*.log || true
-          ls -d "$OUT"/ch* 2>/dev/null | wc -l
-          [ "$FAILED" = 0 ] || echo "some download chunks had failures (see /tmp/dl-*.log); continuing with what downloaded"
+          DL_COUNT=$(find "$OUT" -maxdepth 1 -type d -name 'ch*' | wc -l)
+          echo "downloaded dirs: $DL_COUNT"
+          [ "$DL_COUNT" -gt 0 ] || { echo "No chapters downloaded" >&2; exit 1; }
+          [ "$FAILED" = 0 ] || echo "::warning::Some download chunks had failures (see /tmp/dl-*.log)"
 
       - name: Detect all chapters (4-way parallel, 270-min start budget)
+        env:
+          OUT: ${{ steps.prep.outputs.out_dir }}
         run: |
-          OUT="audit-results/${{ inputs.out_dir }}"
           START=$(date +%s)
           BUDGET=16200
           export START BUDGET
           find "$OUT" -maxdepth 1 -type d -name 'ch*' | sort -V > /tmp/ch-dirs.txt
-          echo "chapter dirs: $(wc -l < /tmp/ch-dirs.txt)"
+          TOTAL_CH=$(wc -l < /tmp/ch-dirs.txt)
+          echo "chapter dirs: $TOTAL_CH"
+          [ "$TOTAL_CH" -gt 0 ] || { echo "No chapter dirs found" >&2; exit 1; }
           detect_one() {
             dir="$1"
             now=$(date +%s)
             if [ $((now - START)) -ge $BUDGET ]; then echo "past 270-min budget, skipping $dir"; return 0; fi
             CHAPTER=$(basename "$dir" | sed 's/^ch//')
             CID=$(printf "a%07x" "$((10#$CHAPTER))")
+            export MANGA_ORT_OPENVINO_CACHE_DIR="/tmp/manga-openvino-cache-$CHAPTER"
+            mkdir -p "$MANGA_ORT_OPENVINO_CACHE_DIR"
             if ! MANGA_ORT_OPENVINO_THREADS=1 python scripts/detect_chapter_zip.py --zip "$dir/rawkuma-ch${CHAPTER}.zip" --chapter "$CHAPTER" --chapter-id "$CID" --out "$dir"; then
               echo "detect failed for ch$CHAPTER"
               return 1
@@ -111,14 +143,15 @@ jobs:
             touch "$dir/.detect-ok"
           }
           export -f detect_one
-          xargs -P4 -I{} bash -c 'detect_one "$@"' _ {} < /tmp/ch-dirs.txt || true
+          DETECT_FAILED=0
+          xargs -P4 -I{} bash -c 'detect_one "$@"' _ {} < /tmp/ch-dirs.txt || DETECT_FAILED=1
           OK=$(find "$OUT" -maxdepth 2 -name '.detect-ok' | wc -l)
-          echo "detected OK: $OK / $(wc -l < /tmp/ch-dirs.txt)"
-          [ "$OK" -gt 0 ]
+          echo "detected OK: $OK / $TOTAL_CH"
+          [ "$OK" -gt 0 ] && [ "$DETECT_FAILED" = 0 ] && [ "$OK" -eq "$TOTAL_CH" ]
 
       - name: Save evidence to audit-evidence
-        if: always()
+        if: always() && steps.prep.outputs.out_dir != ''
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/${{ inputs.out_dir }}
+          paths: ${{ steps.prep.outputs.out_dir }}
           message: "audit: rawkuma detect batch (run ${{ github.run_id }})"

@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass, field
 
 import requests
+from fastapi import HTTPException
 
 from app import api_proxy
 from app.ai_mode import decider
@@ -159,29 +160,43 @@ def evaluate_url(provider) -> str:
 
 
 def judge(provider, api_key: str, state: str, asked: dict = QUESTIONS) -> dict[str, float]:
-    response, _, _ = api_proxy.proxy_post(
-        url=evaluate_url(provider),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        payload={**({"model": decider.DECIDER_MODEL} if decider.available(provider, api_key) else {}),
-                 "state": state, "questions": asked},
-        provider=None,
-        api_key=api_key,
-        caller="ai_mode:polish_judge",
-        timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
-        stream=False,
-        is_gemini=False,
-        post_fn=requests.post,
-        allow_local=provider.builtin,
-    )
-    if not response.ok:
-        raise RuntimeError(f"Judge HTTP {response.status_code}: {getattr(response, 'text', '')[:200]}")
-    answers = response.json().get("answers") or {}
-    scores = {}
-    for key in asked:
-        answer = answers.get(key) if isinstance(answers, dict) else None
-        if isinstance(answer, dict) and isinstance(answer.get("score"), (int, float)):
-            scores[key] = float(answer["score"])
-    return scores
+    response = None
+    try:
+        try:
+            response, _, _ = api_proxy.proxy_post(
+                url=evaluate_url(provider),
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                payload={**({"model": decider.DECIDER_MODEL} if decider.available(provider, api_key) else {}),
+                         "state": state, "questions": asked},
+                provider=None,
+                api_key=api_key,
+                caller="ai_mode:polish_judge",
+                timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
+                stream=False,
+                is_gemini=False,
+                post_fn=requests.post,
+                allow_local=provider.builtin,
+            )
+        except HTTPException as exc:
+            raise RuntimeError(f"Judge blocked: {exc.detail}") from exc
+        status = int(getattr(response, "status_code", 0) or 0)
+        if not api_proxy.is_success_response(response):
+            raise RuntimeError(
+                f"Judge HTTP {status}: {api_proxy.redact_secret(getattr(response, 'text', ''), api_key)[:200]}"
+            )
+        body = response.json()
+        if not isinstance(body, dict):
+            raise RuntimeError("Judge returned non-object JSON")
+        answers = body.get("answers") or {}
+        scores = {}
+        for key in asked:
+            answer = answers.get(key) if isinstance(answers, dict) else None
+            if isinstance(answer, dict) and isinstance(answer.get("score"), (int, float)):
+                scores[key] = float(answer["score"])
+        return scores
+    finally:
+        if response is not None and hasattr(response, "close"):
+            response.close()
 
 
 def problems(scores: dict[str, float]) -> list[str]:
@@ -190,11 +205,13 @@ def problems(scores: dict[str, float]) -> list[str]:
 
 def better(new: dict[str, float], old: dict[str, float]) -> bool:
     kept = all(new.get(key, 0.0) >= old.get(key, 0.0) - MAX_LOSS for key in ("natural", "faithful"))
-    return kept and quality(new) >= quality(old) + MIN_GAIN
+    keys = set(QUESTIONS) | ({"settled"} if ("settled" in old or "settled" in new) else set())
+    return kept and quality(new, keys) >= quality(old, keys) + MIN_GAIN
 
 
-def quality(scores: dict[str, float]) -> float:
-    asked = {**QUESTIONS, **({"settled": SETTLED} if "settled" in scores else {})}
+def quality(scores: dict[str, float], keys: set[str] | frozenset[str] | None = None) -> float:
+    include = keys if keys is not None else (set(QUESTIONS) | ({"settled"} if "settled" in scores else set()))
+    asked = {k: v for k, v in {**QUESTIONS, "settled": SETTLED}.items() if k in include}
     return sum(scores.get(key, 0.0) / (len(q["criteria"]) - 1) for key, q in asked.items()) / len(asked)
 
 

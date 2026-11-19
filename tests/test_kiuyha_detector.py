@@ -710,3 +710,44 @@ def test_a_leftover_matching_no_record_is_left_as_stored():
     record = {"x1": 10, "y1": 10, "x2": 50, "y2": 30, "_mask_array": np.full((20, 40), 255, np.uint8)}
     _fold_leftover([record], BubbleBox(200, 200, 240, 220, 0.9, np.full((20, 40), 255, np.uint8)))
     assert (record["x1"], record["y1"], record["x2"], record["y2"]) == (10, 10, 50, 30)
+
+
+def test_kiuyha_model_contract_validates_io_and_shipped_weights():
+    from pathlib import Path
+    from app.model_contracts import validate_kiuyha_session
+
+    class _IO:
+        def __init__(self, name, shape, typ="tensor(float)"):
+            self.name = name
+            self.shape = shape
+            self.type = typ
+
+    class _Sess:
+        def __init__(self, ins, outs):
+            self._ins = ins
+            self._outs = outs
+
+        def get_inputs(self):
+            return self._ins
+
+        def get_outputs(self):
+            return self._outs
+
+    contract = validate_kiuyha_session(
+        _Sess([_IO("images", [1, 3, 1280, 1280])], [_IO("output0", [1, 5, 33600])])
+    )
+    assert (contract.input_size, contract.output_channels, contract.num_anchors) == (1280, 5, 33600)
+
+    with pytest.raises(ValueError):
+        validate_kiuyha_session(_Sess([_IO("images", [1, 1, 1280, 1280])], [_IO("output0", [1, 5, 33600])]))
+    with pytest.raises(ValueError):
+        validate_kiuyha_session(_Sess([_IO("images", [1, 3, 1280, 1280])], [_IO("output0", [1, 6, 33600])]))
+
+    ort = pytest.importorskip("onnxruntime")
+    root = Path(__file__).resolve().parents[1]
+    for name in ("kiuyha-tuned-1023.onnx", "kiuyha-tuned-transient-1024.onnx"):
+        path = root / "models" / name
+        if path.is_file():
+            sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+            c = validate_kiuyha_session(sess)
+            assert c.input_size == 1280 and c.output_channels == 5

@@ -4,6 +4,7 @@ import hashlib
 import json
 import random
 import re
+import threading
 import time
 import uuid
 from contextvars import ContextVar
@@ -35,6 +36,8 @@ WINDOW_PATTERNS = [re.compile(p, re.I) for p in (
     r"context (?:length|size) \(([\d,]{4,})", r"maximum number of tokens allowed \(([\d,]{4,})", r"maximum allowed input length of ([\d,]{4,})",
     r"limit of ([\d,]{4,})", r"> ([\d,]{4,}) maximum", r"configured context size is ([\d,]{4,})")]
 RATE_LIMIT_RETRIES = 4
+_CLIENT_LOCK = threading.Lock()
+_MAX_CLIENT_ENTRIES = 256
 _COOLDOWN: dict[str, float] = {}
 _PACE: dict[str, list[float]] = {}
 PACE_HOLD_S = 900
@@ -76,7 +79,8 @@ class ToolsUnsupported(RuntimeError):
 def chat_url(provider: AIProvider) -> str:
     if provider.protocol == "gemini":
         return f"{provider.api_base.rstrip('/')}/openai/chat/completions"
-    return _FOUND_PATH.get(provider.api_base.rstrip("/"), str(provider.chat_url))
+    with _CLIENT_LOCK:
+        return _FOUND_PATH.get(provider.api_base.rstrip("/"), str(provider.chat_url))
 
 
 _FOUND_PATH: dict[str, str] = {}
@@ -293,41 +297,57 @@ def slot(provider: AIProvider, api_key: str) -> str:
     return f"{provider.id}:{hashlib.sha256((api_key or '').encode()).hexdigest()[:12]}"
 
 
+def _bound_client_map(mapping: dict, key, limit: int = _MAX_CLIENT_ENTRIES) -> None:
+    if key not in mapping:
+        while len(mapping) >= limit:
+            mapping.pop(next(iter(mapping)))
+
+
 def _wait_for_pace(name: str) -> None:
-    pace = _PACE.get(name)
-    if not pace:
-        return
-    interval, until, last = pace
-    if time.time() > until:
-        _PACE.pop(name, None)
-        return
-    gap = last + interval - time.time()
+    with _CLIENT_LOCK:
+        pace = _PACE.get(name)
+        if not pace:
+            return
+        interval, until, last = pace
+        now = time.time()
+        if now > until:
+            _PACE.pop(name, None)
+            return
+        gap = max(0.0, last + interval - now)
+        pace[2] = now + gap
     if gap > 0:
         time.sleep(gap)
-    pace[2] = time.time()
 
 
 RATE_LIMITS: dict[str, dict] = {}
 
 
-def _note_rate_limit(provider: AIProvider, response: requests.Response, wait: float) -> None:
+def _note_rate_limit(provider: AIProvider, response: requests.Response, wait: float, api_key: str = "") -> None:
     try:
-        detail = response.text[:300]
+        raw_detail = response.text[:600]
     except Exception:
-        detail = ""
-    row = RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})
-    row["count"] += 1
-    row["waited_s"] += wait
-    row["detail"] = detail or row["detail"]
-    row["last"] = time.time()
-    logger.info("{} answered 429 ({} so far, waiting {:.0f} s): {}", provider.label, row["count"], wait, detail[:200])
+        raw_detail = ""
+    detail = api_proxy.redact_secret(raw_detail, api_key)[:300]
+    with _CLIENT_LOCK:
+        _bound_client_map(RATE_LIMITS, provider.id)
+        row = RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})
+        row["count"] += 1
+        row["waited_s"] += wait
+        row["detail"] = detail or row["detail"]
+        row["last"] = time.time()
+        count = row["count"]
+    logger.info("{} answered 429 ({} so far, waiting {:.0f} s): {}", provider.label, count, wait, detail[:200])
 
 
 def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
-    response = _post_to(chat_url(provider), provider, api_key, payload, stream)
-    if response.status_code not in (404, 405) or provider.builtin or provider.protocol != "openai" or provider.api_base.rstrip("/") in _FOUND_PATH:
+    url0 = chat_url(provider)
+    response = _post_to(url0, provider, api_key, payload, stream)
+    base = provider.api_base.rstrip("/")
+    with _CLIENT_LOCK:
+        already_found = base in _FOUND_PATH
+    if response.status_code not in (404, 405) or provider.builtin or provider.protocol != "openai" or already_found:
         return response
-    tried = {chat_url(provider)}
+    tried = {url0}
     for url in chat_candidates(provider):
         if url in tried:
             continue
@@ -338,7 +358,9 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
             continue
         if other.status_code not in (404, 405):
             response.close()
-            _FOUND_PATH[provider.api_base.rstrip("/")] = url
+            with _CLIENT_LOCK:
+                _bound_client_map(_FOUND_PATH, base)
+                _FOUND_PATH[base] = url
             logger.info("{} answers chat at {}", provider.label, url)
             return other
         other.close()
@@ -349,7 +371,8 @@ def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream
     validate_url(url)
     key = slot(provider, api_key)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
-        pause = _COOLDOWN.get(key, 0.0) - time.time() if attempt == 0 else 0
+        with _CLIENT_LOCK:
+            pause = _COOLDOWN.get(key, 0.0) - time.time() if attempt == 0 else 0
         if pause > 0:
             time.sleep(min(pause, 60.0))
         _wait_for_pace(key)
@@ -367,14 +390,19 @@ def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream
             words = ""
         interval = _pace_hint(words)
         if ASK_ON_LIMIT.get() and not (interval or _retry_after(response) or _hinted_wait(words)):
-            _note_rate_limit(provider, response, 0.0)
+            _note_rate_limit(provider, response, 0.0, api_key=api_key)
             return response
         if interval:
-            _PACE[key] = [interval, time.time() + PACE_HOLD_S, time.time()]
-            RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})["pace_s"] = interval
+            with _CLIENT_LOCK:
+                _bound_client_map(_PACE, key)
+                _PACE[key] = [interval, time.time() + PACE_HOLD_S, time.time()]
+                _bound_client_map(RATE_LIMITS, provider.id)
+                RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})["pace_s"] = interval
         wait = min(900.0 if interval else 60.0, _retry_after(response) or _hinted_wait(words) or interval or 6.0 * 2 ** attempt)
-        _note_rate_limit(provider, response, wait)
-        _COOLDOWN[key] = max(_COOLDOWN.get(key, 0.0), time.time() + wait)
+        _note_rate_limit(provider, response, wait, api_key=api_key)
+        with _CLIENT_LOCK:
+            _bound_client_map(_COOLDOWN, key)
+            _COOLDOWN[key] = max(_COOLDOWN.get(key, 0.0), time.time() + wait)
         response.close()
         time.sleep(wait)
     return response
@@ -492,7 +520,8 @@ OUTPUT_CAPS: dict[tuple[str, str], int] = {}
 
 
 def output_cap(provider: AIProvider, model: str) -> int | None:
-    return OUTPUT_CAPS.get((provider.api_base, model))
+    with _CLIENT_LOCK:
+        return OUTPUT_CAPS.get((provider.api_base, model))
 
 
 def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
@@ -519,10 +548,13 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         payload["tools"] = native_tools(tools)
     if stream_active:
         payload["stream_options"] = {"include_usage": True}
-    if max_tokens:
-        payload["max_tokens"] = min(int(max_tokens), output_cap(provider, model) or int(max_tokens))
+    cap = output_cap(provider, model)
+    if max_tokens and cap != 0:
+        payload["max_tokens"] = min(int(max_tokens), cap) if cap else int(max_tokens)
     refused = (provider.api_base, model)
-    extra = {} if refused in _REFUSED_EXTRA else {k: v for k, v in REQUEST_EXTRA.get().items() if k not in ("model", "messages", "stream", "tools")}
+    with _CLIENT_LOCK:
+        is_refused = refused in _REFUSED_EXTRA
+    extra = {} if is_refused else {k: v for k, v in REQUEST_EXTRA.get().items() if k not in ("model", "messages", "stream", "tools")}
     payload.update(extra)
 
     base_url_key = str(provider.api_base or "").rstrip("/")
@@ -532,50 +564,65 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         model=model,
         stream=stream_active,
         is_gemini=False,
+        allow_image_strip=True,
     )
     if wrapped_chat and base_url_key:
-        _FOUND_PATH[base_url_key] = wrapped_chat
+        with _CLIENT_LOCK:
+            _bound_client_map(_FOUND_PATH, base_url_key)
+            _FOUND_PATH[base_url_key] = wrapped_chat
 
     errors_seen: list[dict] = []
     rescues_applied: list[str] = list(pre_wrapped)
     rescue_types: list[str] = ["auto_wrapped"] if pre_wrapped else []
     downsize_attempts = 0
-    response = None
 
     for attempt in range(1, 7):
         response = _post(provider, api_key, payload, stream_active)
-        if extra and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
+        if extra and attempt < 6 and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
             logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
-            _REFUSED_EXTRA.add(refused)
-            for key in extra:
+            with _CLIENT_LOCK:
+                if len(_REFUSED_EXTRA) >= _MAX_CLIENT_ENTRIES:
+                    _REFUSED_EXTRA.clear()
+                _REFUSED_EXTRA.add(refused)
+            removed_keys = list(extra)
+            for key in removed_keys:
                 payload.pop(key, None)
-            errors_seen.append({"attempt": attempt, "status": response.status_code, "category": "unsupported_field", "detail": response.text[:200]})
-            rescues_applied.append(f"Gỡ extra refused: {', '.join(extra)}")
+            extra = {}
+            errors_seen.append({"attempt": attempt, "status": response.status_code, "category": "unsupported_field", "detail": _safe_error_detail(response, api_key)[:200]})
+            rescues_applied.append(f"Gỡ extra refused: {', '.join(removed_keys)}")
             rescue_types.append("unsupported_field")
             response.close()
             continue
 
-        if response.status_code == 400 and any(k in payload for k in ("max_tokens", "max_completion_tokens")) and re.search(r"max_(completion_)?tokens", response.text, re.I):
+        if attempt < 6 and response.status_code == 400 and any(k in payload for k in ("max_tokens", "max_completion_tokens")) and re.search(r"max_(completion_)?tokens", response.text, re.I):
             fixed = api_proxy.adjust_token_limit(payload, response.text, is_gemini=False)
             if fixed is not None:
                 payload, desc = fixed
                 if "max_tokens" in payload and isinstance(payload["max_tokens"], int):
-                    OUTPUT_CAPS[(provider.api_base, model)] = payload["max_tokens"]
-                errors_seen.append({"attempt": attempt, "status": response.status_code, "category": "token_limit", "detail": response.text[:200]})
+                    cap_val = payload["max_tokens"]
+                elif "max_completion_tokens" in payload and isinstance(payload["max_completion_tokens"], int):
+                    cap_val = payload["max_completion_tokens"]
+                else:
+                    cap_val = 0
+                with _CLIENT_LOCK:
+                    _bound_client_map(OUTPUT_CAPS, (provider.api_base, model))
+                    OUTPUT_CAPS[(provider.api_base, model)] = cap_val
+                errors_seen.append({"attempt": attempt, "status": response.status_code, "category": "token_limit", "detail": _safe_error_detail(response, api_key)[:200]})
                 rescues_applied.append(desc)
                 rescue_types.append("token_limit")
                 response.close()
                 continue
 
-        if stream_active and response.status_code == 400 and "stream_options" in response.text.lower():
+        if attempt < 6 and stream_active and response.status_code == 400 and "stream_options" in response.text.lower():
             payload.pop("stream_options", None)
-            errors_seen.append({"attempt": attempt, "status": 400, "category": "unsupported_field", "detail": response.text[:200]})
+            errors_seen.append({"attempt": attempt, "status": 400, "category": "unsupported_field", "detail": _safe_error_detail(response, api_key)[:200]})
             rescues_applied.append("Gỡ stream_options")
             rescue_types.append("unsupported_field")
             response.close()
             continue
 
         if 300 <= response.status_code < 400:
+            response.close()
             api_proxy.record_event(
                 caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
                 latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen, rescues_applied=rescues_applied,
@@ -583,7 +630,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
             )
             raise RuntimeError(f"{provider.label} redirected the request")
 
-        if not response.ok:
+        if not api_proxy.is_success_response(response):
             detail = _safe_error_detail(response, api_key)
             cat = api_proxy.classify_http_error(response.status_code, detail, payload, is_gemini=False)
             errors_seen.append({"attempt": attempt, "status": response.status_code, "category": cat, "detail": detail[:220]})
@@ -605,13 +652,16 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                     rescue_types.append("too_many_tools")
                     wrap_kw["tool_cap"] = target
                 elif cat == "too_many_images":
-                    res = api_proxy.rescue_payload_images_limit(payload, detail, is_gemini=False)
+                    before_images = api_proxy.count_payload_images(payload)
+                    res = api_proxy.rescue_payload_images_limit(
+                        payload, detail, is_gemini=False, allow_strip_all=True,
+                    )
                     if res is not None:
                         payload, rescued_msg = res
                         rescue_types.append("too_many_images")
-                        img_cap = api_proxy.extract_limit_number(detail, r"images?", api_proxy.count_payload_images(payload) + 1)
-                        if img_cap is not None:
-                            wrap_kw["image_cap"] = img_cap
+                        after_images = api_proxy.count_payload_images(payload)
+                        img_cap = api_proxy.extract_limit_number(detail, r"images?", before_images)
+                        wrap_kw["image_cap"] = 0 if after_images == 0 else (img_cap if img_cap is not None else after_images)
                 elif cat == "payload_too_large":
                     downsize_attempts += 1
                     new_payload, did = api_proxy.downsize_payload_images(payload, attempt=downsize_attempts, is_gemini=False)
@@ -640,7 +690,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                         rescued_msg = "Nén lịch sử ngữ cảnh vượt giới hạn"
                         rescue_types.append("context_overflow")
                 elif cat == "unsupported_field":
-                    new_payload, removed = api_proxy.strip_rejected_fields(payload, detail, api_base=provider.api_base, model=model, is_gemini=False)
+                    new_payload, removed = api_proxy.strip_rejected_fields(payload, detail, api_base=provider.api_base, model=model, is_gemini=False, persist=False)
                     if removed:
                         payload = new_payload
                         rescued_msg = f"Gỡ trường bị từ chối: {', '.join(removed)}"
@@ -656,6 +706,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                     response.close()
                     continue
 
+            response.close()
             if tools and 400 <= response.status_code < 500 and "tool" in detail.lower() and not api_proxy.is_tools_limit_error(detail, len(payload.get("tools") or [])):
                 api_proxy.record_event(
                     caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
@@ -680,7 +731,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                 message, usage, _ = _read_stream(response, on_delta)
             except requests.RequestException as exc:
                 errors_seen.append({"attempt": attempt, "status": 200, "category": "stream_broke", "detail": type(exc).__name__})
-                if attempt < 5:
+                if attempt < 6:
                     stream_active = False
                     payload["stream"] = False
                     payload.pop("stream_options", None)
@@ -708,6 +759,8 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                 detail=f"{provider.label} returned no message",
             )
             raise RuntimeError(f"{provider.label} returned no message") from exc
+        finally:
+            response.close()
         api_proxy.record_event(
             caller="chaos_agent", provider=provider.label, model=model,
             status="rescued" if rescues_applied else "ok", attempts=attempt,

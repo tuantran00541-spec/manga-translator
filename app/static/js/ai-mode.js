@@ -137,10 +137,17 @@
     const current = ($("ai-mode-model")?.value || "").trim();
     if (!pop) return;
 
+    const prevSearch = pop.querySelector("input.agent-subpop-search");
+    const prevValue = prevSearch ? prevSearch.value : "";
+    const wasFocused = Boolean(prevSearch && document.activeElement === prevSearch);
+    const selStart = prevSearch?.selectionStart ?? null;
+    const selEnd = prevSearch?.selectionEnd ?? null;
+
     const search = document.createElement("input");
     search.type = "search";
     search.className = "agent-subpop-search";
     search.placeholder = "Tìm hoặc nhập ID mô hình…";
+    search.value = prevValue;
     search.addEventListener("click", (e) => e.stopPropagation());
 
     const list = document.createElement("div");
@@ -157,7 +164,7 @@
       const qLower = q.toLowerCase();
       const rows = [];
 
-      if (!qLower || "mặc định".includes(qLower) || defaultModel.toLowerCase().includes(qLower)) {
+      if (!qLower || "mặc định".includes(qLower) || "default".includes(qLower) || defaultModel.toLowerCase().includes(qLower)) {
         rows.push(buildModelOption({
           title: "Mặc định",
           sub: defaultModel ? `Theo cài đặt (${defaultModel})` : "Theo thiết lập của nhà cung cấp",
@@ -221,48 +228,53 @@
       }
     });
 
-    drawList("");
+    drawList(prevValue);
     pop.replaceChildren(search, list);
+    if (wasFocused) {
+      search.focus();
+      if (selStart != null && selEnd != null) {
+        try { search.setSelectionRange(selStart, selEnd); } catch (_) {}
+      }
+    }
   }
 
   async function loadVisionModels(providerId) {
     const provider = String(providerId || "").trim();
     if (!provider || provider === CLOUD) return;
+    const isActiveMenu = () => ($("ai-mode-provider")?.value || "") === provider && !$("ai-mode-model-pop")?.hidden;
     const info = window.aiProviderSettings?.[provider];
     if (info && !info.configured) {
       visionModelsCache[provider] = [];
-      if (!$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+      if (isActiveMenu()) renderVisionModelMenu();
       return;
     }
     const cacheApi = window.aiModelCache;
     const cached = cacheApi?.getCached?.(provider);
     if (cached) {
       visionModelsCache[provider] = cached.models;
-      if (!$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+      if (isActiveMenu()) renderVisionModelMenu();
       if (cached.fresh) return;
     } else if (Array.isArray(visionModelsCache[provider])) {
       return;
     }
     if (visionModelsLoading === provider) return;
     visionModelsLoading = cached ? "" : provider;
-    if (!cached && !$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+    if (!cached && isActiveMenu()) renderVisionModelMenu();
     try {
       const models = cacheApi?.fetchModels
         ? await cacheApi.fetchModels(provider, {
             onFresh: (freshModels) => {
               visionModelsCache[provider] = freshModels;
-              if (!$("ai-mode-model-pop")?.hidden && $("ai-mode-provider")?.value === provider) {
-                renderVisionModelMenu();
-              }
+              if (isActiveMenu()) renderVisionModelMenu();
             },
           })
         : ((await requestJson(`/api/visual_qc/providers/${encodeURIComponent(provider)}/models`)).models || []);
       visionModelsCache[provider] = Array.isArray(models) ? models : [];
     } catch (_) {
-      if (!cached) visionModelsCache[provider] = [];
+      if (!cached) delete visionModelsCache[provider];
     } finally {
       if (visionModelsLoading === provider) visionModelsLoading = "";
-      if (!$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+      if (isActiveMenu()) renderVisionModelMenu();
     }
   }
 
@@ -837,7 +849,7 @@
       budget_usd: Number($("ai-mode-budget").value || 0.3),
       workers: typeof window.getWorkersSetting === "function" ? window.getWorkersSetting() : 2,
       story_notes: $("ai-mode-notes")?.value.trim() || "",
-      polish: provider === CLOUD && Boolean($("ai-mode-polish")?.checked),
+      polish: (provider === CLOUD || Boolean(window.aiProviderSettings?.[provider]?.capabilities?.judge)) && Boolean($("ai-mode-polish")?.checked),
       images_per_request: Math.min(8, Math.max(1, Math.round(Number($("ai-mode-images")?.value) || 2))),
     };
   }
@@ -1004,6 +1016,7 @@
       syncProviderFields();
     });
     provider.addEventListener("ai-providers-updated", () => {
+      for (const k of Object.keys(visionModelsCache)) delete visionModelsCache[k];
       ensureCloudOption();
       syncProviderFields();
     });

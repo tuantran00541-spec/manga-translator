@@ -19,6 +19,7 @@ from app.detector.bubble_mask import (
 )
 from app.detector.ctd_mask import letter_mask, still_reads
 from app.knobs import knob
+from app.model_contracts import validate_kiuyha_session
 from app.ort_utils import make_session
 
 LETTERBOX_VALUE = 114
@@ -666,7 +667,11 @@ def _union_coherent(image: np.ndarray, boxes: list[tuple[int, int, int, int, flo
 
 class KiuyhaTextDetector:
     def __init__(self, model_path, conf_threshold: float = knob("detect.confidence"), session=None):
-        self.session = session if session is not None else make_session(model_path)
+        if session is not None:
+            self.session = session
+        else:
+            self.session = make_session(model_path)
+            validate_kiuyha_session(self.session)
         inp = self.session.get_inputs()[0]
         self.input_name = inp.name
         height, width = inp.shape[2], inp.shape[3]

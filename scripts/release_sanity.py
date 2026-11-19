@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from collections import defaultdict
+from collections import Counter, defaultdict
 import importlib.util
 from pathlib import Path
 import re
@@ -133,6 +133,7 @@ def check_top_level_python_reachability() -> None:
         for path in PYTHON_PATHS
     }
     all_source = "\n".join(source_by_path.values())
+    token_counts = Counter(re.findall(r"[A-Za-z0-9_]+", all_source))
     failures: list[str] = []
 
     for path, source in source_by_path.items():
@@ -147,13 +148,7 @@ def check_top_level_python_reachability() -> None:
             name = node.name
             if name.startswith("__") and name.endswith("__"):
                 continue
-            occurrences = len(
-                re.findall(
-                    rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])",
-                    all_source,
-                )
-            )
-            if occurrences == 1:
+            if token_counts.get(name, 0) == 1:
                 failures.append(
                     f"{path}:{node.lineno}: {type(node).__name__} {name} has no textual reference"
                 )
@@ -440,6 +435,7 @@ def check_javascript_function_reachability() -> None:
             ),
         ),
     )
+    js_token_counts = Counter(re.findall(r"[A-Za-z0-9_$]+", runtime_source))
     failures: list[str] = []
     seen_declarations: set[tuple[Path, int, str]] = set()
 
@@ -452,13 +448,7 @@ def check_javascript_function_reachability() -> None:
                 if key in seen_declarations:
                     continue
                 seen_declarations.add(key)
-                occurrences = len(
-                    re.findall(
-                        rf"(?<![A-Za-z0-9_$]){re.escape(name)}(?![A-Za-z0-9_$])",
-                        runtime_source,
-                    )
-                )
-                if occurrences == 1:
+                if js_token_counts.get(name, 0) == 1:
                     failures.append(
                         f"{path}:{line}: {kind} {name} has no textual reference"
                     )

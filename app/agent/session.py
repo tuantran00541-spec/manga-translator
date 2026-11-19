@@ -229,35 +229,66 @@ class AgentSessionManager:
         return self.store_dir / "sessions" / f"{session_id}.json" if self.store_dir else None
 
     def create(self, provider, api_key: str | list[str], model: str, workspace: Workspace, mode: str, complete=client.complete,
-               session_id: str | None = None) -> AgentSession:
+               session_id: str | None = None, restore_data: dict | None = None) -> AgentSession:
         if mode not in MODES:
             raise ValueError(f"mode must be one of {', '.join(MODES)}")
-        idle = sorted((s for s in self.sessions.values() if s.status == "idle"), key=lambda s: s.updated_at)
-        while len(self.sessions) >= MAX_SESSIONS and idle:
-            self.sessions.pop(idle.pop(0).id).close()
         session_id = session_id or uuid.uuid4().hex[:16]
         session = AgentSession(session_id, provider, api_key, model, workspace, mode, complete=complete,
                                store=self._path(session_id), trust=self.trust, home=self.home)
         session.find_provider, session.list_providers = self.find_provider, self.list_providers
-        self.sessions[session_id] = session
+        if restore_data is not None:
+            session.restore(restore_data)
+        to_close: list[AgentSession] = []
+        with self._listing_lock:
+            existing = self.sessions.pop(session_id, None)
+            if existing is not None:
+                to_close.append(existing)
+            idle = sorted((s for s in self.sessions.values() if s.status == "idle"), key=lambda s: s.updated_at)
+            while len(self.sessions) >= MAX_SESSIONS and idle:
+                to_close.append(self.sessions.pop(idle.pop(0).id))
+            self.sessions[session_id] = session
+        for old in to_close:
+            old.close()
         return session
 
     def get(self, session_id: str) -> AgentSession:
-        session = self.sessions.get(session_id)
+        with self._listing_lock:
+            session = self.sessions.get(session_id)
         if session is None:
             raise KeyError(session_id)
         return session
 
     def saved(self, session_id: str) -> dict:
-        path = self._path(session_id)
-        if path is None or not path.is_file() or not session_id.isalnum():
+        if not session_id.isalnum() or self.store_dir is None:
             raise KeyError(session_id)
-        return json.loads(path.read_text(encoding="utf-8"))
+        sessions_dir = (self.store_dir / "sessions").resolve()
+        path = sessions_dir / f"{session_id}.json"
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(sessions_dir):
+            raise KeyError(session_id)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Invalid saved session payload")
+        return data
 
     def saved_snapshot(self, session_id: str, provider_label: str = "") -> dict:
         data = self.saved(session_id)
-        mode, network = (data.get("sandbox") or ["workspace-write", False])[:2]
-        usage = data.get("usage") or {}
+        raw_sandbox = data.get("sandbox")
+        if raw_sandbox is None:
+            raw_sandbox = ["workspace-write", False]
+        if not isinstance(raw_sandbox, (list, tuple)) or len(raw_sandbox) < 2:
+            raise ValueError("Invalid saved sandbox state")
+        mode, network = raw_sandbox[:2]
+        usage = data.get("usage")
+        if usage is None:
+            usage = {}
+        if not isinstance(usage, dict):
+            raise ValueError("Invalid saved usage payload")
+        todos = data.get("todos")
+        if todos is not None and not isinstance(todos, list):
+            raise ValueError("Invalid saved todos payload")
+        events = data.get("events")
+        if events is not None and not isinstance(events, list):
+            raise ValueError("Invalid saved events payload")
         prompt = int(usage.get("prompt_tokens") or 0)
         cached = int(usage.get("cached_tokens") or 0)
         model = str(data.get("model") or "")
@@ -284,7 +315,7 @@ class AgentSessionManager:
             },
             "live": None,
             "pending": None,
-            "todos": list(data.get("todos") or []),
+            "todos": list(todos or []),
             "key_prompt": None,
             "keys": 1,
             "plan_mode": bool(data.get("plan_mode")),
@@ -293,12 +324,14 @@ class AgentSessionManager:
             "queued": 0,
             "rate_limited": {},
             "info_rev": "",
-            "events": list(data.get("events") or []),
+            "events": list(events or []),
         }
 
     def listing(self) -> list[dict]:
+        with self._listing_lock:
+            live_sessions = list(self.sessions.values())
         rows = {s.id: {"id": s.id, "title": s.title, "model": s.model, "status": s.status, "updated_at": s.updated_at,
-                       "workspace": str(s.workspace.root), "live": True} for s in self.sessions.values()}
+                       "workspace": str(s.workspace.root), "live": True} for s in live_sessions}
         folder = self.store_dir / "sessions" if self.store_dir else None
         if folder and folder.is_dir():
             session_entries: dict[str, os.DirEntry] = {}
@@ -307,12 +340,16 @@ class AgentSessionManager:
                 with os.scandir(folder) as it:
                     for entry in it:
                         name = entry.name
-                        if not name.endswith(".json"):
+                        if not name.endswith(".json") or entry.is_symlink():
                             continue
                         if name.endswith(".meta.json"):
-                            meta_entries[name[:-10]] = entry
+                            sid_part = name[:-10]
+                            if sid_part.isalnum():
+                                meta_entries[sid_part] = entry
                         else:
-                            session_entries[name[:-5]] = entry
+                            sid_part = name[:-5]
+                            if sid_part.isalnum():
+                                session_entries[sid_part] = entry
             except OSError:
                 session_entries = {}
             candidates = []
@@ -325,24 +362,39 @@ class AgentSessionManager:
                     meta_stat = meta_entry.stat() if meta_entry is not None else None
                 except OSError:
                     continue
+                use_meta = meta_entry is not None and meta_stat is not None and meta_stat.st_mtime_ns >= entry_stat.st_mtime_ns
+                primary_entry = meta_entry if use_meta else entry
+                primary_stat = meta_stat if use_meta else entry_stat
+                fallback_entry = entry if use_meta else None
+                fallback_stat = entry_stat if use_meta else None
                 mtime_ns = max(entry_stat.st_mtime_ns, meta_stat.st_mtime_ns if meta_stat else 0)
-                candidates.append((mtime_ns, sid, meta_entry or entry, meta_stat or entry_stat))
+                candidates.append((mtime_ns, sid, primary_entry, primary_stat, fallback_entry, fallback_stat))
             candidates.sort(key=lambda item: item[0], reverse=True)
-            for _, sid, target_entry, target_stat in candidates[:150]:
+            for _, sid, target_entry, target_stat, fallback_entry, fallback_stat in candidates[:150]:
                 sig = (target_entry.name, target_stat.st_mtime_ns, target_stat.st_size)
                 with self._listing_lock:
                     cached = self._meta_cache.get(sid)
                 if cached and cached[:3] == sig:
                     rows[sid] = dict(cached[3])
                     continue
-                try:
-                    data = json.loads(Path(target_entry.path).read_text(encoding="utf-8"))
-                except (OSError, ValueError):
+                parsed_sig, data = sig, None
+                for cand_entry, cand_stat in ((target_entry, target_stat), (fallback_entry, fallback_stat)):
+                    if cand_entry is None or cand_stat is None:
+                        continue
+                    try:
+                        loaded = json.loads(Path(cand_entry.path).read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        continue
+                    if isinstance(loaded, dict):
+                        data = loaded
+                        parsed_sig = (cand_entry.name, cand_stat.st_mtime_ns, cand_stat.st_size)
+                        break
+                if data is None:
                     continue
-                row = {"id": sid, "title": data.get("title", ""), "model": data.get("model", ""), "status": "saved",
-                       "updated_at": data.get("updated_at", 0), "workspace": data.get("workspace", ""), "live": False}
+                row = {"id": sid, "title": str(data.get("title") or ""), "model": str(data.get("model") or ""), "status": "saved",
+                       "updated_at": data.get("updated_at", 0), "workspace": str(data.get("workspace") or ""), "live": False}
                 with self._listing_lock:
-                    self._meta_cache[sid] = (*sig, row)
+                    self._meta_cache[sid] = (*parsed_sig, row)
                 rows[sid] = dict(row)
             with self._listing_lock:
                 for stale_id in [k for k in self._meta_cache if k not in session_entries]:
@@ -350,11 +402,11 @@ class AgentSessionManager:
         return sorted(rows.values(), key=lambda r: r["updated_at"], reverse=True)[:100]
 
     def delete(self, session_id: str) -> None:
-        session = self.sessions.pop(session_id, None)
+        with self._listing_lock:
+            session = self.sessions.pop(session_id, None)
+            self._meta_cache.pop(session_id, None)
         if session is not None:
             session.close()
-        with self._listing_lock:
-            self._meta_cache.pop(session_id, None)
         path = self._path(session_id)
         if session_id.isalnum():
             shutil.rmtree((self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / session_id, ignore_errors=True)
@@ -365,5 +417,7 @@ class AgentSessionManager:
             raise KeyError(session_id)
 
     def close_all(self) -> None:
-        for session in list(self.sessions.values()):
+        with self._listing_lock:
+            sessions = list(self.sessions.values())
+        for session in sessions:
             session.close()

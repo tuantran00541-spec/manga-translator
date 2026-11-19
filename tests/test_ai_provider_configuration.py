@@ -296,3 +296,33 @@ def test_an_unknown_bare_host_is_probed_for_its_api_root(monkeypatch):
     azure = resolve_provider("az", label="Azure", protocol="openai", api_base="https://me.openai.azure.com")
     assert auth_headers(azure, "k") == {"Authorization": "Bearer k", "api-key": "k"}
     assert auth_headers(PROVIDERS["openai"], "k") == {"Authorization": "Bearer k"}
+
+
+def test_models_cache_respects_clear_generation_and_handles_missing_names(monkeypatch):
+    visual_qc_router.clear_models_cache()
+    seen_kwargs = []
+
+    class _Resp:
+        def __init__(self, body):
+            self._body = body
+
+        def json(self):
+            return self._body
+
+        def close(self):
+            pass
+
+    def fake_get(url, **kwargs):
+        seen_kwargs.append(kwargs)
+        # Simulate invalidation racing mid-flight
+        visual_qc_router.clear_models_cache("gemini")
+        return _Resp({"models": [{"name": "models/gemini-flash"}, {"name": None}]})
+
+    monkeypatch.setattr(visual_qc_router, "get_provider_api_key", lambda *a, **kw: "secret")
+    monkeypatch.setattr(visual_qc_router, "safe_get", fake_get)
+
+    res = visual_qc_router.list_provider_models("gemini")
+    assert res["models"] == ["gemini-flash"]
+    assert seen_kwargs[0]["max_redirects"] == 0
+    # Because cache was invalidated mid-flight, stale result must NOT stay cached
+    assert visual_qc_router._MODELS_CACHE == {}

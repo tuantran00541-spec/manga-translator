@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import threading
 import time
@@ -19,7 +20,7 @@ from app.ai_providers import (
     resolve_provider,
     validate_provider_label,
 )
-from app.downloader.http import safe_get
+from app.downloader.http import read_response_limited, safe_get
 from app.schemas import VisualQCKeyRequest
 from app.secret_store import (
     SecretStoreUnavailable,
@@ -39,17 +40,26 @@ router = APIRouter(prefix="/api/visual_qc", tags=["visual-qc"])
 
 _MODELS_CACHE_TTL_SECONDS = 300.0
 _MODELS_CACHE_MAX_ENTRIES = 64
+_MAX_MODELS_RESPONSE_BYTES = 4 * 1024 * 1024
 _MODELS_CACHE_LOCK = threading.Lock()
 _MODELS_CACHE: dict[tuple[str, str, str, str], tuple[float, dict]] = {}
+_MODELS_CACHE_GENERATION = 0
+_MODELS_CACHE_PROVIDER_GENERATIONS: dict[str, int] = {}
 
 
 def clear_models_cache(provider_id: str | None = None) -> None:
     """Clear cached provider model lists, all entries or for one provider."""
+    global _MODELS_CACHE_GENERATION
     with _MODELS_CACHE_LOCK:
         if not provider_id:
             _MODELS_CACHE.clear()
+            _MODELS_CACHE_GENERATION += 1
+            _MODELS_CACHE_PROVIDER_GENERATIONS.clear()
             return
         normalized = normalize_provider_id(provider_id)
+        _MODELS_CACHE_PROVIDER_GENERATIONS[normalized] = (
+            _MODELS_CACHE_PROVIDER_GENERATIONS.get(normalized, 0) + 1
+        )
         for key in [k for k in _MODELS_CACHE if k[0] == normalized]:
             _MODELS_CACHE.pop(key, None)
 
@@ -76,21 +86,36 @@ def _resolve_configured_provider(provider_id: str):
     return provider
 
 
+def _read_json_limited(response) -> object:
+    if hasattr(response, "iter_content"):
+        raw = read_response_limited(response, limit_bytes=_MAX_MODELS_RESPONSE_BYTES)
+        return json.loads(raw.decode("utf-8"))
+    return response.json()
+
+
 def _answers_models(provider, api_key: str) -> bool:
     headers = {"Accept": "application/json", **auth_headers(provider, api_key)}
     try:
-        response = safe_get(provider.models_url, headers=headers, timeout=(5, 15), stream=False, max_redirects=0)
+        response = safe_get(provider.models_url, headers=headers, timeout=(5, 15), stream=True, max_redirects=0)
     except requests.HTTPError as exc:
-        status = exc.response.status_code if exc.response is not None else 0
-        return status in (401, 403) and "json" in (exc.response.headers.get("content-type") or "")
+        if exc.response is not None:
+            try:
+                status = exc.response.status_code
+                return status in (401, 403) and "json" in (exc.response.headers.get("content-type") or "")
+            finally:
+                if hasattr(exc.response, "close"):
+                    exc.response.close()
+        return False
     except (requests.RequestException, ValueError, HTTPException):
         return False
     try:
-        return isinstance(response.json().get("data"), list)
-    except (ValueError, AttributeError):
+        payload = _read_json_limited(response)
+        return isinstance(payload, dict) and isinstance(payload.get("data"), list)
+    except (ValueError, UnicodeDecodeError, AttributeError):
         return False
     finally:
-        response.close()
+        if hasattr(response, "close"):
+            response.close()
 
 
 def _discover_api_base(provider, api_key: str):
@@ -282,8 +307,9 @@ def list_provider_models(provider_id: str, refresh: bool = False) -> dict:
     key_digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
     cache_key = (provider.id, provider.models_url or "", provider.protocol, key_digest)
     now = time.monotonic()
-    if not refresh:
-        with _MODELS_CACHE_LOCK:
+    with _MODELS_CACHE_LOCK:
+        fetch_gen = (_MODELS_CACHE_GENERATION, _MODELS_CACHE_PROVIDER_GENERATIONS.get(provider.id, 0))
+        if not refresh:
             cached = _MODELS_CACHE.get(cache_key)
             if cached and (now - cached[0]) < _MODELS_CACHE_TTL_SECONDS:
                 entry = cached[1]
@@ -303,7 +329,8 @@ def list_provider_models(provider_id: str, refresh: bool = False) -> dict:
             provider.models_url,
             headers=headers,
             timeout=(10, 30),
-            stream=False,
+            stream=True,
+            max_redirects=0,
         )
     except (requests.RequestException, ValueError, HTTPException) as exc:
         raise HTTPException(
@@ -311,14 +338,21 @@ def list_provider_models(provider_id: str, refresh: bool = False) -> dict:
             f"Could not load {provider.label} models",
         ) from exc
     try:
-        payload = response.json()
-    except ValueError as exc:
+        payload = _read_json_limited(response)
+    except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(
             502,
             f"{provider.label} returned an invalid models response",
         ) from exc
     finally:
-        response.close()
+        if hasattr(response, "close"):
+            response.close()
+
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            502,
+            f"{provider.label} returned an invalid models response",
+        )
 
     rows = (
         payload.get("models")
@@ -329,11 +363,8 @@ def list_provider_models(provider_id: str, refresh: bool = False) -> dict:
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
-        model_id = str(
-            row.get("name")
-            if provider.protocol == "gemini"
-            else row.get("id") or ""
-        )
+        raw_id = row.get("name") if provider.protocol == "gemini" else row.get("id")
+        model_id = str(raw_id).strip() if raw_id is not None else ""
         if model_id.startswith("models/"):
             model_id = model_id[7:]
         if model_id:
@@ -344,15 +375,17 @@ def list_provider_models(provider_id: str, refresh: bool = False) -> dict:
         "models": sorted(set(models))[:500],
     }
     with _MODELS_CACHE_LOCK:
-        if len(_MODELS_CACHE) >= _MODELS_CACHE_MAX_ENTRIES:
-            oldest_key = min(_MODELS_CACHE, key=lambda k: _MODELS_CACHE[k][0])
-            _MODELS_CACHE.pop(oldest_key, None)
-        _MODELS_CACHE[cache_key] = (
-            time.monotonic(),
-            {
-                "provider": result["provider"],
-                "provider_label": result["provider_label"],
-                "models": tuple(result["models"]),
-            },
-        )
+        current_gen = (_MODELS_CACHE_GENERATION, _MODELS_CACHE_PROVIDER_GENERATIONS.get(provider.id, 0))
+        if current_gen == fetch_gen:
+            if cache_key not in _MODELS_CACHE and len(_MODELS_CACHE) >= _MODELS_CACHE_MAX_ENTRIES:
+                oldest_key = min(_MODELS_CACHE, key=lambda k: _MODELS_CACHE[k][0])
+                _MODELS_CACHE.pop(oldest_key, None)
+            _MODELS_CACHE[cache_key] = (
+                time.monotonic(),
+                {
+                    "provider": result["provider"],
+                    "provider_label": result["provider_label"],
+                    "models": tuple(result["models"]),
+                },
+            )
     return result

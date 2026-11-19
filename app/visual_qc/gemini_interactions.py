@@ -4,6 +4,8 @@ import os
 
 import requests
 
+from app.api_proxy import redact_secret
+
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_VISUAL_QC_MODEL", "gemini-3.7-flash")
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
@@ -23,16 +25,16 @@ def extract_output_text(body: dict) -> str:
     raise ValueError("No text model output found")
 
 
-def safe_error_detail(response: requests.Response) -> str:
+def safe_error_detail(response: requests.Response, api_key: str = "") -> str:
     try:
         payload = response.json()
         if isinstance(payload, dict):
             err = payload.get("error")
             if isinstance(err, dict) and err.get("message"):
-                return str(err["message"])[:500]
+                return redact_secret(str(err["message"]), api_key)[:500]
             if payload.get("message"):
-                return str(payload["message"])[:500]
+                return redact_secret(str(payload["message"]), api_key)[:500]
     except ValueError:
         pass
-    text = (response.text or "").strip()
-    return text[:500] if text else "unknown error"
+    text = str(getattr(response, "text", "") or "").strip()
+    return redact_secret(text, api_key)[:500] if text else "unknown error"

@@ -310,3 +310,245 @@ def test_auto_wrap_persists_base_url_masked_key_and_preapplies_rules(monkeypatch
     assert unwrap_res.status_code == 200 and unwrap_res.json()["unwrapped"] is True
     assert http.get("/api/proxy/status").json()["wrapped_targets"] == []
 
+
+def test_explicit_proxy_target_never_reads_keyring_and_blocks_cross_origin(monkeypatch):
+    from app.main import app
+    from app.routers import api_proxy as proxy_router
+
+    keyring_calls = []
+    monkeypatch.setattr(
+        proxy_router,
+        "get_provider_api_key",
+        lambda *a, **kw: keyring_calls.append(a) or "sk-secret-keyring",
+    )
+    monkeypatch.setattr(proxy_router, "_is_loopback_host", lambda host: host == "testclient")
+    monkeypatch.setattr(proxy_router, "validate_url", lambda url: url)
+    monkeypatch.setattr(api_proxy, "validate_url", lambda url: url)
+
+    seen = []
+
+    def fake_post(url, **kw):
+        seen.append((url, kw["headers"].get("Authorization"), kw["json"]))
+        return _FakeResp(200, {"choices": [{"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}]})
+
+    monkeypatch.setattr(api_proxy.requests, "post", fake_post)
+    http = TestClient(app, base_url="http://127.0.0.1")
+
+    # Cross-origin and cross-site CSRF must be blocked even on loopback
+    assert http.post(
+        "/api/proxy/v1/chat/completions",
+        headers={"Origin": "https://evil.example"},
+        json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+    ).status_code == 403
+    assert http.post(
+        "/api/proxy/logs/clear",
+        headers={"Sec-Fetch-Site": "cross-site"},
+    ).status_code == 403
+    assert http.post(
+        "/api/proxy/v1/chat/completions",
+        headers={"Content-Type": "text/plain"},
+        content="{}",
+    ).status_code == 415
+
+    # Explicit base without caller Bearer token MUST fail 401 and MUST NOT touch keyring
+    res_no_auth = http.post(
+        "/api/proxy/v1/chat/completions",
+        json={
+            "base_url": "https://attacker.example/v1",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+    assert res_no_auth.status_code == 401
+    assert keyring_calls == []
+    assert seen == []
+
+    # Explicit base with caller Bearer token forwards caller key and strips proxy routing fields
+    res_with_auth = http.post(
+        "/api/proxy/v1/chat/completions",
+        headers={"Authorization": "Bearer caller-owned-key"},
+        json={
+            "target_base_url": "https://custom.example/v1",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+    assert res_with_auth.status_code == 200
+    assert keyring_calls == []
+    assert len(seen) == 1
+    assert seen[0][1] == "Bearer caller-owned-key"
+    assert "target_base_url" not in seen[0][2]
+    assert "provider" not in seen[0][2]
+
+
+def test_rescue_learning_deferred_until_2xx_and_image_strip_blocked_by_default(monkeypatch):
+    monkeypatch.setattr(api_proxy, "validate_url", lambda url: url)
+    # Endpoint 404 recovery uses str api_base_candidates, only caches on 2xx, and unwrap clears it
+    calls = []
+
+    def fake_404_then_200(url, **kw):
+        calls.append(url)
+        if len(calls) == 1:
+            return _FakeResp(404, {"error": {"message": "Not found"}})
+        return _FakeResp(200, {"choices": [{"message": {"content": "ok"}}]})
+
+    from app.ai_providers import AIProvider
+
+    custom = AIProvider(
+        id="gw",
+        label="GW",
+        protocol="openai",
+        api_base="https://gw.example",
+        default_qc_model="m",
+        default_translation_model="m",
+        env_names=(),
+        request_profile="standard",
+        image_transport="data_url",
+        builtin=False,
+    )
+    resp, _, _ = api_proxy.proxy_post(
+        url="https://gw.example/chat/completions",
+        headers={"Content-Type": "application/json"},
+        payload={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+        provider=custom,
+        api_key="sk-secret-abc123",
+        post_fn=fake_404_then_200,
+    )
+    assert resp.status_code == 200
+    assert calls[1] == "https://gw.example/v1/chat/completions"
+    assert api_proxy.unwrap_target("https://gw.example/", "m") is True
+    assert "https://gw.example" not in api_proxy._FOUND_CHAT_URLS
+
+    # Failed retries must NOT pollute _WRAPPED_TARGETS / _REFUSED_FIELDS
+    def fake_always_fail(url, **kw):
+        return _FakeResp(400, {"error": {"message": "temperature unsupported but still failing"}})
+
+    resp_fail, _, _ = api_proxy.proxy_post(
+        url="https://api.openai.com/v1/chat/completions",
+        headers={"Content-Type": "application/json"},
+        payload={"model": "fail-m", "temperature": 0.5, "messages": [{"role": "user", "content": "hi"}]},
+        provider=PROVIDERS["openai"],
+        api_key="sk-secret-abc123",
+        post_fn=fake_always_fail,
+    )
+    assert resp_fail.status_code == 400
+    assert api_proxy.proxy_snapshot()["wrapped_targets"] == []
+
+    # allow_image_strip=False (default) must NOT strip images to 0 and hallucinate
+    img_payload = {
+        "model": "blind-m",
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "translate"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + _sample_img_b64(64, 64)}},
+        ]}],
+    }
+    resp_blind, _, _ = api_proxy.proxy_post(
+        url="https://api.openai.com/v1/chat/completions",
+        headers={"Content-Type": "application/json"},
+        payload=img_payload,
+        provider=PROVIDERS["openai"],
+        api_key="sk-secret-abc123",
+        post_fn=lambda url, **kw: _FakeResp(400, {"error": {"message": "vision is not supported"}}),
+    )
+    assert resp_blind.status_code == 400
+
+
+def test_context_overflow_shrink_tool_sse_and_secret_redaction(monkeypatch):
+    from app.downloader import http as dl_http
+    from app.routers.api_proxy import _sse_from_completion
+
+    # Context overflow compacts context instead of adjusting max_tokens and keeps tool pairing
+    seen_msgs = []
+
+    def fake_overflow(url, **kw):
+        seen_msgs.append(kw["json"]["messages"])
+        if len(seen_msgs) == 1:
+            return _FakeResp(400, {"error": {"message": "maximum context length exceeded (max_tokens too high)"}})
+        return _FakeResp(200, {"choices": [{"message": {"content": "ok"}}]})
+
+    msgs = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "old q1"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c0", "type": "function", "function": {"name": "f0", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c0", "content": "x" * 600},
+        {"role": "user", "content": "old q2"},
+        {"role": "assistant", "content": "old a2"},
+        {"role": "user", "content": "latest question"},
+        {"role": "assistant", "content": "recent"},
+    ]
+    resp, final_payload, meta = api_proxy.proxy_post(
+        url="https://api.openai.com/v1/chat/completions",
+        headers={"Content-Type": "application/json"},
+        payload={"model": "m", "max_tokens": 4096, "messages": msgs},
+        provider=PROVIDERS["openai"],
+        api_key="sk-secret-999999",
+        post_fn=fake_overflow,
+    )
+    assert resp.status_code == 200
+    assert any("ngữ cảnh" in r for r in meta["rescues_applied"])
+    assert final_payload["max_tokens"] == 4096
+
+    short_tool_msgs = [
+        {"role": "system", "content": "sys"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "a", "type": "function", "function": {"name": "f", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "a", "content": "short1"},
+        {"role": "tool", "tool_call_id": "a", "content": "short2"},
+        {"role": "user", "content": "u1"},
+        {"role": "user", "content": "u2"},
+        {"role": "user", "content": "u3"},
+        {"role": "user", "content": "u4"},
+        {"role": "user", "content": "u5"},
+    ]
+    compacted, changed = api_proxy.compact_payload_context({"messages": short_tool_msgs})
+    assert changed is True and compacted["messages"][1]["role"] != "tool"
+
+    # _safe_error_detail redacts secret beyond index 600 & query key params
+    long_resp = _FakeResp(400, ("a" * 595) + "sk-very-long-secret-tail https://x/?key=AIzaSecret123")
+    cleaned = api_proxy._safe_error_detail(long_resp, "sk-very-long-secret-tail")
+    assert "sk-very-long-secret-tail" not in cleaned
+    assert "AIzaSecret123" not in cleaned
+
+    # _shrink_b64_image returns None when encoding is not strictly smaller
+    tiny_b64 = _sample_img_b64(4, 4)
+    assert api_proxy._shrink_b64_image(tiny_b64, 1024, 99) is None
+
+    # _sse_from_completion adds index to tool_calls
+    import asyncio
+    sse = _sse_from_completion({
+        "id": "1",
+        "choices": [{"message": {"role": "assistant", "tool_calls": [{"id": "t1", "function": {"name": "a"}}]}, "finish_reason": "tool_calls"}],
+    })
+
+    async def _collect():
+        return b"".join([chunk async for chunk in sse.body_iterator])
+
+    sse_bytes = asyncio.run(_collect())
+    assert b'"index": 0' in sse_bytes and b'"[DONE]"' not in sse_bytes and b"data: [DONE]" in sse_bytes
+
+    # safe_get strips auth headers across cross-origin redirects
+    seen_headers = []
+
+    class _DummySession:
+        def get(self, url, **kw):
+            seen_headers.append((url, dict(kw.get("headers") or {})))
+            if len(seen_headers) == 1:
+                r = _FakeResp(302, "", headers={"Location": "https://cdn.other.example/img.png"})
+                r.raise_for_status = lambda: None
+                return r
+            r = _FakeResp(200, "ok")
+            r.raise_for_status = lambda: None
+            return r
+
+    monkeypatch.setattr(dl_http, "_session", lambda: _DummySession())
+    monkeypatch.setattr(dl_http, "validate_url", lambda url: url)
+    out_r = dl_http.safe_get(
+        "https://api.origin.example/start",
+        headers={"Authorization": "Bearer secret", "x-goog-api-key": "k2", "Accept": "image/*"},
+    )
+    assert out_r.status_code == 200
+    assert "Authorization" not in seen_headers[1][1]
+    assert "x-goog-api-key" not in seen_headers[1][1]
+    assert seen_headers[1][1]["Accept"] == "image/*"
+

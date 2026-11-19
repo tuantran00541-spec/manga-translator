@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from typing import Callable
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 import cv2
@@ -16,12 +16,18 @@ import numpy as np
 import requests
 
 from app.ai_providers import AIProvider, api_base_candidates
+from app.downloader.http import PUBLIC_ADAPTER
 from app.logging_config import logger
 from app.security import validate_url
 
 MAX_LOG_EVENTS = 300
 MAX_RESCUES_PER_CALL = 5
+MAX_LEARNED_ENTRIES = 256
 TRANSIENT_STATUS_CODES = frozenset({408, 409, 500, 502, 503, 504})
+_ORIGINAL_REQUESTS_POST = requests.post
+_PUBLIC_SESSION_LOCAL = threading.local()
+_KEY_PARAM_RE = re.compile(r"([?&](?:api_key|key|access_token|token)=)[^&\s\"']+", re.I)
+_BEARER_RE = re.compile(r"(\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}", re.I)
 
 QUOTA_RE = re.compile(
     r"\b(?:insufficient_quota|quota[_\s-]*exceeded|exceeded your current quota|"
@@ -111,6 +117,40 @@ _FOUND_CHAT_URLS: dict[str, str] = {}
 _WRAPPED_TARGETS: dict[tuple[str, str], dict] = {}
 
 
+def is_success_response(response) -> bool:
+    """Return True strictly for 2xx HTTP status codes, falling back to `ok is True` for statusless mocks."""
+    status = getattr(response, "status_code", None)
+    if isinstance(status, int) and not isinstance(status, bool):
+        return 200 <= status < 300
+    return getattr(response, "ok", None) is True
+
+
+def redact_secret(text: str, api_key: str = "") -> str:
+    cleaned = str(text or "")
+    secret = str(api_key or "").strip()
+    if secret and len(secret) >= 4:
+        cleaned = cleaned.replace(secret, "[redacted]")
+    cleaned = _KEY_PARAM_RE.sub(r"\1[redacted]", cleaned)
+    cleaned = _BEARER_RE.sub(r"\1[redacted]", cleaned)
+    return cleaned
+
+
+def _bound_dict(mapping: dict, key: Any, limit: int = MAX_LEARNED_ENTRIES) -> None:
+    if key not in mapping:
+        while len(mapping) >= limit:
+            mapping.pop(next(iter(mapping)))
+
+
+def _public_post(url: str, **kwargs) -> requests.Response:
+    sess = getattr(_PUBLIC_SESSION_LOCAL, "session", None)
+    if sess is None:
+        sess = requests.Session()
+        sess.mount("http://", PUBLIC_ADAPTER)
+        sess.mount("https://", PUBLIC_ADAPTER)
+        _PUBLIC_SESSION_LOCAL.session = sess
+    return sess.post(url, **kwargs)
+
+
 def _mask_secret(api_key: str) -> str:
     cleaned = str(api_key or "").strip()
     if not cleaned:
@@ -194,6 +234,7 @@ def wrap_target(
                 "last_error": "",
                 "last_rescue": "",
             }
+            _bound_dict(_WRAPPED_TARGETS, key)
             _WRAPPED_TARGETS[key] = entry
         if api_key and not entry.get("key_hint"):
             entry["key_hint"] = _mask_secret(api_key)
@@ -205,6 +246,7 @@ def wrap_target(
             entry["chat_url"] = chat_url
         if refused_fields:
             entry["refused_fields"].update(refused_fields)
+            _bound_dict(_REFUSED_FIELDS, key)
             _REFUSED_FIELDS.setdefault(key, set()).update(refused_fields)
         if tool_cap is not None and tool_cap >= 1:
             prev = entry.get("tool_cap")
@@ -241,12 +283,15 @@ def get_wrapped_image_cap(api_base: str, model: str) -> int | None:
 
 def unwrap_target(api_base: str, model: str) -> bool:
     """Remove learned auto-wrap rules for one (api_base, model) pair."""
-    base = str(api_base or "").strip().rstrip("/")
+    base = _base_key(api_base)
     model_key = str(model or "").strip()
     with _LOCK:
         removed = _WRAPPED_TARGETS.pop((base, model_key), None) is not None
-        _REFUSED_FIELDS.pop((base, model_key), None)
-        return removed
+        refused_removed = _REFUSED_FIELDS.pop((base, model_key), None) is not None
+        url_removed = False
+        if base and not any(k[0] == base for k in _WRAPPED_TARGETS):
+            url_removed = _FOUND_CHAT_URLS.pop(base, None) is not None
+        return removed or refused_removed or url_removed
 
 
 def apply_wrapped_rules(
@@ -257,9 +302,10 @@ def apply_wrapped_rules(
     stream: bool = False,
     is_gemini: bool = False,
     apply_image_cap: bool = True,
+    allow_image_strip: bool = False,
 ) -> tuple[dict, bool, list[str], str | None]:
     """Pre-apply learned auto-wrap fixes so wrapped models skip repeating past errors."""
-    base = str(api_base or "").strip().rstrip("/")
+    base = _base_key(api_base)
     model_key = str(model or "").strip()
     with _LOCK:
         entry = copy.deepcopy(_WRAPPED_TARGETS.get((base, model_key))) if base and model_key else None
@@ -271,7 +317,7 @@ def apply_wrapped_rules(
     updated = copy.deepcopy(payload)
     current_stream = bool(stream)
     applied: list[str] = []
-    chat_override = entry.get("chat_url") if (entry and entry.get("chat_url")) else None
+    chat_override = entry.get("chat_url") if (entry and entry.get("chat_url") and not is_gemini) else None
 
     if learned_fields and not is_gemini:
         stripped = []
@@ -287,8 +333,9 @@ def apply_wrapped_rules(
     if entry:
         if entry.get("force_non_stream") and current_stream:
             current_stream = False
-            updated["stream"] = False
-            updated.pop("stream_options", None)
+            if not is_gemini:
+                updated["stream"] = False
+                updated.pop("stream_options", None)
             applied.append("Bọc sẵn — chạy non-stream")
         if entry.get("fold_system") and not is_gemini:
             updated, did = fold_system_messages(updated)
@@ -299,16 +346,26 @@ def apply_wrapped_rules(
             before = len(updated["tools"])
             trimmed, _ = trim_openai_tools(updated["tools"], f"max {tool_cap} tools")
             updated["tools"] = trimmed
-            applied.append(f"Bọc sẵn — tools {before} → {len(trimmed)}")
+            applied.append(f"Bọc sẵn — tools {before} -> {len(trimmed)}")
         token_cap = entry.get("token_cap")
         if token_cap and not is_gemini:
             for k in ("max_tokens", "max_completion_tokens"):
                 if isinstance(updated.get(k), int) and updated[k] > token_cap:
                     updated[k] = token_cap
-                    applied.append(f"Bọc sẵn — {k} ≤ {token_cap}")
+                    applied.append(f"Bọc sẵn — {k} <= {token_cap}")
         img_cap = entry.get("image_cap")
-        if apply_image_cap and img_cap is not None and count_payload_images(updated, is_gemini=is_gemini) > img_cap:
-            res = rescue_payload_images_limit(updated, f"at most {img_cap} images", is_gemini=is_gemini)
+        if (
+            apply_image_cap
+            and img_cap is not None
+            and (img_cap >= 1 or allow_image_strip)
+            and count_payload_images(updated, is_gemini=is_gemini) > img_cap
+        ):
+            res = rescue_payload_images_limit(
+                updated,
+                f"at most {img_cap} images",
+                is_gemini=is_gemini,
+                allow_strip_all=allow_image_strip,
+            )
             if res is not None:
                 updated, desc = res
                 applied.append(f"Bọc sẵn — {desc}")
@@ -337,10 +394,7 @@ def _safe_error_detail(response: requests.Response, api_key: str = "") -> str:
             text = json.dumps(body, ensure_ascii=False)
         except Exception:
             text = ""
-    cleaned = text.strip()[:600]
-    secret = str(api_key or "").strip()
-    if secret and len(secret) >= 4:
-        cleaned = cleaned.replace(secret, "[redacted]")
+    cleaned = redact_secret(text, api_key).strip()[:600]
     return cleaned or f"HTTP {getattr(response, 'status_code', '?')}"
 
 
@@ -546,8 +600,14 @@ def count_payload_images(payload: dict, *, is_gemini: bool = False) -> int:
     return count
 
 
-def rescue_payload_images_limit(payload: dict, detail: str, *, is_gemini: bool = False) -> tuple[dict, str] | None:
-    """Keep newest N images (or remove all if vision unsupported) cleanly."""
+def rescue_payload_images_limit(
+    payload: dict,
+    detail: str,
+    *,
+    is_gemini: bool = False,
+    allow_strip_all: bool = False,
+) -> tuple[dict, str] | None:
+    """Keep newest N images (or remove all if vision unsupported when explicitly allowed)."""
     total = count_payload_images(payload, is_gemini=is_gemini)
     if total == 0:
         return None
@@ -556,6 +616,8 @@ def rescue_payload_images_limit(payload: dict, detail: str, *, is_gemini: bool =
     target = 0 if cap == 0 else (cap if cap and 1 <= cap < total else max(1, total // 2))
     if target >= total:
         target = max(0, total - 1)
+    if target == 0 and not allow_strip_all:
+        return None
     updated = copy.deepcopy(payload)
     drop_count = total - target
     note = "[Ảnh đã ẩn: model không hỗ trợ thị giác]" if target == 0 else f"[Ảnh cũ đã rút gọn để khớp giới hạn {target} ảnh/request]"
@@ -601,7 +663,7 @@ def _shrink_b64_image(raw_b64: str, max_side: int, quality: int) -> str | None:
         if not ok:
             return None
         shrunk = base64.b64encode(buf.tobytes()).decode("ascii")
-        return shrunk if len(shrunk) < len(raw_b64) else raw_b64
+        return shrunk if len(shrunk) < len(raw_b64) else None
     except Exception:
         return None
 
@@ -674,9 +736,12 @@ def compact_payload_context(payload: dict, *, is_gemini: bool = False) -> tuple[
                 msg["content"] = msg["content"][:220] + "\n...[đã nén lịch sử cũ]"
                 changed = True
         if not changed and middle_end - keep_head >= 2:
-            drop_n = max(1, (middle_end - keep_head) // 2)
-            updated["messages"] = msgs[:keep_head] + msgs[keep_head + drop_n :]
-            changed = True
+            cut = keep_head + max(1, (middle_end - keep_head) // 2)
+            while cut < middle_end and isinstance(msgs[cut], dict) and msgs[cut].get("role") == "tool":
+                cut += 1
+            if cut < middle_end:
+                updated["messages"] = msgs[:keep_head] + msgs[cut:]
+                changed = True
     return updated, changed
 
 
@@ -724,7 +789,15 @@ def _append_json_hint(payload: dict, *, is_gemini: bool = False) -> None:
             return
 
 
-def strip_rejected_fields(payload: dict, detail: str, *, api_base: str = "", model: str = "", is_gemini: bool = False) -> tuple[dict, list[str]]:
+def strip_rejected_fields(
+    payload: dict,
+    detail: str,
+    *,
+    api_base: str = "",
+    model: str = "",
+    is_gemini: bool = False,
+    persist: bool = True,
+) -> tuple[dict, list[str]]:
     """Remove optional payload parameters refused by the model/gateway."""
     updated = copy.deepcopy(payload)
     removed: list[str] = []
@@ -755,8 +828,9 @@ def strip_rejected_fields(payload: dict, detail: str, *, api_base: str = "", mod
                 removed.append(key)
                 if key == "response_format":
                     _append_json_hint(updated, is_gemini=False)
-    if removed and api_base and model:
+    if persist and removed and api_base and model:
         with _LOCK:
+            _bound_dict(_REFUSED_FIELDS, (api_base, model))
             _REFUSED_FIELDS.setdefault((api_base, model), set()).update(removed)
     return updated, removed
 
@@ -770,30 +844,32 @@ def adjust_token_limit(payload: dict, detail: str, *, is_gemini: bool = False) -
         if isinstance(gen, dict) and isinstance(gen.get("max_output_tokens"), int):
             asked = gen["max_output_tokens"]
             named = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", detail)]
-            lower_val = max((n for n in named if 128 <= n < asked), default=asked // 2)
+            fallback = min(asked // 2, 16384) if asked > 32768 else asked // 2
+            lower_val = max((n for n in named if 128 <= n < asked), default=fallback)
             if lower_val < 256:
                 gen.pop("max_output_tokens", None)
                 return updated, f"Bỏ giới hạn max_output_tokens ({asked})"
             gen["max_output_tokens"] = lower_val
-            return updated, f"Giảm max_output_tokens {asked} → {lower_val}"
+            return updated, f"Giảm max_output_tokens {asked} -> {lower_val}"
         return None
 
     if "max_tokens" in updated and "max_completion_tokens" in lower and "use" in lower:
         val = updated.pop("max_tokens")
         updated["max_completion_tokens"] = val
-        return updated, "Đổi max_tokens → max_completion_tokens"
+        return updated, "Đổi max_tokens -> max_completion_tokens"
 
     for key in ("max_tokens", "max_completion_tokens"):
         val = updated.get(key)
         if not isinstance(val, int):
             continue
         named = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", detail)]
-        lower_val = max((n for n in named if 256 <= n < val), default=val // 2)
+        fallback = min(val // 2, 16384) if val > 32768 else val // 2
+        lower_val = max((n for n in named if 256 <= n < val), default=fallback)
         if lower_val < 1024:
             updated.pop(key, None)
             return updated, f"Bỏ trường {key} ({val})"
         updated[key] = lower_val
-        return updated, f"Giảm {key} {val} → {lower_val}"
+        return updated, f"Giảm {key} {val} -> {lower_val}"
     return None
 
 
@@ -918,12 +994,14 @@ def classify_http_error(status_code: int, detail: str, payload: dict, *, is_gemi
     return "other"
 
 
-def _next_chat_url(provider: AIProvider | None, tried_urls: set[str]) -> str | None:
+def _next_chat_url(provider: AIProvider | None, tried_urls: set[str], *, allow_local: bool = False) -> str | None:
     if provider is None or provider.protocol != "openai":
         return None
     base = str(provider.api_base or "").rstrip("/")
+    if not base:
+        return None
     raw_candidates = [
-        *(f"{b.rstrip('/')}/chat/completions" for b in api_base_candidates(provider)),
+        *(f"{b.rstrip('/')}/chat/completions" for b in api_base_candidates(base)),
         f"{base}/chat/completions",
         f"{base}/v1/chat/completions",
     ]
@@ -932,10 +1010,11 @@ def _next_chat_url(provider: AIProvider | None, tried_urls: set[str]) -> str | N
         if not candidate or candidate in seen or candidate in tried_urls:
             continue
         seen.add(candidate)
-        try:
-            validate_url(candidate)
-        except Exception:
-            continue
+        if not allow_local:
+            try:
+                validate_url(candidate)
+            except Exception:
+                continue
         return candidate
     return None
 
@@ -953,6 +1032,7 @@ def proxy_post(
     is_gemini: bool = False,
     allow_tool_strip: bool = True,
     raise_on_image_split: bool = False,
+    allow_image_strip: bool = False,
     post_fn: Callable | None = None,
     allow_local: bool = False,
 ) -> tuple[requests.Response, dict, dict]:
@@ -962,10 +1042,14 @@ def proxy_post(
     """
     if not allow_local:
         validate_url(url)
-    sender = post_fn or requests.post
+    sender = post_fn or (
+        requests.post
+        if (allow_local or requests.post is not _ORIGINAL_REQUESTS_POST)
+        else _public_post
+    )
     started = time.monotonic()
     provider_id = provider.id if provider else ""
-    provider_label = provider.label if provider else (provider_id or url.split("/")[2])
+    provider_label = provider.label if provider else (provider_id or urlparse(url).netloc or url)
     api_base = _base_key(str(provider.api_base or "") if provider else "", url)
     model_name = str(payload.get("model") or "")
 
@@ -976,8 +1060,22 @@ def proxy_post(
         stream=stream,
         is_gemini=is_gemini,
         apply_image_cap=not raise_on_image_split,
+        allow_image_strip=allow_image_strip,
     )
-    current_url = wrapped_chat or (_FOUND_CHAT_URLS.get(api_base, url) if (api_base and not is_gemini) else url)
+    cached_url = None
+    if not wrapped_chat and api_base and not is_gemini:
+        with _LOCK:
+            candidate = _FOUND_CHAT_URLS.get(api_base)
+        if candidate:
+            if allow_local:
+                cached_url = candidate
+            else:
+                try:
+                    validate_url(candidate)
+                    cached_url = candidate
+                except Exception:
+                    cached_url = None
+    current_url = wrapped_chat or cached_url or url
 
     errors_seen: list[dict] = []
     rescues_applied: list[str] = list(pre_applied)
@@ -986,6 +1084,9 @@ def proxy_post(
     tried_urls = {current_url}
     downsize_attempts = 0
     transient_attempts = 0
+    pending_wraps: list[dict] = []
+    pending_refused: set[str] = set()
+    pending_found_url: str | None = None
 
     for attempt in range(1, MAX_RESCUES_PER_CALL + 2):
         response = None
@@ -1000,14 +1101,15 @@ def proxy_post(
                 post_kwargs["stream"] = True
             response = sender(current_url, **post_kwargs)
         except requests.RequestException as exc:
-            detail = f"{provider_label} {type(exc).__name__}: {str(exc)[:180]}"
+            detail = f"{provider_label} {type(exc).__name__}: {redact_secret(str(exc), api_key)[:180]}"
             errors_seen.append({"attempt": attempt, "status": 0, "category": "network_error", "detail": detail})
             if attempt <= MAX_RESCUES_PER_CALL and transient_attempts < 2:
                 transient_attempts += 1
                 if current_stream:
                     current_stream = False
-                    current_payload["stream"] = False
-                    current_payload.pop("stream_options", None)
+                    if not is_gemini:
+                        current_payload["stream"] = False
+                        current_payload.pop("stream_options", None)
                     rescues_applied.append("Tắt stream và thử lại sau lỗi kết nối")
                 else:
                     rescues_applied.append(f"Thử lại lần {transient_attempts} sau {type(exc).__name__}")
@@ -1021,7 +1123,8 @@ def proxy_post(
             )
             raise
 
-        status_code = int(getattr(response, "status_code", 0) or 0)
+        raw_status = getattr(response, "status_code", None)
+        status_code = raw_status if (isinstance(raw_status, int) and not isinstance(raw_status, bool)) else 0
         if 300 <= status_code < 400:
             detail = f"{provider_label} redirected HTTP {status_code}"
             errors_seen.append({"attempt": attempt, "status": status_code, "category": "redirect", "detail": detail})
@@ -1032,7 +1135,37 @@ def proxy_post(
             )
             return response, current_payload, {"errors_seen": errors_seen, "rescues_applied": rescues_applied}
 
-        if getattr(response, "ok", 200 <= status_code < 300):
+        if is_success_response(response):
+            for wkw in pending_wraps:
+                err_det = wkw.pop("_error_detail", "")
+                res_note = wkw.pop("_rescue_note", "")
+                wrap_target(
+                    api_base,
+                    model_name,
+                    url=current_url,
+                    provider_id=provider_id,
+                    provider_label=provider_label,
+                    api_key=api_key,
+                    error_detail=err_det,
+                    rescue_note=res_note,
+                    **wkw,
+                )
+            if pending_refused and api_base and model_name:
+                with _LOCK:
+                    _bound_dict(_REFUSED_FIELDS, (api_base, model_name))
+                    _REFUSED_FIELDS.setdefault((api_base, model_name), set()).update(pending_refused)
+            if pending_found_url and api_base and not is_gemini:
+                ok_url = allow_local
+                if not ok_url:
+                    try:
+                        validate_url(pending_found_url)
+                        ok_url = True
+                    except Exception:
+                        ok_url = False
+                if ok_url:
+                    with _LOCK:
+                        _bound_dict(_FOUND_CHAT_URLS, api_base)
+                        _FOUND_CHAT_URLS[api_base] = pending_found_url
             final_status = "rescued" if (rescues_applied and len(errors_seen) > 0) or pre_applied else "ok"
             meta = {"errors_seen": errors_seen, "rescues_applied": rescues_applied, "attempts": attempt}
             record_event(
@@ -1099,7 +1232,12 @@ def proxy_post(
                     errors_seen=errors_seen, rescues_applied=rescues_applied, rescue_types=rescue_types, detail=detail,
                 )
                 raise ImageLimitExceeded(cap, img_count, detail)
-            res = rescue_payload_images_limit(current_payload, detail, is_gemini=is_gemini)
+            res = rescue_payload_images_limit(
+                current_payload,
+                detail,
+                is_gemini=is_gemini,
+                allow_strip_all=allow_image_strip,
+            )
             if res is not None:
                 current_payload, rescued_desc = res
                 rescue_types.append("too_many_images")
@@ -1130,9 +1268,10 @@ def proxy_post(
                 rescue_types.append("payload_too_large")
         elif category == "stream_unsupported" and current_stream:
             current_stream = False
-            current_payload["stream"] = False
-            current_payload.pop("stream_options", None)
-            rescued_desc = "Chuyển stream → non-stream"
+            if not is_gemini:
+                current_payload["stream"] = False
+                current_payload.pop("stream_options", None)
+            rescued_desc = "Chuyển stream -> non-stream"
             rescue_types.append("stream_unsupported")
             wrap_kwargs["force_non_stream"] = True
         elif category == "system_role_unsupported" and not is_gemini:
@@ -1143,7 +1282,8 @@ def proxy_post(
                 rescue_types.append("system_role_unsupported")
                 wrap_kwargs["fold_system"] = True
         elif category == "token_or_context_limit":
-            tok_fix = adjust_token_limit(current_payload, detail, is_gemini=is_gemini)
+            is_overflow = bool(CONTEXT_OVERFLOW_RE.search(detail))
+            tok_fix = None if is_overflow else adjust_token_limit(current_payload, detail, is_gemini=is_gemini)
             if tok_fix is not None:
                 current_payload, rescued_desc = tok_fix
                 rescue_types.append("token_limit")
@@ -1157,21 +1297,22 @@ def proxy_post(
                     rescued_desc = "Nén lịch sử ngữ cảnh vượt giới hạn"
                     rescue_types.append("context_overflow")
         elif category == "unsupported_field":
-            new_payload, removed = strip_rejected_fields(current_payload, detail, api_base=api_base, model=model_name, is_gemini=is_gemini)
+            new_payload, removed = strip_rejected_fields(
+                current_payload, detail, api_base=api_base, model=model_name, is_gemini=is_gemini, persist=False
+            )
             if removed:
                 current_payload = new_payload
                 rescued_desc = f"Gỡ trường bị từ chối: {', '.join(removed)}"
                 rescue_types.append("unsupported_field")
                 wrap_kwargs["refused_fields"] = removed
+                pending_refused.update(removed)
         elif category == "endpoint_404_405" and not is_gemini:
-            next_url = _next_chat_url(provider, tried_urls)
+            next_url = _next_chat_url(provider, tried_urls, allow_local=allow_local)
             if next_url:
                 tried_urls.add(next_url)
                 current_url = next_url
-                if api_base:
-                    with _LOCK:
-                        _FOUND_CHAT_URLS[api_base] = next_url
-                rescued_desc = f"Đổi endpoint chat → {next_url}"
+                pending_found_url = next_url
+                rescued_desc = f"Đổi endpoint chat -> {next_url}"
                 rescue_types.append("endpoint_404_405")
                 wrap_kwargs["chat_url"] = next_url
         elif category == "model_not_found" and str(current_payload.get("model") or "").startswith("models/"):
@@ -1194,20 +1335,16 @@ def proxy_post(
                 rescued_desc = f"Thử gỡ tham số tùy chọn ({', '.join(present)})"
                 rescue_types.append("unsupported_field")
                 wrap_kwargs["refused_fields"] = present
+                pending_refused.update(present)
 
         if rescued_desc:
             rescues_applied.append(rescued_desc)
-            wrap_target(
-                api_base,
-                model_name,
-                url=current_url,
-                provider_id=provider_id,
-                provider_label=provider_label,
-                api_key=api_key,
-                error_detail=detail,
-                rescue_note=rescued_desc,
-                **wrap_kwargs,
-            )
+            if wrap_kwargs:
+                pending_wraps.append({
+                    "_error_detail": detail,
+                    "_rescue_note": rescued_desc,
+                    **wrap_kwargs,
+                })
             logger.info("API Proxy rescue [{} {}]: {} -> {}", provider_label, model_name, detail[:120], rescued_desc)
             if hasattr(response, "close"):
                 response.close()

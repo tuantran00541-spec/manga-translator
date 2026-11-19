@@ -3,7 +3,7 @@ import json
 import os
 import socket
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -20,7 +20,7 @@ def test_the_command_folder_goes_in_front_of_path_once():
 
 
 def test_the_unix_launcher_runs_the_private_python_with_the_open_flag():
-    text = install.launcher_text(Path("/opt/mt/.venv/bin/python"), Path("/opt/mt/run.py"), windows=False)
+    text = install.launcher_text(PurePosixPath("/opt/mt/.venv/bin/python"), PurePosixPath("/opt/mt/run.py"), windows=False)
     assert text == '#!/bin/sh\nexec "/opt/mt/.venv/bin/python" "/opt/mt/run.py" --link "$@"\n'
 
 

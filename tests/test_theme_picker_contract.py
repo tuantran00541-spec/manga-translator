@@ -37,6 +37,7 @@ def test_layout_palette_is_monochrome():
         assert "color-mix(" not in css
         assert "rgba(" not in css
         assert "rgb(" not in css
+        assert not re.findall(r"(?:hsla?|oklch|oklab|hwb)\(", css)
         assert not re.findall(r"#[0-9a-fA-F]{3,8}\b", css)
 
     allowed_hex = {"#ffffff", "#000000"}

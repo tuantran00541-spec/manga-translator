@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -40,10 +41,29 @@ def _is_loopback_host(host: str) -> bool:
         return host in ("localhost", "127.0.0.1", "::1")
 
 
-def _require_loopback(request: Request) -> None:
+def _require_loopback(request: Request, *, require_json: bool = False) -> None:
     host = request.client.host if request.client else ""
     if not _is_loopback_host(host):
         raise HTTPException(403, "API proxy is local only.")
+    sec_fetch = (request.headers.get("sec-fetch-site") or "").strip().lower()
+    if sec_fetch and sec_fetch not in ("same-origin", "none"):
+        raise HTTPException(403, "Cross-site requests to local API proxy are forbidden.")
+    req_host = (request.headers.get("host") or "").strip().lower()
+    origin = (request.headers.get("origin") or "").strip()
+    if origin:
+        parsed = urlsplit(origin)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc or (req_host and parsed.netloc.lower() != req_host):
+            raise HTTPException(403, "Cross-origin requests to local API proxy are forbidden.")
+    else:
+        referer = (request.headers.get("referer") or "").strip()
+        if referer:
+            parsed_ref = urlsplit(referer)
+            if parsed_ref.netloc and req_host and parsed_ref.netloc.lower() != req_host:
+                raise HTTPException(403, "Cross-origin requests to local API proxy are forbidden.")
+    if require_json:
+        ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            raise HTTPException(415, "Content-Type must be application/json")
 
 
 def _resolve_provider_only(provider_id: str) -> AIProvider:
@@ -89,8 +109,8 @@ def _configured_providers() -> list[AIProvider]:
     return found
 
 
-def _resolve_proxy_target(request: Request, body: dict[str, Any]) -> tuple[AIProvider | None, str, str, str]:
-    """Resolve ``(provider, chat_url, api_key, model)`` for incoming local proxy calls."""
+def _resolve_proxy_target(request: Request, body: dict[str, Any]) -> tuple[AIProvider | None, str, str, str, bool]:
+    """Resolve ``(provider, chat_url, api_key, model, explicit_target)`` for incoming local proxy calls."""
     explicit_base = (
         request.headers.get("X-Target-Base-URL")
         or str(body.get("target_base_url") or body.get("base_url") or "")
@@ -105,17 +125,19 @@ def _resolve_proxy_target(request: Request, body: dict[str, Any]) -> tuple[AIPro
     ).strip()
 
     if explicit_base:
-        validate_url(explicit_base)
+        try:
+            validate_url(explicit_base)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         provider = resolve_provider(
             header_provider or "proxy-target",
             label=header_provider or "Proxy Target",
             protocol="openai",
             api_base=explicit_base,
         )
-        key = bearer_key or (get_provider_api_key(provider.id, provider_label=provider.label) or "")
-        if not key:
-            raise HTTPException(409, "Missing upstream API key for proxy target.")
-        return provider, str(provider.chat_url), key, model
+        if not bearer_key:
+            raise HTTPException(401, "Missing Authorization Bearer API key for explicit proxy target.")
+        return provider, str(provider.chat_url), bearer_key, model, True
 
     provider_id = header_provider
     if not provider_id and ":" in model:
@@ -140,9 +162,11 @@ def _resolve_proxy_target(request: Request, body: dict[str, Any]) -> tuple[AIPro
             raise HTTPException(409, "Chưa có nhà cung cấp AI nào được cấu hình khóa API.")
 
     try:
-        key = get_provider_api_key(provider.id, provider_label=provider.label) or bearer_key
+        key = bearer_key or get_provider_api_key(provider.id, provider_label=provider.label)
     except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
+        if not bearer_key:
+            raise HTTPException(503, str(exc)) from exc
+        key = bearer_key
     if not key:
         raise HTTPException(409, f"Chưa cấu hình khóa API cho {provider.label}.")
 
@@ -151,7 +175,7 @@ def _resolve_proxy_target(request: Request, body: dict[str, Any]) -> tuple[AIPro
         raise HTTPException(400, f"{provider.label} không có chat completions endpoint.")
     if not model:
         model = provider.default_translation_model or provider.default_qc_model or ""
-    return provider, target_url, key, model
+    return provider, target_url, key, model, False
 
 
 @router.get("/status")
@@ -172,7 +196,7 @@ def proxy_clear_logs(request: Request) -> dict:
 
 @router.post("/unwrap")
 async def proxy_unwrap_target(request: Request) -> dict:
-    _require_loopback(request)
+    _require_loopback(request, require_json=True)
     try:
         body = await request.json()
     except ValueError as exc:
@@ -204,22 +228,46 @@ def _sse_from_completion(body: dict) -> StreamingResponse:
     """Wrap a rescued non-stream chat completion as an OpenAI-compatible SSE stream."""
     choice = (body.get("choices") or [{}])[0] if isinstance(body.get("choices"), list) else {}
     msg = choice.get("message") or {}
-    chunk: dict[str, Any] = {
+    finish_reason = choice.get("finish_reason") or "stop"
+    delta: dict[str, Any] = {}
+    if msg.get("role"):
+        delta["role"] = msg["role"]
+    if msg.get("content") is not None:
+        delta["content"] = msg["content"]
+    if isinstance(msg.get("tool_calls"), list):
+        delta["tool_calls"] = [
+            {"index": idx, **tc} if (isinstance(tc, dict) and "index" not in tc) else tc
+            for idx, tc in enumerate(msg["tool_calls"])
+        ]
+    base_chunk = {
         "id": body.get("id") or "chatcmpl-proxy-rescued",
         "object": "chat.completion.chunk",
         "created": body.get("created") or 0,
         "model": body.get("model") or "",
+    }
+    first_chunk = {
+        **base_chunk,
         "choices": [{
             "index": 0,
-            "delta": {k: v for k, v in msg.items() if v is not None},
-            "finish_reason": choice.get("finish_reason") or "stop",
+            "delta": delta,
+            "finish_reason": None,
+        }],
+    }
+    final_chunk: dict[str, Any] = {
+        **base_chunk,
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": finish_reason,
         }],
     }
     if isinstance(body.get("usage"), dict):
-        chunk["usage"] = body["usage"]
+        final_chunk["usage"] = body["usage"]
 
     def _gen():
-        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode("utf-8")
+        if delta:
+            yield f"data: {json.dumps(first_chunk, ensure_ascii=False)}\n\n".encode("utf-8")
+        yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n".encode("utf-8")
         yield b"data: [DONE]\n\n"
 
     return StreamingResponse(_gen(), media_type="text/event-stream")
@@ -227,7 +275,7 @@ def _sse_from_completion(body: dict) -> StreamingResponse:
 
 @router.post("/v1/chat/completions")
 async def proxy_chat_completions(request: Request):
-    _require_loopback(request)
+    _require_loopback(request, require_json=True)
     try:
         body = await request.json()
     except ValueError as exc:
@@ -235,8 +283,10 @@ async def proxy_chat_completions(request: Request):
     if not isinstance(body, dict):
         raise HTTPException(400, "Request body must be a JSON object")
 
-    provider, target_url, api_key, model = await run_in_threadpool(_resolve_proxy_target, request, body)
+    provider, target_url, api_key, model, explicit_target = await run_in_threadpool(_resolve_proxy_target, request, body)
     upstream_payload = dict(body)
+    for internal_key in ("provider", "base_url", "target_base_url"):
+        upstream_payload.pop(internal_key, None)
     if model:
         upstream_payload["model"] = model
     want_stream = bool(upstream_payload.get("stream"))
@@ -261,21 +311,36 @@ async def proxy_chat_completions(request: Request):
                 stream=want_stream,
                 is_gemini=False,
                 allow_tool_strip=True,
-                allow_local=provider.builtin,
+                allow_image_strip=False,
+                allow_local=bool(provider and provider.builtin and not explicit_target),
             )
         )
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(502, f"Proxy upstream error: {exc}") from exc
+        safe_msg = api_proxy.redact_secret(str(exc), api_key)
+        raise HTTPException(502, f"Proxy upstream error: {safe_msg}") from exc
 
-    if not getattr(response, "ok", False):
-        status_code = int(getattr(response, "status_code", 502) or 502)
-        try:
-            err_body = response.json()
-        except ValueError:
-            err_body = {"error": {"message": getattr(response, "text", "")[:600], "proxy_meta": meta}}
+    status_code = int(getattr(response, "status_code", 502) or 502)
+    if not (200 <= status_code < 300):
+        if 300 <= status_code < 400:
+            err_body = {"error": {"message": f"Upstream returned unexpected redirect HTTP {status_code}", "proxy_meta": meta}}
+            out_status = 502
+        else:
+            out_status = status_code
+            try:
+                raw_err = response.json()
+                err_body = json.loads(api_proxy.redact_secret(json.dumps(raw_err, ensure_ascii=False), api_key))
+            except ValueError:
+                err_body = {
+                    "error": {
+                        "message": api_proxy.redact_secret(getattr(response, "text", ""), api_key)[:600],
+                        "proxy_meta": meta,
+                    }
+                }
         if hasattr(response, "close"):
             response.close()
-        return JSONResponse(err_body, status_code=status_code)
+        return JSONResponse(err_body, status_code=out_status)
 
     upstream_streamed = bool(final_payload.get("stream"))
     if want_stream and upstream_streamed:

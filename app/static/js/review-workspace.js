@@ -126,11 +126,7 @@
     permSelect.value = localStorage.getItem("manga_agent_default_mode") || document.getElementById("agent-mode")?.value || "edits";
     permSelect.addEventListener("change", () => {
       localStorage.setItem("manga_agent_default_mode", permSelect.value);
-      const agentMode = document.getElementById("agent-mode");
-      if (agentMode) {
-        agentMode.value = permSelect.value;
-        agentMode.dispatchEvent(new Event("change", { bubbles: true }));
-      }
+      document.dispatchEvent(new Event("agent-defaults-updated"));
     });
 
     const sandboxSelect = el("select", "ui-select settings-row-select");
@@ -138,11 +134,7 @@
     sandboxSelect.value = localStorage.getItem("manga_agent_default_sandbox") || document.getElementById("agent-sandbox")?.value || "workspace-write";
     sandboxSelect.addEventListener("change", () => {
       localStorage.setItem("manga_agent_default_sandbox", sandboxSelect.value);
-      const agentSandbox = document.getElementById("agent-sandbox");
-      if (agentSandbox) {
-        agentSandbox.value = sandboxSelect.value;
-        agentSandbox.dispatchEvent(new Event("change", { bubbles: true }));
-      }
+      document.dispatchEvent(new Event("agent-defaults-updated"));
     });
 
     const themeSection = el("div", "settings-block");
@@ -270,6 +262,7 @@
     let selectedProviderId = "";
     let idManuallyEdited = false;
     let currentModelsList = [];
+    let modelFetchSeq = 0;
 
     const slugifyId = (text) => text
       .normalize("NFD")
@@ -330,19 +323,6 @@
         sum.append(nameCode, pickBtn);
 
         const body = el("div", "settings-model-body");
-        const typesRow = el("div", "settings-model-row");
-        typesRow.append(el("span", "settings-field-help", "Loại đầu vào hỗ trợ:"));
-        const checks = el("div", "settings-model-checks");
-        [["Text", "Văn bản"], ["Image", "Hình ảnh"]].forEach(([, labelText]) => {
-          const lb = el("label", "settings-check-label");
-          const cb = document.createElement("input");
-          cb.type = "checkbox";
-          cb.checked = true;
-          lb.append(cb, el("span", "", labelText));
-          checks.append(lb);
-        });
-        typesRow.append(checks);
-
         const effortRow = el("div", "settings-model-row");
         effortRow.append(el("span", "settings-field-help", "Mức độ suy luận:"));
         const effortSelect = el("select", "ui-select settings-row-select");
@@ -361,7 +341,7 @@
         });
         effortRow.append(effortSelect);
 
-        body.append(typesRow, effortRow);
+        body.append(effortRow);
         item.append(sum, body);
         return item;
       });
@@ -374,31 +354,58 @@
 
     const fetchProviderModels = async (providerId, silent = false) => {
       if (!providerId) return window.showToast?.("Hãy chọn hoặc lưu nhà cung cấp trước.", "error");
+      const seq = ++modelFetchSeq;
       fetchModelsBtn.disabled = true;
       fetchModelsBtn.textContent = "Đang tải…";
       try {
-        const res = await fetch(`/api/visual_qc/providers/${encodeURIComponent(providerId)}/models`);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-        const models = data.models || [];
-        if (models.length && !localStorage.getItem(`manga_ai_model_${providerId}`)) {
-          localStorage.setItem(`manga_ai_model_${providerId}`, models[0]);
-          localStorage.setItem(`manga_agent_model_${providerId}`, models[0]);
-          localStorage.setItem(`manga_translation_vision_model_${providerId}`, models[0]);
+        const cacheApi = window.aiModelCache;
+        let models;
+        if (cacheApi?.fetchModels) {
+          models = await cacheApi.fetchModels(providerId, {
+            force: !silent,
+            onFresh: (fresh) => {
+              if (seq === modelFetchSeq && selectedProviderId === providerId) {
+                renderModelsBox(providerId, fresh);
+              }
+            },
+          });
+        } else {
+          const res = await fetch(`/api/visual_qc/providers/${encodeURIComponent(providerId)}/models${silent ? "" : "?refresh=1"}`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+          models = data.models || [];
         }
-        renderModelsBox(providerId, models);
-        if (!silent) window.showToast?.(`Đã tải ${models.length} mô hình.`, "success");
+        if (seq !== modelFetchSeq || selectedProviderId !== providerId) return;
+        const list = Array.isArray(models) ? models : [];
+        if (list.length && !localStorage.getItem(`manga_ai_model_${providerId}`)) {
+          localStorage.setItem(`manga_ai_model_${providerId}`, list[0]);
+          localStorage.setItem(`manga_agent_model_${providerId}`, list[0]);
+          localStorage.setItem(`manga_translation_vision_model_${providerId}`, list[0]);
+        }
+        renderModelsBox(providerId, list);
+        if (!silent) window.showToast?.(`Đã tải ${list.length} mô hình.`, "success");
       } catch (err) {
-        renderModelsBox(providerId, []);
+        if (seq === modelFetchSeq && selectedProviderId === providerId) renderModelsBox(providerId, []);
         if (!silent) window.showToast?.("Không thể tải danh sách mô hình: " + err.message, "error");
       } finally {
-        fetchModelsBtn.disabled = false;
-        fetchModelsBtn.textContent = "Tải danh sách mô hình";
+        if (seq === modelFetchSeq) {
+          fetchModelsBtn.disabled = false;
+          fetchModelsBtn.textContent = "Tải danh sách mô hình";
+        }
       }
     };
     fetchModelsBtn.addEventListener("click", () => fetchProviderModels(customProviderId(), false));
 
     const selectProviderTab = (info) => {
+      modelFetchSeq += 1;
+      fetchModelsBtn.disabled = false;
+      fetchModelsBtn.textContent = "Tải danh sách mô hình";
+      const geminiOpt = [...customProtocol.options].find((o) => o.value === "gemini");
+      const allowGemini = Boolean(info?.builtin && info?.protocol === "gemini");
+      if (geminiOpt) {
+        geminiOpt.disabled = !allowGemini;
+        geminiOpt.hidden = !allowGemini;
+      }
       if (!info) {
         selectedProviderId = "";
         idManuallyEdited = false;
@@ -420,7 +427,8 @@
         customId.value = info.id || "";
         customLabel.value = info.label || info.id || "";
         customBase.value = info.api_base || "";
-        customProtocol.value = info.protocol || "openai";
+        customProtocol.value = allowGemini ? "gemini" : (info.protocol || "openai");
+        if (!allowGemini && customProtocol.value === "gemini") customProtocol.value = "openai";
         customKey.value = "";
         customKey.placeholder = info.configured ? "Đã lưu khóa — nhập khóa mới nếu muốn thay thế hoặc bổ sung" : "Nhập khóa API của bạn";
         customStatus.textContent = info.configured ? (info.count > 1 ? `Đã kết nối · ${info.count} khóa` : "Đã kết nối") : "Chưa có khóa";
@@ -451,6 +459,7 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        window.aiModelCache?.invalidate?.(id);
         selectedProviderId = id;
         window.showToast?.(`Đã lưu nhà cung cấp ${customLabel.value.trim()} (${data.api_base || ""}, ${data.count || 1} khóa).`, "success");
         await refresh();
@@ -470,6 +479,7 @@
         const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(id)}/key?remove_config=true&provider_label=${encodeURIComponent(customLabel.value.trim() || id)}`, { method: "DELETE" });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        window.aiModelCache?.invalidate?.(id);
         localStorage.removeItem(`manga_ai_model_${id}`);
         localStorage.removeItem(`manga_agent_model_${id}`);
         localStorage.removeItem(`manga_translation_vision_model_${id}`);

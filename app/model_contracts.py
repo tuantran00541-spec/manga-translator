@@ -125,3 +125,64 @@ def decode_lama_output(output, contract: LamaModelContract) -> np.ndarray:
         raise ValueError(f"Unknown LaMa output range contract: {contract.output_range}")
 
     return np.clip(np.rint(arr[0].transpose(1, 2, 0)), 0, 255).astype(np.uint8)
+
+
+@dataclass(frozen=True)
+class KiuyhaModelContract:
+    input_name: str
+    output_name: str
+    input_size: int | None
+    output_channels: int
+    num_anchors: int | None
+
+
+def validate_kiuyha_session(
+    session,
+    *,
+    expected_size: int = 1280,
+    expected_channels: int = 5,
+) -> KiuyhaModelContract:
+    inputs = list(session.get_inputs())
+    if len(inputs) != 1:
+        raise ValueError(f"Kiuyha model must have exactly 1 input; got {len(inputs)}")
+    inp = inputs[0]
+    _check_float(inp, "Kiuyha input")
+    in_shape = _shape(inp)
+    if len(in_shape) != 4 or in_shape[1] != 3:
+        raise ValueError(f"Kiuyha input must be NCHW with 3 channels; got {in_shape}")
+    if not (_is_dynamic(in_shape[0]) or in_shape[0] == 1):
+        raise ValueError(f"Kiuyha input batch must be symbolic or 1; got {in_shape[0]!r}")
+    h, w = in_shape[2], in_shape[3]
+    for axis, label in ((h, "height"), (w, "width")):
+        if not _is_dynamic(axis) and int(axis) != int(expected_size):
+            raise ValueError(
+                f"Kiuyha input {label} must be {expected_size} or symbolic; got {axis!r}"
+            )
+    if not _is_dynamic(h) and not _is_dynamic(w) and int(h) != int(w):
+        raise ValueError(f"Kiuyha input must be square; got {in_shape}")
+    input_size = int(h) if not _is_dynamic(h) else None
+
+    outputs = list(session.get_outputs())
+    if len(outputs) != 1:
+        raise ValueError(f"Kiuyha model must have exactly 1 output; got {len(outputs)}")
+    out = outputs[0]
+    _check_float(out, "Kiuyha output")
+    out_shape = _shape(out)
+    if len(out_shape) != 3 or out_shape[1] != expected_channels:
+        raise ValueError(
+            f"Kiuyha output must be [N, {expected_channels}, anchors]; got {out_shape}"
+        )
+    if not (_is_dynamic(out_shape[0]) or out_shape[0] == 1):
+        raise ValueError(f"Kiuyha output batch must be symbolic or 1; got {out_shape[0]!r}")
+    anchors_dim = out_shape[2]
+    if not _is_dynamic(anchors_dim) and int(anchors_dim) <= 0:
+        raise ValueError(f"Kiuyha output anchors must be positive; got {anchors_dim!r}")
+    num_anchors = int(anchors_dim) if not _is_dynamic(anchors_dim) else None
+
+    return KiuyhaModelContract(
+        input_name=inp.name,
+        output_name=out.name,
+        input_size=input_size,
+        output_channels=int(out_shape[1]),
+        num_anchors=num_anchors,
+    )

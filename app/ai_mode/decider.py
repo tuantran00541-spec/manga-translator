@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import cv2
 import requests
+from fastapi import HTTPException
 
 from app import api_proxy
 from app.logging_config import logger
@@ -54,6 +55,7 @@ def data_url(image) -> str | None:
 
 
 def ask(api_base: str, api_key: str, url: str, questions: dict) -> dict | None:
+    response = None
     try:
         response, _, _ = api_proxy.proxy_post(
             url=f"{api_base}/evaluate",
@@ -67,12 +69,18 @@ def ask(api_base: str, api_key: str, url: str, questions: dict) -> dict | None:
             is_gemini=False,
             post_fn=requests.post,
         )
-        if not response.ok:
+        if not api_proxy.is_success_response(response):
             return None
-        answers = response.json().get("answers")
+        body = response.json()
+        if not isinstance(body, dict):
+            return None
+        answers = body.get("answers")
         return answers if isinstance(answers, dict) else None
-    except (requests.RequestException, ValueError):
+    except (requests.RequestException, HTTPException, ValueError, TypeError, AttributeError):
         return None
+    finally:
+        if response is not None and hasattr(response, "close"):
+            response.close()
 
 
 def _all(api_base: str, api_key: str, urls: list, questions: dict) -> list:
