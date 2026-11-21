@@ -29,6 +29,7 @@ OCR_METADATA_FIELDS = (
     "ocr_target_mode",
     "ocr_retry_applied",
     "ocr_text_color",
+    "ocr_color_profile",
     "ocr_font_size",
     "ocr_text_region",
 )

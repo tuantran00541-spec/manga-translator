@@ -399,6 +399,11 @@ def render_boxes_legacy(
             r_val = 0
 
         try:
+            legacy_profile = (
+                box.get("ocr_color_profile")
+                if _is_auto_style(box_color) and isinstance(box.get("ocr_color_profile"), dict)
+                else None
+            )
             image = render_text_in_box(
                 image,
                 translation.strip(),
@@ -411,6 +416,7 @@ def render_boxes_legacy(
                 stroke_color=stroke_c,
                 bg_color=bg_c,
                 corner_radius=r_val,
+                color_profile=legacy_profile,
             )
             rendered_count += 1
         except Exception as e:
@@ -522,6 +528,11 @@ def render_text_objects(
             coords = (x1, clipped_y1, x2, clipped_y2)
 
         obj_style = obj.get("style") or {}
+        requested_color = style_get(colors_dict, oid)
+        stored_color = obj_style.get("color", "auto")
+        user_color_auto = _is_auto_style(
+            requested_color if requested_color is not None else stored_color
+        )
         lettering_c = obj.get("lettering_color")
         ocr_color_default = (
             lettering_c
@@ -529,10 +540,16 @@ def render_text_objects(
             else (obj.get("ocr_text_color") or lettering_c)
         )
         box_color = _resolve_ocr_style(
-            style_get(colors_dict, oid),
-            obj_style.get("color", "auto"),
+            requested_color,
+            stored_color,
             ocr_color_default,
             "auto",
+        )
+        raw_color_profile = obj.get("ocr_color_profile")
+        active_color_profile = (
+            raw_color_profile
+            if user_color_auto and isinstance(raw_color_profile, dict)
+            else None
         )
         box_font = style_get(fonts_dict, oid)
         if box_font is None:
@@ -600,6 +617,7 @@ def render_text_objects(
             container=obj.get("container"),
             enlarge=bool(obj.get("enlarge")),
             bubble_mask=obj.get("bubble_mask"),
+            color_profile=active_color_profile,
         )
         bounds = obj.get("letter_bounds")
         if _valid_region(bounds):

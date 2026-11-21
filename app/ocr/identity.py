@@ -226,6 +226,14 @@ def stamp_machine_cache(
     else:
         box.pop("ocr_text_color", None)
 
+    from app.ocr.visual_metadata import normalize_color_profile
+
+    color_profile = normalize_color_profile(_metadata_value(metadata, "color_profile"))
+    if color_profile:
+        box["ocr_color_profile"] = color_profile
+    else:
+        box.pop("ocr_color_profile", None)
+
     font_size = _metadata_value(metadata, "font_size")
     try:
         parsed_font_size = int(round(float(font_size))) if font_size is not None else 0

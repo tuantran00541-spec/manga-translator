@@ -280,6 +280,7 @@ class OCRService:
             "target_mode": str(box_snapshot.get("ocr_target_mode") or "all"),
             "retry_applied": bool(box_snapshot.get("ocr_retry_applied")),
             "text_color": box_snapshot.get("ocr_text_color"),
+            "color_profile": copy.deepcopy(box_snapshot.get("ocr_color_profile")),
             "font_size": box_snapshot.get("ocr_font_size"),
             "text_region": copy.deepcopy(box_snapshot.get("ocr_text_region")),
         }

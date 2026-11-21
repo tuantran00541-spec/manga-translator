@@ -1,7 +1,8 @@
+import math
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from app.detector.bubble_mask import mask_inscribed_rect
 from app.parameters import (
@@ -65,6 +66,159 @@ __all__ = [
 
 
 
+def _composite_rgba(image: Image.Image, patch_rgba: Image.Image, ox: int, oy: int) -> None:
+    iw, ih = image.size
+    pw, ph = patch_rgba.size
+    dx0 = max(0, ox)
+    dy0 = max(0, oy)
+    dx1 = min(iw, ox + pw)
+    dy1 = min(ih, oy + ph)
+    if dx1 <= dx0 or dy1 <= dy0:
+        return
+    sx0 = dx0 - ox
+    sy0 = dy0 - oy
+    sx1 = sx0 + (dx1 - dx0)
+    sy1 = sy0 + (dy1 - dy0)
+    dst = image.crop((dx0, dy0, dx1, dy1)).convert("RGBA")
+    src = patch_rgba.crop((sx0, sy0, sx1, sy1))
+    blended = Image.alpha_composite(dst, src)
+    image.paste(blended if image.mode == "RGBA" else blended.convert(image.mode), (dx0, dy0))
+
+
+def _gradient_rgb_array(
+    height: int,
+    width: int,
+    direction: str,
+    stops_rgb: list[tuple[int, int, int]],
+) -> np.ndarray:
+    h = max(1, int(height))
+    w = max(1, int(width))
+    xp = np.linspace(0.0, 1.0, len(stops_rgb))
+    stops_arr = np.asarray(stops_rgb, dtype=np.float32)
+    if direction == "horizontal":
+        t = np.linspace(0.0, 1.0, w)
+        ramp = np.stack([np.interp(t, xp, stops_arr[:, ch]) for ch in range(3)], axis=1)
+        rgb = np.broadcast_to(ramp[None, :, :], (h, w, 3))
+    else:
+        t = np.linspace(0.0, 1.0, h)
+        ramp = np.stack([np.interp(t, xp, stops_arr[:, ch]) for ch in range(3)], axis=1)
+        rgb = np.broadcast_to(ramp[:, None, :], (h, w, 3))
+    return np.clip(np.rint(rgb), 0, 255).astype(np.uint8)
+
+
+def _draw_outer_glow(
+    image: Image.Image,
+    line_layouts: list[tuple[int, int, str]],
+    ink_box: tuple[int, int, int, int],
+    font,
+    offsets: list[tuple[int, int]],
+    glow_rgb: tuple[int, int, int],
+    glow_radius: int,
+    stroke_w: int,
+) -> None:
+    radius = max(2, min(12, int(glow_radius)))
+    pad_g = max(4, int(math.ceil(radius * 3.0)) + stroke_w + 2)
+    px0 = ink_box[0] - pad_g
+    py0 = ink_box[1] - pad_g
+    pw = max(1, (ink_box[2] + pad_g) - px0)
+    ph = max(1, (ink_box[3] + pad_g) - py0)
+    mask = Image.new("L", (pw, ph), 0)
+    mdraw = ImageDraw.Draw(mask)
+    for start_x, cur_y, line in line_layouts:
+        for dx, dy in offsets:
+            mdraw.text(
+                (start_x - px0 + dx, cur_y - py0 + dy),
+                line,
+                font=font,
+                fill=255,
+                stroke_width=stroke_w,
+                stroke_fill=255,
+            )
+    blurred = mask.filter(ImageFilter.GaussianBlur(radius=radius))
+    alpha = np.clip(np.asarray(blurred, dtype=np.float32) * 1.35, 0.0, 255.0).astype(np.uint8)
+    rgba = np.empty((ph, pw, 4), dtype=np.uint8)
+    rgba[:, :, 0] = glow_rgb[0]
+    rgba[:, :, 1] = glow_rgb[1]
+    rgba[:, :, 2] = glow_rgb[2]
+    rgba[:, :, 3] = alpha
+    _composite_rgba(image, Image.fromarray(rgba, mode="RGBA"), px0, py0)
+
+
+def _draw_gradient_line(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    start_x: int,
+    cur_y: int,
+    line: str,
+    font,
+    offsets: list[tuple[int, int]],
+    is_bold: bool,
+    direction: str,
+    stops_rgb: list[tuple[int, int, int]],
+) -> None:
+    gx0, gy0, gx1, gy1 = draw.textbbox((start_x, cur_y), line, font=font)
+    bold = 1 if is_bold else 0
+    lx0 = gx0 - 2
+    ly0 = gy0 - 2
+    lw = max(1, (gx1 + bold + 2) - lx0)
+    lh = max(1, (gy1 + bold + 2) - ly0)
+    mask = Image.new("L", (lw, lh), 0)
+    mdraw = ImageDraw.Draw(mask)
+    for dx, dy in offsets:
+        mdraw.text((start_x - lx0 + dx, cur_y - ly0 + dy), line, font=font, fill=255)
+    alpha = np.asarray(mask, dtype=np.uint8)
+    ys, xs = np.nonzero(alpha)
+    if ys.size == 0:
+        return
+    ny0, ny1 = int(ys.min()), int(ys.max()) + 1
+    nx0, nx1 = int(xs.min()), int(xs.max()) + 1
+    sub_alpha = alpha[ny0:ny1, nx0:nx1]
+    grad_rgb = _gradient_rgb_array(ny1 - ny0, nx1 - nx0, direction, stops_rgb)
+    rgba = np.dstack([grad_rgb, sub_alpha])
+    _composite_rgba(image, Image.fromarray(rgba, mode="RGBA"), lx0 + nx0, ly0 + ny0)
+
+
+def _parse_color_profile(color_profile: dict | None) -> tuple[
+    tuple[int, int, int] | None,
+    str | None,
+    list[tuple[int, int, int]] | None,
+    tuple[int, int, int] | None,
+    tuple[int, int, int] | None,
+    int,
+]:
+    if not isinstance(color_profile, dict):
+        return None, None, None, None, None, 0
+    prof_fill = parse_color(color_profile.get("fill"), default=None) if color_profile.get("fill") else None
+    grad_dir: str | None = None
+    grad_stops: list[tuple[int, int, int]] | None = None
+    grad = color_profile.get("gradient")
+    if isinstance(grad, dict):
+        d = str(grad.get("direction") or "").strip().lower()
+        raw_stops = grad.get("stops") or []
+        if d in ("vertical", "horizontal") and isinstance(raw_stops, (list, tuple)) and len(raw_stops) >= 2:
+            parsed = [parse_color(s, default=None) for s in raw_stops[:5]]
+            if all(p is not None for p in parsed):
+                grad_dir = d
+                grad_stops = parsed
+    prof_stroke = (
+        parse_color(color_profile.get("stroke_color"), default=None)
+        if color_profile.get("stroke_color")
+        else None
+    )
+    prof_glow = (
+        parse_color(color_profile.get("glow_color"), default=None)
+        if color_profile.get("glow_color")
+        else None
+    )
+    glow_radius = 0
+    if prof_glow is not None:
+        try:
+            glow_radius = max(2, min(12, int(round(float(color_profile.get("glow_radius") or 5)))))
+        except (TypeError, ValueError):
+            glow_radius = 5
+    return prof_fill, grad_dir, grad_stops, prof_stroke, prof_glow, glow_radius
+
+
 def render_text_in_box(
     image: Image.Image,
     text: str,
@@ -92,6 +246,7 @@ def render_text_in_box(
     bubble_mask: dict | None = None,
     letters=None,
     letters_box: tuple[int, int, int, int] | None = None,
+    color_profile: dict | None = None,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -124,17 +279,30 @@ def render_text_in_box(
         font_path = Path(font_path)
     font_path, text = drawable(font_path, text)
 
+    (
+        profile_fill,
+        profile_grad_dir,
+        profile_grad_stops,
+        profile_stroke_rgb,
+        profile_glow_rgb,
+        profile_glow_radius,
+    ) = _parse_color_profile(color_profile)
+
     if fill is None or fill == "auto" or fill == "":
-        bg_rgb = (
-            parse_color(bg_color, default=None)
-            if bg_color and str(bg_color).lower() not in ("transparent", "none", "")
-            else None
-        )
-        if bg_rgb is not None:
-            text_color = (255, 255, 255) if _luminance(bg_rgb) < 0.179 else (0, 0, 0)
+        if profile_fill is not None:
+            text_color = profile_fill
+            explicit_fill = True
         else:
-            text_color = auto_detect_text_color(image, box)
-        explicit_fill = False
+            bg_rgb = (
+                parse_color(bg_color, default=None)
+                if bg_color and str(bg_color).lower() not in ("transparent", "none", "")
+                else None
+            )
+            if bg_rgb is not None:
+                text_color = (255, 255, 255) if _luminance(bg_rgb) < 0.179 else (0, 0, 0)
+            else:
+                text_color = auto_detect_text_color(image, box)
+            explicit_fill = False
     else:
         text_color = parse_color(fill, default=(0, 0, 0))
         explicit_fill = True
@@ -158,11 +326,18 @@ def render_text_in_box(
             bg_ref = (bg_grey, bg_grey, bg_grey)
         if _contrast(text_color, bg_ref) < LOW_CONTRAST_RATIO:
             stroke_w = max(stroke_w, LOW_CONTRAST_STROKE_WIDTH)
+        if profile_stroke_rgb is not None:
+            stroke_w = max(stroke_w, 2)
 
+    profile_stroke_applied = False
     if stroke_color is None or stroke_color == "auto" or stroke_color == "":
         stroke_auto = True
-        luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
-        stroke_c = (0, 0, 0) if luminance > 128 else (255, 255, 255)
+        if profile_stroke_rgb is not None:
+            stroke_c = profile_stroke_rgb
+            profile_stroke_applied = True
+        else:
+            luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
+            stroke_c = (0, 0, 0) if luminance > 128 else (255, 255, 255)
     else:
         stroke_auto = False
         stroke_c = parse_color(stroke_color, default=(0, 0, 0))
@@ -342,9 +517,17 @@ def render_text_in_box(
 
     fill_fallback = None
     if explicit_fill:
+        def _protected_by_profile_stroke(bg_rgb_ref: tuple[float, float, float]) -> bool:
+            return bool(
+                profile_stroke_rgb is not None
+                and stroke_w >= 2
+                and _contrast(stroke_c, bg_rgb_ref) >= LOW_CONTRAST_RATIO
+                and _contrast(text_color, stroke_c) >= 2.0
+            )
+
         if bg_color and bg_color not in ("transparent", "none", ""):
             local_bg = parse_color(bg_color, default=(255, 255, 255))
-            if _contrast(text_color, local_bg) < LOW_CONTRAST_RATIO:
+            if _contrast(text_color, local_bg) < LOW_CONTRAST_RATIO and not _protected_by_profile_stroke(local_bg):
                 bg_lum = (local_bg[0] * 299 + local_bg[1] * 587 + local_bg[2] * 114) / 1000
                 text_color = (0, 0, 0) if bg_lum > 128 else (255, 255, 255)
                 fill_fallback = "pale_to_auto"
@@ -367,22 +550,31 @@ def render_text_in_box(
             vals = grey[ring]
             if vals.size >= 50:
                 bg_grey = float(np.percentile(vals, 75))
-                if _contrast(text_color, (bg_grey, bg_grey, bg_grey)) < LOW_CONTRAST_RATIO:
+                bg_ref_ring = (bg_grey, bg_grey, bg_grey)
+                if _contrast(text_color, bg_ref_ring) < LOW_CONTRAST_RATIO and not _protected_by_profile_stroke(bg_ref_ring):
                     text_color = auto_detect_text_color(image, (x1, y1, x2, y2))
                     fill_fallback = "pale_to_auto"
-        if fill_fallback is not None and stroke_auto:
-            luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
-            stroke_c = (0, 0, 0) if luminance > 128 else (255, 255, 255)
+        if fill_fallback is not None:
+            profile_grad_dir = None
+            profile_grad_stops = None
+            profile_glow_rgb = None
+            profile_glow_radius = 0
+            if stroke_auto:
+                profile_stroke_applied = False
+                luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
+                stroke_c = (0, 0, 0) if luminance > 128 else (255, 255, 255)
         if stats is not None and fill_fallback is not None:
             stats["fill_fallback"] = fill_fallback
 
     ink_box = None
+    line_layouts: list[tuple[int, int, str]] = []
     for i, line in enumerate(lines):
         start_x, line_w = _line_start_x(draw, line, font, x1=x1, pad=pad, box_w=box_w,
                                         h_align=h_align, centred=centred, curved=curved,
                                         line_centres=line_centres, draw_spans=draw_spans,
                                         i=i, line_count=len(lines))
         cur_y = start_y + i * line_height
+        line_layouts.append((start_x, cur_y, line))
         if line_w > 0:
             bold = 1 if is_bold else 0
             gx0, gy0, gx1, gy1 = draw.textbbox(
@@ -396,17 +588,63 @@ def render_text_in_box(
             ink_box = line_box if ink_box is None else (
                 min(ink_box[0], line_box[0]), min(ink_box[1], line_box[1]),
                 max(ink_box[2], line_box[2]), max(ink_box[3], line_box[3]))
-        for dx, dy in offsets:
-            draw.text(
-                (start_x + dx, cur_y + dy),
+
+    if profile_glow_rgb is not None and profile_glow_radius > 0 and ink_box is not None:
+        _draw_outer_glow(
+            image,
+            line_layouts,
+            ink_box,
+            font,
+            offsets,
+            profile_glow_rgb,
+            profile_glow_radius,
+            stroke_w,
+        )
+
+    use_gradient = bool(profile_grad_dir and profile_grad_stops and len(profile_grad_stops) >= 2)
+    for start_x, cur_y, line in line_layouts:
+        if use_gradient:
+            if stroke_w > 0:
+                for dx, dy in offsets:
+                    draw.text(
+                        (start_x + dx, cur_y + dy),
+                        line,
+                        font=font,
+                        fill=stroke_c,
+                        stroke_width=stroke_w,
+                        stroke_fill=stroke_c,
+                    )
+            _draw_gradient_line(
+                image,
+                draw,
+                start_x,
+                cur_y,
                 line,
-                font=font,
-                fill=text_color,
-                stroke_width=stroke_w,
-                stroke_fill=stroke_c,
+                font,
+                offsets,
+                is_bold,
+                profile_grad_dir,
+                profile_grad_stops,
             )
-    if stats is not None and ink_box is not None:
-        stats["ink_box"] = ink_box
+        else:
+            for dx, dy in offsets:
+                draw.text(
+                    (start_x + dx, cur_y + dy),
+                    line,
+                    font=font,
+                    fill=text_color,
+                    stroke_width=stroke_w,
+                    stroke_fill=stroke_c,
+                )
+    if stats is not None:
+        if ink_box is not None:
+            stats["ink_box"] = ink_box
+        if use_gradient or profile_stroke_applied or (profile_glow_rgb is not None and profile_glow_radius > 0):
+            stats["color_profile_applied"] = {
+                "gradient": use_gradient,
+                "stroke": profile_stroke_applied,
+                "glow": bool(profile_glow_rgb is not None and profile_glow_radius > 0 and ink_box is not None),
+            }
 
     return image
 
