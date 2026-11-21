@@ -18,6 +18,23 @@ DEFAULT = [("read", ".env", "deny"), ("read", ".env.*", "deny"), ("read", "*.env
            ("edit", ".env", "deny"), ("edit", ".env.*", "deny"), ("edit", "*.env", "deny"),
            ("read", ".env.example", "allow"), ("read", ".env.sample", "allow"),
            ("read", "/proc/*/environ", "deny"),
+           ("read", "*/.ssh/*", "deny"), ("read", ".ssh/*", "deny"),
+           ("read", "*/.aws/*", "deny"), ("read", ".aws/*", "deny"),
+           ("read", "*/.gnupg/*", "deny"), ("read", ".gnupg/*", "deny"),
+           ("read", "*/.netrc", "deny"), ("read", ".netrc", "deny"),
+           ("read", "*/.git-credentials", "deny"), ("read", ".git-credentials", "deny"),
+           ("read", "*/.npmrc", "deny"), ("read", ".npmrc", "deny"),
+           ("read", "*/.pypirc", "deny"), ("read", ".pypirc", "deny"),
+           ("read", "*/.config/manga-translator/*", "deny"),
+           ("read", "*/.manga-agent/mcp.json", "deny"),
+           ("read", "*/.codex/auth.json", "deny"),
+           ("read", "*/.claude/.credentials.json", "deny"),
+           ("read", "*.pem", "deny"), ("edit", "*.pem", "deny"),
+           ("read", "*.key", "deny"), ("edit", "*.key", "deny"),
+           ("read", "*.p12", "deny"), ("read", "*.pfx", "deny"),
+           ("read", "*credentials*", "deny"), ("edit", "*credentials*", "deny"),
+           ("read", "id_rsa*", "deny"), ("read", "id_ed25519*", "deny"),
+           ("read", "secrets.json", "deny"), ("edit", "secrets.json", "deny"),
            ("edit", ".git/*", "deny"), ("edit", "*/.git/*", "deny")] + [
     ("bash", pattern, "ask") for pattern in (
         "rm *-r*", "rm *-R*", "rm *--recursive*", "git reset --hard*", "git clean*", "git push*", "git config*", "git checkout -- *",
@@ -26,12 +43,17 @@ DEFAULT = [("read", ".env", "deny"), ("read", ".env.*", "deny"), ("read", "*.env
 SAFE_COMMANDS = {"ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "rg", "tree", "stat", "file", "du", "df", "sort", "uniq", "diff",
                  "which", "whoami", "date", "uname", "basename", "dirname", "realpath", "nl", "cut", "tr", "printf", "true", "id", "env"}
 SAFE_GIT = {"status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "describe", "shortlog"}
+_GIT_UNSAFE_FLAGS = ("-c", "--config-env", "--ext-diff", "--textconv", "--exec-path", "--git-dir", "--work-tree", "--output", "--paginate")
 WRAPPERS = {"python", "python3", "node", "bash", "sh", "zsh", "env", "xargs", "eval", "exec", "ssh", "perl", "ruby", "npx", "uv", "uvx", "pip", "npm", "make", "docker", "find", "time", "nohup", "watch"}
 SPLIT = re.compile(r"&&|\|\||&|;|\||\n")
 _SUBST_TRICKS = re.compile(r"`|\$\(|<\(|>\(")
 _REDIRECT_OPS = re.compile(r">>|>|<<|<")
 _SHELL_OPS = re.compile(r"[><&]")
+_GLOB_CHARS = re.compile(r"[*?\[\]]")
+_READONLY_UNSAFE_EXPANSION = re.compile(r"[*?\[\]{}~$%]")
 _PROC_ENVIRON = re.compile(r"/proc/(?:self|\d+|\$\$)/environ")
+_DENY_GLOB_SAMPLES = (".env", ".env.local", ".env.production", "app.env", ".netrc", ".git-credentials", ".npmrc", ".pypirc", "secrets.json", "server.pem", "private.key", "id_rsa", "credentials.json")
+_DEFAULT_RULES: list[tuple[str, str, str, str]] = [("default", *r) for r in DEFAULT]
 
 
 def _mask_quotes(command: str) -> str:
@@ -151,15 +173,38 @@ def _verdict(rules: list[Rule], category: str, subject: str) -> str | None:
 WRITERS = {"cp", "mv", "rm", "ln", "touch", "tee", "chmod", "chown", "install", "truncate", "dd", "rsync", "patch", "sed", "perl", "unzip", "tar"}
 
 
+def _glob_matches_denied(specific: list[Rule], token: str, categories: tuple[str, ...]) -> bool:
+    if not _GLOB_CHARS.search(token):
+        return False
+    base = token.replace("\\", "/").rsplit("/", 1)[-1]
+    for sample in _DENY_GLOB_SAMPLES:
+        if fnmatch.fnmatchcase(sample, base) or fnmatch.fnmatchcase(sample, token.replace("\\", "/")):
+            if any(_verdict(specific, c, sample) == "deny" for c in categories):
+                return True
+    for _scope, rule_category, pattern, action in specific:
+        if action != "deny" or rule_category not in (*categories, "*"):
+            continue
+        clean_pat = pattern.replace("\\", "/")
+        if not _GLOB_CHARS.search(clean_pat):
+            if fnmatch.fnmatchcase(clean_pat, token.replace("\\", "/")) or fnmatch.fnmatchcase(clean_pat.rsplit("/", 1)[-1], base):
+                return True
+    return False
+
+
 def _names_denied_path(rules: list[Rule], command: str) -> bool:
     specific = [r for r in rules if r[2] not in ("*", "**")]
     for part in _shell_parts(command):
         masked = _mask_quotes(part)
         words = part.split()
         writes = bool(words) and (words[0].rsplit("/", 1)[-1] in WRITERS or ">" in masked)
+        categories = ("edit", "read") if writes else ("read",)
         for token in re.split(r"[\s<>|&;()=]+", part):
-            token = _dequote(token).removeprefix("./")
-            if token and not token.startswith("-") and any(_verdict(specific, c, token) == "deny" for c in (("edit", "read") if writes else ("read",))):
+            token = _dequote(token).removeprefix("./").replace("\\", "/")
+            if not token or token.startswith("-"):
+                continue
+            if any(_verdict(specific, c, token) == "deny" for c in categories):
+                return True
+            if _glob_matches_denied(specific, token, categories):
                 return True
     return False
 
@@ -202,17 +247,32 @@ def check(rules: list[Rule], name: str, args: dict, path_of) -> str | None:
     return None
 
 
+def _git_has_unsafe_flag(words: list[str]) -> bool:
+    for w in words[1:]:
+        clean = _dequote(w)
+        if clean == "-c" or clean.startswith("-c"):
+            return True
+        if any(clean == flag or clean.startswith(flag + "=") for flag in _GIT_UNSAFE_FLAGS):
+            return True
+    return False
+
+
 def safe_readonly(command: str) -> bool:
-    if _SUBST_TRICKS.search(command) or _REDIRECT_OPS.search(_mask_quotes(command)):
+    masked = _mask_quotes(command)
+    if _SUBST_TRICKS.search(command) or _REDIRECT_OPS.search(masked) or _READONLY_UNSAFE_EXPANSION.search(masked):
+        return False
+    if "%" in command:
         return False
     if _PROC_ENVIRON.search(_dequote(command)):
+        return False
+    if _names_denied_path(_DEFAULT_RULES, command):
         return False
     parts = [p.strip() for p in _shell_parts(command) if p.strip()]
     for part in parts:
         words = part.split()
         if not words:
             continue
-        if words[0] == "git" and len(words) > 1 and words[1] in SAFE_GIT and not any(w.startswith("--output") for w in words):
+        if words[0] == "git" and len(words) > 1 and words[1] in SAFE_GIT and not _git_has_unsafe_flag(words):
             continue
         if words[0] == "env" or words[0] not in SAFE_COMMANDS or _writes_or_runs(words):
             return False

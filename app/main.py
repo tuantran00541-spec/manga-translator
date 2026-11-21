@@ -3,6 +3,7 @@ import mimetypes
 import os
 from pathlib import Path
 import time
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -204,7 +205,73 @@ class LocalHostOnlyMiddleware:
         await self.app(scope, receive, send)
 
 
+_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_EXTENSION_UPLOAD_PATHS = frozenset({"/api/extension/hello", "/api/chapter/upload"})
+_DISALLOWED_SIMPLE_CONTENT_TYPES = frozenset({"text/plain", "application/x-www-form-urlencoded"})
+_SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"no-referrer"),
+)
+
+
+class CSRFAndSecurityHeadersMiddleware:
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        method = str(scope.get("method") or "GET").upper()
+        path = str(scope.get("path") or "")
+        headers = {k.lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+
+        if method in _STATE_CHANGING_METHODS and path.startswith("/api/"):
+            req_host = (headers.get(b"host") or "").strip().lower()
+            origin = (headers.get(b"origin") or "").strip()
+            sec_fetch = (headers.get(b"sec-fetch-site") or "").strip().lower()
+            is_ext_origin = origin.lower().startswith("chrome-extension://") and path in _EXTENSION_UPLOAD_PATHS
+
+            if sec_fetch and sec_fetch not in ("same-origin", "none") and not is_ext_origin:
+                await JSONResponse({"detail": "Cross-site requests are forbidden"}, status_code=403)(scope, receive, send)
+                return
+
+            if origin and not is_ext_origin:
+                parsed = urlsplit(origin)
+                if parsed.scheme not in ("http", "https") or not parsed.netloc or (req_host and parsed.netloc.lower() != req_host):
+                    await JSONResponse({"detail": "Cross-origin requests are forbidden"}, status_code=403)(scope, receive, send)
+                    return
+            elif not origin:
+                referer = (headers.get(b"referer") or "").strip()
+                if referer:
+                    parsed_ref = urlsplit(referer)
+                    if parsed_ref.netloc and req_host and parsed_ref.netloc.lower() != req_host:
+                        await JSONResponse({"detail": "Cross-origin requests are forbidden"}, status_code=403)(scope, receive, send)
+                        return
+
+            ctype = (headers.get(b"content-type") or "").split(";", 1)[0].strip().lower()
+            if ctype in _DISALLOWED_SIMPLE_CONTENT_TYPES:
+                await JSONResponse({"detail": "Unsupported Content-Type"}, status_code=415)(scope, receive, send)
+                return
+
+        async def send_with_headers(message):
+            if message.get("type") == "http.response.start":
+                raw_headers = list(message.get("headers") or [])
+                existing = {k.lower() for k, _ in raw_headers}
+                for hk, hv in _SECURITY_HEADERS:
+                    if hk not in existing:
+                        raw_headers.append((hk, hv))
+                message = {**message, "headers": raw_headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(CSRFAndSecurityHeadersMiddleware)
 app.add_middleware(LocalHostOnlyMiddleware)
 
 

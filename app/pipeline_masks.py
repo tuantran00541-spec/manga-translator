@@ -24,6 +24,7 @@ from app.manifest_utils import (
 from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD
 from app.region_policy import subtract_regions_from_mask
+from app.security import validate_managed_path
 
 
 def _ed(name: str, fallback):
@@ -39,6 +40,11 @@ def _processed_dir_root() -> Path:
         return Path(editing_mod.PROCESSED_DIR)
     from app.config import PROCESSED_DIR
     return Path(PROCESSED_DIR)
+
+
+def _raw_dir_root() -> Path:
+    import app.config as _app_config
+    return Path(_app_config.RAW_DIR)
 
 
 class PipelineMasksMixin:
@@ -64,7 +70,7 @@ class PipelineMasksMixin:
                     raise ValueError("Cannot repaint a skipped page; unskip it first")
                 if page.get("process_required"):
                     raise ValueError("Cannot repaint a page that requires processing")
-                img_path = Path(page["original"])
+                img_path = validate_managed_path(page["original"], _raw_dir_root() / chapter_id)
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
                 preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
                 target_clean_revision = int(page.get("clean_revision") or 0) + 1
@@ -76,12 +82,12 @@ class PipelineMasksMixin:
             img_h, img_w = image.shape[:2]
 
             manual_mask_path = (
-                Path(manual_mask_posix)
+                validate_managed_path(manual_mask_posix, processed_dir)
                 if manual_mask_posix
                 else self._manual_mask_path(processed_dir, img_path)
             )
             manual_lama_mask_path = (
-                Path(manual_lama_mask_posix)
+                validate_managed_path(manual_lama_mask_posix, processed_dir)
                 if manual_lama_mask_posix
                 else self._manual_mask_path(
                     processed_dir, img_path, force_lama=True
@@ -148,7 +154,7 @@ class PipelineMasksMixin:
                     and not manual_mask_path.exists()
                     and not manual_lama_mask_path.exists()
                 ):
-                    clean_path = Path(clean_posix) if clean_posix else None
+                    clean_path = validate_managed_path(clean_posix, processed_dir) if clean_posix else None
                     if clean_path is not None and clean_path.exists():
                         try:
                             cached = _ed("read_image", read_image)(clean_path)
@@ -231,7 +237,7 @@ class PipelineMasksMixin:
                     raise ValueError("Cannot restore a skipped page; unskip it first")
                 if page.get("process_required"):
                     raise ValueError("Cannot restore a page that requires processing")
-                img_path = Path(page["original"])
+                img_path = validate_managed_path(page["original"], _raw_dir_root() / chapter_id)
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
                 preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
                 target_clean_revision = int(page.get("clean_revision") or 0) + 1
@@ -291,7 +297,7 @@ class PipelineMasksMixin:
                     raise ValueError("Cannot reset repaint state on a skipped page; unskip it first")
                 if page.get("process_required"):
                     raise ValueError("Cannot reset repaint state before processing")
-                img_path = Path(page["original"])
+                img_path = validate_managed_path(page["original"], _raw_dir_root() / chapter_id)
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
                 preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
                 target_clean_revision = int(page.get("clean_revision") or 0) + 1

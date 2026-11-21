@@ -41,7 +41,13 @@ from app.manifest_utils import (
     PageArtifactTransaction,
     save_manifest_raw,
 )
-from app.security import MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
+from app.security import (
+    MAX_UPLOAD_FILE_BYTES,
+    MAX_UPLOAD_FILES,
+    MAX_UPLOAD_TOTAL_BYTES,
+    validate_managed_path,
+    validate_upload_image,
+)
 
 
 class StaleProcessingStateError(RuntimeError):
@@ -176,12 +182,30 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                                 f"Skip {name}: giải nén vượt {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
                             )
                             continue
-                        if total_bytes + info.file_size > MAX_UPLOAD_TOTAL_BYTES:
+                        remaining_total = MAX_UPLOAD_TOTAL_BYTES - total_bytes
+                        if info.file_size > remaining_total:
                             logger.warning(
                                 f"Skip {name}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB"
                             )
                             break
-                        img_bytes = z.read(name)
+                        entry_limit = min(MAX_UPLOAD_FILE_BYTES, remaining_total)
+                        chunks = []
+                        read_size = 0
+                        oversized = False
+                        with z.open(info, "r") as zf_handle:
+                            while True:
+                                chunk = zf_handle.read(65536)
+                                if not chunk:
+                                    break
+                                read_size += len(chunk)
+                                if read_size > entry_limit:
+                                    oversized = True
+                                    break
+                                chunks.append(chunk)
+                        if oversized:
+                            logger.warning(f"Skip {name}: dữ liệu giải nén thực tế vượt giới hạn cho phép")
+                            continue
+                        img_bytes = b"".join(chunks)
                         if img_bytes:
                             keep(clean_name, img_bytes, True)
             except Exception as e:
@@ -502,7 +526,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     return False
 
                 target_page = pages[page_index]
-                orig_path = Path(target_page["original"])
+                orig_path = validate_managed_path(target_page["original"], RAW_DIR / chapter_id)
                 final_clean_path = processed_dir / f"clean_{orig_path.name}"
                 auto_clean_path = self._auto_clean_path(processed_dir, orig_path)
                 target_clean_revision = int(target_page.get("clean_revision") or 0) + 1
@@ -611,7 +635,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     work_items.append(
                         (
                             idx,
-                            Path(page["original"]),
+                            validate_managed_path(page["original"], RAW_DIR / chapter_id),
                             copy.deepcopy(page.get("preserve_regions", [])),
                             copy.deepcopy(page.get("boxes", [])),
                             stitch_core,

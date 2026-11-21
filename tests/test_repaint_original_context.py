@@ -164,13 +164,14 @@ def test_preserve_and_reinpaint_restores_original_pixels_and_keeps_translations(
     from app.region_policy import text_object_in_preserve_region
 
     chapter = "d4c3b2a1"
-    processed, output = tmp_path / "processed", tmp_path / "output"
+    raw, processed, output = tmp_path / "raw", tmp_path / "processed", tmp_path / "output"
+    (raw / chapter).mkdir(parents=True)
     (processed / chapter).mkdir(parents=True)
     for module, name, value in ((editing, "PROCESSED_DIR", processed), (manifests, "PROCESSED_DIR", processed),
-                                (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output)):
+                                (config, "RAW_DIR", raw), (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output)):
         monkeypatch.setattr(module, name, value)
     original = np.full((60, 80, 3), 30, dtype=np.uint8)
-    img_path = tmp_path / "page.png"
+    img_path = raw / chapter / "page.png"
     write_image(img_path, original)
     boxes = [
         {"id": "b1", "x1": 5, "y1": 5, "x2": 35, "y2": 25, "confidence": 0.9, "safe_to_inpaint": True},
@@ -209,12 +210,13 @@ def test_add_manual_boxes_adds_every_box_with_one_reinpaint(tmp_path: Path, monk
     import app.pipeline_editing as editing
 
     chapter = "e5d4c3b2"
-    processed, output = tmp_path / "processed", tmp_path / "output"
+    raw, processed, output = tmp_path / "raw", tmp_path / "processed", tmp_path / "output"
+    (raw / chapter).mkdir(parents=True)
     (processed / chapter).mkdir(parents=True)
     for module, name, value in ((editing, "PROCESSED_DIR", processed), (manifests, "PROCESSED_DIR", processed),
-                                (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output)):
+                                (config, "RAW_DIR", raw), (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output)):
         monkeypatch.setattr(module, name, value)
-    img_path = tmp_path / "page.png"
+    img_path = raw / chapter / "page.png"
     write_image(img_path, np.full((60, 80, 3), 30, dtype=np.uint8))
     manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
         "original": img_path.as_posix(), "clean": None, "boxes": [], "text_objects": [],
@@ -258,6 +260,7 @@ def test_review_fixes_apply_preserve_boxes_and_repaint_in_one_reinpaint(tmp_path
     write_image(processed / chapter / "clean_page.png", clean_img)
     for module in (config, manifests, editing):
         monkeypatch.setattr(module, "PROCESSED_DIR", processed, raising=False)
+    monkeypatch.setattr(config, "RAW_DIR", raw)
     monkeypatch.setattr(config, "OUTPUT_DIR", output)
     manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
         "original": original.as_posix(), "clean": (processed / chapter / "clean_page.png").as_posix(),
@@ -294,6 +297,7 @@ def test_review_fixes_can_skip_a_new_box_over_an_existing_one(tmp_path: Path, mo
     write_image(processed / chapter / "clean_page.png", np.full((60, 80, 3), 100, dtype=np.uint8))
     for module in (config, manifests, editing):
         monkeypatch.setattr(module, "PROCESSED_DIR", processed, raising=False)
+    monkeypatch.setattr(config, "RAW_DIR", raw)
     monkeypatch.setattr(config, "OUTPUT_DIR", output)
     manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
         "original": original.as_posix(), "clean": (processed / chapter / "clean_page.png").as_posix(),

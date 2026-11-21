@@ -104,9 +104,30 @@ def _write(home: Path, name: str, text: str) -> None:
     (folder / "SKILL.md").write_text(text, encoding="utf-8")
 
 
+def _is_zip_symlink(info: zipfile.ZipInfo) -> bool:
+    return ((info.external_attr >> 16) & 0o170000) == 0o120000
+
+
+def _read_zip_member_limited(archive: zipfile.ZipFile, info: zipfile.ZipInfo, max_bytes: int) -> bytes | None:
+    if max_bytes < 0:
+        return None
+    chunks: list[bytes] = []
+    total = 0
+    with archive.open(info, "r") as handle:
+        while True:
+            chunk = handle.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                return None
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str, wrapped: bool = True,
                    replace: bool = False) -> list[str]:
-    entries = [i for i in archive.infolist() if not i.is_dir()]
+    entries = [i for i in archive.infolist() if not i.is_dir() and not _is_zip_symlink(i)]
     root = entries[0].filename.split("/", 1)[0] if entries and wrapped else ""
     prefix = "/".join(p for p in (root, sub) if p) + "/" if root or sub else ""
     found = {i.filename.rsplit("/", 1)[0] if "/" in i.filename else "" for i in entries
@@ -118,7 +139,11 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
     planned = []
     for folder in folders[:MAX_SKILLS]:
         lead = folder + "/" if folder else ""
-        head, _ = frontmatter(archive.read(f"{lead}SKILL.md")[:20_000].decode("utf-8", errors="replace"))
+        skill_info = archive.getinfo(f"{lead}SKILL.md")
+        raw_head = _read_zip_member_limited(archive, skill_info, MAX_SKILL_BYTES)
+        if raw_head is None:
+            continue
+        head, _ = frontmatter(raw_head[:20_000].decode("utf-8", errors="replace"))
         name = head.get("name") or folder.rsplit("/", 1)[-1]
         if not NAME_RE.match(name):
             continue
@@ -130,17 +155,36 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
             if (target / name).exists():
                 raise ValueError(f"skill '{name}' đã tồn tại — từ chối ghi đè (nguy cơ squatting); dùng replace=True để thay thế")
     done = []
+    extracted_total = 0
     for folder, lead, name in planned:
         files = [i for i in entries if i.filename.startswith(lead)][:MAX_FILES]
         with tempfile.TemporaryDirectory() as temp:
             staging = Path(temp) / name
+            staging.mkdir(parents=True, exist_ok=True)
+            staging_resolved = staging.resolve()
             for info in files:
-                relative = Path(info.filename[len(lead):])
-                if relative.is_absolute() or ".." in relative.parts or info.file_size > MAX_FILE_BYTES:
+                rel_raw = info.filename[len(lead):].replace("\\", "/")
+                relative = Path(rel_raw)
+                if not rel_raw or relative.is_absolute() or ".." in relative.parts or info.file_size > MAX_FILE_BYTES:
                     continue
                 destination = staging / relative
+                try:
+                    dest_resolved = destination.resolve(strict=False)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                if not dest_resolved.is_relative_to(staging_resolved):
+                    continue
+                budget = min(MAX_FILE_BYTES, MAX_ZIP_BYTES - extracted_total)
+                if budget <= 0:
+                    raise ValueError("tổng dung lượng giải nén file zip vượt giới hạn 40 MB")
+                payload = _read_zip_member_limited(archive, info, budget)
+                if payload is None:
+                    if extracted_total + MAX_FILE_BYTES > MAX_ZIP_BYTES:
+                        raise ValueError("tổng dung lượng giải nén file zip vượt giới hạn 40 MB")
+                    continue
+                extracted_total += len(payload)
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(archive.read(info))
+                destination.write_bytes(payload)
             target.mkdir(parents=True, exist_ok=True)
             final = target / name
             if final.exists():

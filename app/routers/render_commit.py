@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from PIL import Image
 
+import app.config as _app_config
 from app.config import OUTPUT_DIR
 from app.logging_config import logger
 from app.manifest_utils import (
@@ -18,7 +19,7 @@ from app.render.font_selection import resolve_object_font
 from app.render.page_renderer import cleanup_tmp, render_boxes_legacy, render_text_objects, style_get
 from app.render.size_bands import chapter_size_bands
 from app.schemas import RenderRequest
-from app.security import validate_chapter_id
+from app.security import validate_chapter_id, validate_managed_path
 from app.region_policy import geometry_center_in_regions, page_preserve_regions, text_object_in_preserve_region
 
 router = APIRouter(prefix="/api", tags=["render"])
@@ -286,10 +287,14 @@ def _drop_stale_render_output(chapter_id: str, page_index: int, final_path: Path
 def render_page(req: RenderRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     page, drafts, snapshot_signature, size_bands = _load_render_snapshot(req)
-    base_value = page.get("clean") or page.get("original")
-    if not base_value:
+    clean_value = page.get("clean")
+    orig_value = page.get("original")
+    if clean_value:
+        base_path = validate_managed_path(clean_value, _app_config.PROCESSED_DIR / req.chapter_id)
+    elif orig_value:
+        base_path = validate_managed_path(orig_value, _app_config.RAW_DIR / req.chapter_id)
+    else:
         raise HTTPException(400, "Page has no image to render onto")
-    base_path = Path(str(base_value))
 
     try:
         image = Image.open(base_path).convert("RGB")

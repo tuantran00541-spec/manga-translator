@@ -238,7 +238,7 @@ def create_chapter(req: ChapterRequest) -> dict:
         )
         if getattr(getattr(exc, "response", None), "status_code", None) == 429:
             raise HTTPException(429, "Trang truyện đang giới hạn vì tải quá nhiều. Đợi vài phút rồi thử lại.") from exc
-        raise HTTPException(500, f"Download chapter failed: {exc}") from exc
+        raise HTTPException(500, "Download chapter failed") from exc
 
 
 @router.post("/chapter/upload")
@@ -283,7 +283,7 @@ async def create_chapter_from_upload(
     except Exception as exc:
         _cleanup_uncommitted_chapter(chapter_id)
         logger.opt(exception=True).error("Chapter {} operation 'create_chapter_from_upload' failed: {}", chapter_id, exc)
-        raise HTTPException(500, f"Upload chapter failed: {exc}") from exc
+        raise HTTPException(500, "Upload chapter failed") from exc
 
 
 @router.post("/process/chapter")
@@ -378,7 +378,7 @@ def process_pages(req: ProcessPagesRequest) -> dict:
             page_indices,
             exc,
         )
-        raise HTTPException(500, f"Process pages failed: {exc}") from exc
+        raise HTTPException(500, "Process pages failed") from exc
     finally:
         processing_lock.release()
 

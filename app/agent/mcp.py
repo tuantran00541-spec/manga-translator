@@ -12,11 +12,12 @@ import shlex
 import shutil
 import subprocess
 import threading
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import requests
 from fastapi import HTTPException
 
+from app.downloader.http import PUBLIC_ADAPTER, read_response_limited
 from app.logging_config import logger
 from app.security import validate_url
 
@@ -35,7 +36,9 @@ MAX_TOOL_LIST_PAGES = 50
 KINDS = ("read", "edit", "exec", "net")
 MAX_RESTARTS = 3
 _MAX_HTTP_REDIRECTS = 5
+_MAX_HTTP_RESPONSE_BYTES = 10 * 1024 * 1024
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+_SENSITIVE_REDIRECT_HEADERS = frozenset({"authorization", "cookie", "x-api-key", "api-key", "x-goog-api-key", "mcp-session-id"})
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 _ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _READONLY_NAME_PREFIXES = ("get_", "list_", "read_", "fetch_", "search_", "describe_", "query_", "show_", "lookup_")
@@ -51,13 +54,14 @@ class MCPError(RuntimeError):
     pass
 
 
-def _expand(value):
+def _expand(value, env_source: dict[str, str] | None = None):
+    env = sandbox.clean_env() if env_source is None else env_source
     if isinstance(value, str):
-        return _ENV_RE.sub(lambda m: os.environ.get(m.group(1), m.group(2) or ""), value)
+        return _ENV_RE.sub(lambda m: env.get(m.group(1), m.group(2) or ""), value)
     if isinstance(value, list):
-        return [_expand(v) for v in value]
+        return [_expand(v, env) for v in value]
     if isinstance(value, dict):
-        return {k: _expand(v) for k, v in value.items()}
+        return {k: _expand(v, env) for k, v in value.items()}
     return value
 
 
@@ -385,6 +389,9 @@ class _HttpTransport:
             self.headers["Authorization"] = f"Bearer {token}"
         self.session_id: str | None = None
         self.on_notify = None
+        self._session = requests.Session()
+        self._session.mount("http://", PUBLIC_ADAPTER)
+        self._session.mount("https://", PUBLIC_ADAPTER)
 
     def alive(self) -> bool:
         return True
@@ -403,9 +410,9 @@ class _HttpTransport:
         url, redirects = self.url, 0
         while True:
             try:
-                response = requests.post(url, json=message, headers=headers, timeout=timeout, stream=True,
-                                         allow_redirects=False)
-            except requests.RequestException as exc:
+                response = self._session.post(url, json=message, headers=headers, timeout=timeout, stream=True,
+                                              allow_redirects=False)
+            except (requests.RequestException, HTTPException) as exc:
                 raise MCPError(f"cannot reach {url} ({type(exc).__name__})") from exc
             if response.status_code not in _REDIRECT_STATUS_CODES:
                 break
@@ -416,12 +423,21 @@ class _HttpTransport:
                 raise MCPError(f"MCP server at {url} redirected without a Location header")
             if redirects > _MAX_HTTP_REDIRECTS:
                 raise MCPError(f"MCP server at {self.url} redirected too many times (>{_MAX_HTTP_REDIRECTS})")
-            url = urljoin(url, location)
-            self._check_url(url, "redirect")
+            next_url = urljoin(url, location)
+            self._check_url(next_url, "redirect")
+            if urlsplit(next_url).netloc.lower() != urlsplit(url).netloc.lower():
+                headers = {k: v for k, v in headers.items() if k.lower() not in _SENSITIVE_REDIRECT_HEADERS}
+            url = next_url
         if response.headers.get("Mcp-Session-Id"):
             self.session_id = response.headers["Mcp-Session-Id"]
         if response.status_code >= 400:
-            raise MCPError(f"HTTP {response.status_code}: {response.text[:300]}")
+            try:
+                err_text = read_response_limited(response, limit_bytes=4096).decode("utf-8", errors="replace")[:300]
+            except ValueError:
+                err_text = ""
+            finally:
+                response.close()
+            raise MCPError(f"HTTP {response.status_code}: {err_text}")
         return response
 
     def send(self, message: dict) -> None:
@@ -431,9 +447,16 @@ class _HttpTransport:
         response = self._post(message, timeout)
         try:
             if "text/event-stream" not in response.headers.get("Content-Type", ""):
-                return response.json()
+                raw = read_response_limited(response, limit_bytes=_MAX_HTTP_RESPONSE_BYTES)
+                return json.loads(raw.decode("utf-8"))
             data: list[str] = []
+            seen_bytes = 0
             for line in response.iter_lines(decode_unicode=True):
+                if line is None:
+                    continue
+                seen_bytes += len(line.encode("utf-8", errors="replace")) + 1
+                if seen_bytes > _MAX_HTTP_RESPONSE_BYTES:
+                    raise MCPError("MCP event stream exceeded maximum allowed size")
                 if line.startswith("data:"):
                     data.append(line[5:].strip())
                 elif not line and data:
@@ -452,10 +475,11 @@ class _HttpTransport:
     def close(self) -> None:
         if self.session_id:
             try:
-                requests.delete(self.url, headers={"Mcp-Session-Id": self.session_id, **self.headers}, timeout=5,
-                                allow_redirects=False)
-            except requests.RequestException:
+                self._session.delete(self.url, headers={"Mcp-Session-Id": self.session_id, **self.headers}, timeout=5,
+                                     allow_redirects=False)
+            except (requests.RequestException, HTTPException):
                 pass
+        self._session.close()
 
 
 class Server:

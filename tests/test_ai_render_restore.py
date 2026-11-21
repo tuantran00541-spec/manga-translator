@@ -93,10 +93,12 @@ def test_render_stage_leaves_a_slice_rendered_before_the_chapter_finishes_alone(
     ):
         monkeypatch.setattr(module, name, value)
 
-    clean = raw / chapter / "clean.png"
+    orig = raw / chapter / "orig.png"
+    clean = processed / chapter / "clean.png"
+    Image.new("RGB", (900, 1000), "white").save(orig)
     Image.new("RGB", (900, 1000), "white").save(clean)
     page0 = {
-        "original": clean.as_posix(), "clean": clean.as_posix(), "boxes": [],
+        "original": orig.as_posix(), "clean": clean.as_posix(), "boxes": [],
         "text_objects": [{
             "id": f"d{i}", "region": {"x1": 100, "y1": 100 + i * 100, "x2": 500, "y2": 180 + i * 100},
             "translation": "", "typography_role": "dialogue", "container": "bubble",
@@ -109,7 +111,7 @@ def test_render_stage_leaves_a_slice_rendered_before_the_chapter_finishes_alone(
             "translation": ".......", "source_cap_px": 8, "typography_role": "dialogue",
             "container": "bubble", "style": {"font": "dialogue.mac-dinh-3"}}
     page1 = {
-        "original": clean.as_posix(), "clean": clean.as_posix(), "boxes": [],
+        "original": orig.as_posix(), "clean": clean.as_posix(), "boxes": [],
         "text_objects": [dots],
         "preserve_regions": [], "skipped": False, "process_required": False, "source_page": 1, "slice_index": 1,
         "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,

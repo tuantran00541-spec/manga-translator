@@ -119,7 +119,7 @@ def save_settings(engine: str, image: str = "") -> dict:
             return settings()
         except PermissionError:
             if path.exists():
-                path.chmod(0o666)
+                path.chmod(0o600)
     tmp.unlink(missing_ok=True)
     raise PermissionError(f"cannot write {path}")
 

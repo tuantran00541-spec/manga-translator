@@ -332,10 +332,19 @@ class Workspace:
             yield top
             return
         by_path = bool(name_glob) and "/" in name_glob
+        restrict = self.policy.mode != "full-access"
+        roots = [self.root] + self.read_roots
         for folder, dirs, names in os.walk(top):
             dirs[:] = sorted(d for d in dirs if not self.skipped(Path(folder) / d))
             for n in sorted(names):
                 path = Path(folder) / n
+                if restrict and path.is_symlink():
+                    try:
+                        resolved = path.resolve()
+                    except OSError:
+                        continue
+                    if not any(resolved == r or r in resolved.parents for r in roots):
+                        continue
                 if not name_glob or (_path_glob(path.relative_to(top).as_posix(), name_glob) if by_path else fnmatch.fnmatch(n, name_glob)):
                     yield path
 

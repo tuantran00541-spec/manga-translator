@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
+import app.config as _app_config
 from app.config import BASE_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
@@ -26,7 +27,7 @@ from app.schemas import (
     UpdateBoxRequest,
     UpdateTextObjectRequest,
 )
-from app.security import MAX_IMAGE_PIXELS, MAX_REQUEST_BYTES, validate_chapter_id
+from app.security import MAX_IMAGE_PIXELS, MAX_REQUEST_BYTES, validate_chapter_id, validate_managed_path
 from app.upload_utils import read_upload_limited
 from app.text_objects import invalidate_stale_machine_translation
 from app.editorial_gate import (
@@ -119,7 +120,7 @@ def add_box(req: AddBoxRequest) -> dict:
     if req.x2 - req.x1 < 10 or req.y2 - req.y1 < 10:
         raise HTTPException(400, "Invalid box dimensions: width and height must be at least 10px")
 
-    img_path = Path(pages[req.page_index]["original"])
+    img_path = validate_managed_path(pages[req.page_index]["original"], _app_config.RAW_DIR / req.chapter_id)
     if not img_path.is_file():
         raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
     try:
@@ -159,7 +160,7 @@ def update_box(req: UpdateBoxRequest) -> dict:
     if req.x2 - req.x1 < 10 or req.y2 - req.y1 < 10:
         raise HTTPException(400, "Invalid box dimensions: width and height must be at least 10px")
 
-    img_path = Path(pages[req.page_index]["original"])
+    img_path = validate_managed_path(pages[req.page_index]["original"], _app_config.RAW_DIR / req.chapter_id)
     if not img_path.is_file():
         raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
     try:
@@ -299,7 +300,7 @@ async def repaint_regions(req: RepaintRegionsRequest) -> dict:
     page = pages[req.page_index]
     if page.get("skipped") or page.get("process_required"):
         raise HTTPException(409, "Page must be active and processed before repaint")
-    img_path = Path(page["original"])
+    img_path = validate_managed_path(page["original"], _app_config.RAW_DIR / req.chapter_id)
     if not img_path.is_file():
         raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
     try:
@@ -332,7 +333,7 @@ async def repaint_mask(
     if pages[page_index].get("skipped") or pages[page_index].get("process_required"):
         raise HTTPException(409, "Page must be active and processed before repaint")
 
-    img_path = Path(pages[page_index]["original"])
+    img_path = validate_managed_path(pages[page_index]["original"], _app_config.RAW_DIR / chapter_id)
     if not img_path.is_file():
         raise HTTPException(404, f"Original page image not found: page_{page_index:03d}")
 

@@ -37,14 +37,18 @@ class _Transaction:
 
 @pytest.fixture
 def chapter(tmp_path, monkeypatch):
+    import app.config as config
     import app.pipeline_editing as editing
 
+    raw = tmp_path / "raw"
+    (raw / "abcd1234").mkdir(parents=True)
     processed = tmp_path / "processed"
     (processed / "abcd1234").mkdir(parents=True)
-    img_path = tmp_path / "page.png"
+    img_path = raw / "abcd1234" / "page.png"
     write_image(img_path, np.full((40, 60, 3), 10, np.uint8))
     manifest = {"pages": [{"original": img_path.as_posix(), "boxes": [], "skipped": False,
                            "process_required": False, "clean_revision": 1}]}
+    monkeypatch.setattr(config, "RAW_DIR", raw)
     monkeypatch.setattr(editing, "PROCESSED_DIR", processed)
     for name in ("get_page_lock", "get_manifest_lock"):
         monkeypatch.setattr(editing, name, lambda *_a: nullcontext())

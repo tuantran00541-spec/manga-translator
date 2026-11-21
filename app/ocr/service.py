@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import app.config as _app_config
 from app.logging_config import logger
 from app.manifest_utils import (
     get_manifest_lock,
@@ -29,7 +30,7 @@ from app.parameters import (
 )
 from app.image_io import read_image
 from app.region_policy import geometry_center_in_regions, page_preserve_regions, text_object_in_preserve_region
-from app.security import validate_chapter_id
+from app.security import validate_chapter_id, validate_managed_path
 from app.text_objects import (
     invalidate_stale_machine_translation,
     sync_existing_auto_text_object,
@@ -240,11 +241,12 @@ class OCRService:
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
+            validated_original = validate_managed_path(original_value, _app_config.RAW_DIR / chapter_id)
             box_snapshot = copy.deepcopy(box)
             box_snapshot["_ocr_snapshot_crop_signature"] = ocr_crop_signature(box)
             return (
                 box_snapshot,
-                str(original_value),
+                str(validated_original),
                 int(page.get("source_revision") or 0),
             )
 
@@ -734,11 +736,12 @@ class OCRService:
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
+            validated_original = validate_managed_path(original_value, _app_config.RAW_DIR / chapter_id)
             region = copy.deepcopy(obj.get("region") or {})
             return {
                 "region": region,
                 "text": obj.get("ocr_text") or "",
-                "original_value": str(original_value),
+                "original_value": str(validated_original),
                 "source_revision": int(page.get("source_revision") or 0),
                 "signatures": active_overlap_signatures(page, region),
             }

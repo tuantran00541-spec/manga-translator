@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import app.config as _app_config
 from app.config import PROCESSED_DIR
 from app.text_objects import ensure_page_text_objects
 from app.image_io import read_image, write_image
@@ -22,6 +23,7 @@ from app.manifest_utils import (
 )
 from app.pipeline_masks import PipelineMasksMixin
 from app.region_policy import overlap_share, seam_preserve_plan, subtract_regions_from_mask
+from app.security import validate_managed_path
 
 STROKE_BOX_MAX_SHARE = 0.4
 
@@ -149,7 +151,7 @@ class PipelineEditingMixin(PipelineMasksMixin):
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
                 page = manifest["pages"][page_index]
-                img_path = Path(page["original"])
+                img_path = validate_managed_path(page["original"], _app_config.RAW_DIR / chapter_id)
 
             image = read_image(img_path)
             h, w = image.shape[:2]
@@ -236,7 +238,7 @@ class PipelineEditingMixin(PipelineMasksMixin):
                     raise ValueError(
                         f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}"
                     )
-                img_path = Path(page["original"])
+                img_path = validate_managed_path(page["original"], _app_config.RAW_DIR / chapter_id)
                 expected_box_id = boxes[box_index].get("id")
 
             image = read_image(img_path)
@@ -357,7 +359,7 @@ class PipelineEditingMixin(PipelineMasksMixin):
                 page = manifest["pages"][page_index]
                 if page.get("skipped") or page.get("process_required") or not page.get("clean"):
                     raise ValueError("Page must be active and processed before preserving regions")
-                img_path = Path(page["original"])
+                img_path = validate_managed_path(page["original"], _app_config.RAW_DIR / chapter_id)
                 preserve_regions = copy.deepcopy(page.get("preserve_regions", [])) + added
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
                 manual_mask_posix = page.get("manual_mask")
@@ -413,8 +415,8 @@ class PipelineEditingMixin(PipelineMasksMixin):
                 page = manifest["pages"][page_index]
                 if page.get("skipped") or page.get("process_required") or not page.get("clean"):
                     raise ValueError("Page must be active and processed before review fixes")
-                img_path = Path(page["original"])
-                clean_now = Path(page["clean"])
+                img_path = validate_managed_path(page["original"], _app_config.RAW_DIR / chapter_id)
+                clean_now = validate_managed_path(page["clean"], processed_dir)
                 old_preserve = copy.deepcopy(page.get("preserve_regions", []))
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
                 manual_mask_posix = page.get("manual_mask")
@@ -508,7 +510,7 @@ class PipelineEditingMixin(PipelineMasksMixin):
                 if box_index < 0 or box_index >= len(boxes):
                     raise ValueError("Invalid box index")
 
-                img_path = Path(page["original"])
+                img_path = validate_managed_path(page["original"], _app_config.RAW_DIR / chapter_id)
                 preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
                 manual_mask_posix = page.get("manual_mask")
                 manual_lama_mask_posix = page.get("manual_lama_mask")
@@ -561,7 +563,7 @@ class PipelineEditingMixin(PipelineMasksMixin):
             pages = manifest.get("pages", [])
             if page_index < 0 or page_index >= len(pages):
                 raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
-            img_path = Path(pages[page_index]["original"])
+            img_path = validate_managed_path(pages[page_index]["original"], _app_config.RAW_DIR / chapter_id)
 
         image = read_image(img_path)
         h, w = image.shape[:2]

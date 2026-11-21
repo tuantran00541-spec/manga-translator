@@ -125,6 +125,12 @@ class AgentToolsMixin:
         if name == "memory":
             return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
         if name == "create":
+            if self.mode == "bypass":
+                return False
+            if self.tainted:
+                return True
+            if call["args"].get("args") is not None and not self._confined():
+                return True
             return False
         created = self._root().created.get(name)
         if created is not None and created.get("kind") == "read" and self._confined() and verdict != "ask":
@@ -143,14 +149,23 @@ class AgentToolsMixin:
             tool = self.mcp_tools[name][1] or {}
             return not (self.mode == "edits" and mcp.harness_read_only(tool.get("name")))
         kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
+        if self.tainted and self.profile["untrusted_guard"]:
+            if kind == "read":
+                return self._read_escapes_workspace(call)
+            if name == "web_search":
+                return True
+            if not (name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
+                return True
         if kind == "read":
             return False
-        if self.tainted and self.profile["untrusted_guard"] and not (
-                name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
-            return True
         via_mcp = name in self.replaced or name in self.mcp_tools
         if self.mode == "ask":
-            return via_mcp or not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
+            return via_mcp or not (
+                name == "run_command"
+                and not call["args"].get("outside_sandbox")
+                and sandbox.full()
+                and rules.safe_readonly(str(call["args"].get("command") or ""))
+            )
         if kind == "exec":
             confined = (sandbox.full() and self.workspace.policy.mode != "full-access" and not via_mcp
 )
@@ -161,6 +176,18 @@ class AgentToolsMixin:
             except (KeyError, ToolError):
                 return True
         return False
+
+    def _read_escapes_workspace(self, call: dict) -> bool:
+        args = call.get("args") if isinstance(call.get("args"), dict) else {}
+        raw_path = args.get("path")
+        if not raw_path:
+            return False
+        try:
+            target = (self.workspace.root / str(raw_path)).resolve()
+        except (OSError, RuntimeError, ValueError):
+            return True
+        root = self.workspace.root
+        return target != root and root not in target.parents
 
     def _typing_outside(self, call: dict) -> bool:
         job = self.jobs.get(str(call["args"].get("id") or "").strip().lower()) if call["name"] == "job_input" else None
@@ -299,7 +326,7 @@ class AgentToolsMixin:
         path.write_text(json.dumps(tool, ensure_ascii=False, indent=1), encoding="utf-8")
         if old and old.get("scope", "user") != scope:
             (self._tools_folder(old.get("scope", "user")) / f"{name}.json").unlink(missing_ok=True)
-        if "workspace" in (scope, (old or {}).get("scope")):
+        if "workspace" in (scope, (old or {}).get("scope")) and not self.tainted:
             self.trust.allow(self.workspace.root, "tools", self._workspace_tools_digest())
         created[name] = {**tool, "scope": scope}
         takes = ", ".join(params["properties"]) or "no arguments"
@@ -310,7 +337,7 @@ class AgentToolsMixin:
                 f"it runs {how} and is kept {where}.{loose}" + (f" The name {asked!r} was not valid, so it is {name}." if asked != name else ""))
 
     def _confined(self) -> bool:
-        return sandbox.backend() != "none" and self.workspace.policy.mode != "full-access"
+        return sandbox.full() and self.workspace.policy.mode != "full-access"
 
     def _looks_only(self, name: str) -> bool:
         plugin = self.registry.tools.get(name)
