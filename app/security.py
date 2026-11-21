@@ -41,6 +41,26 @@ _BLOCKED_NETWORKS = [
 ]
 
 
+_SECRET_TOKEN_RE = re.compile(
+    r"(?:sk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{16,}"
+    r"|AIza[0-9A-Za-z_-]{30,}"
+    r"|gh[pousr]_[A-Za-z0-9]{25,}"
+    r"|AKIA[0-9A-Z]{16}"
+    r"|xox[baprs]-[0-9A-Za-z-]{20,}"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----)"
+)
+
+
+def contains_secret_token(text: str, known_secrets: tuple[str, ...] = ()) -> bool:
+    if not text:
+        return False
+    for secret in known_secrets:
+        cleaned = str(secret or "").strip()
+        if len(cleaned) >= 8 and cleaned in text:
+            return True
+    return bool(_SECRET_TOKEN_RE.search(text))
+
+
 def validate_chapter_id(chapter_id: str) -> str:
     if not chapter_id or not CHAPTER_ID_RE.match(chapter_id):
         raise HTTPException(400, f"Invalid chapter_id: {chapter_id!r}")

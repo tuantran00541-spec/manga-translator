@@ -249,11 +249,13 @@ def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict,
               + "\n\nITEMS: " + json.dumps(items, ensure_ascii=False, separators=(",", ":")))
     result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=1000000,
                                  stage="polish")
+    from app.security import contains_secret_token
+
     wanted = {line.id for line in lines}
     out = {}
     for entry in result.data.get("rewrites") or []:
         if isinstance(entry, dict) and str(entry.get("id")) in wanted and isinstance(entry.get("text"), str):
             text = entry["text"].strip().replace("…", "...")
-            if text:
+            if text and not contains_secret_token(text, (api_key,)):
                 out[str(entry["id"])] = text
     return out, result.estimated_cost_usd

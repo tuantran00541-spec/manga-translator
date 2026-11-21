@@ -16,7 +16,7 @@ from app.box_format import scaled_box
 from app.ai_providers import PROVIDERS, AIProvider, auth_headers
 from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
-from app.security import validate_url
+from app.security import contains_secret_token, validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt, text_system_prompt, setting_question, parse_setting
 from app.translation.cost import language_name, response_cost_usd
@@ -731,6 +731,21 @@ class VisionPageTranslator:
                 for entry in data.get("translations") or []:
                     if isinstance(entry, dict) and str(entry.get("id")) in retold:
                         entry["translated_text"] = retold[str(entry["id"])]
+        active_secrets = tuple(s for s in (api_key, self.translate_api_key or "") if s and len(str(s).strip()) >= 8)
+        scrubbed_ids: set[str] = set()
+        if result.translations:
+            cleaned_translations = dict(result.translations)
+            for oid, text in list(cleaned_translations.items()):
+                if contains_secret_token(str(text or ""), active_secrets):
+                    logger.warning("Blocked secret-like token from translation output for object {}", oid)
+                    cleaned_translations[oid] = ""
+                    scrubbed_ids.add(str(oid))
+            if scrubbed_ids:
+                result = replace(result, translations=cleaned_translations)
+                for entry in data.get("translations") or []:
+                    if isinstance(entry, dict) and str(entry.get("id")) in scrubbed_ids:
+                        entry["translated_text"] = ""
+                        entry["review"] = True
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             for entry in data.get("translations") or []:
                 if isinstance(entry, dict) and not str(entry.get("source") or "").strip():
@@ -739,7 +754,7 @@ class VisionPageTranslator:
                     if ocr.strip():
                         entry["source"] = ocr
             result, data = _drop_foreign_script(result, data)
-        roles, containers, review, answered, enlarge, colors, sources = {}, {}, set(), set(), set(), {}, {}
+        roles, containers, review, answered, enlarge, colors, sources = {}, {}, set(scrubbed_ids), set(), set(), {}, {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue

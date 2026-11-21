@@ -16,7 +16,7 @@ from app.manifest_utils import load_manifest_raw
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.routers.translation import _resolve_text_provider, _resolve_vision_provider, validate_lang_code
 from app.secret_store import SecretStoreUnavailable, get_provider_api_key
-from app.security import MAX_REMOTE_URL_LENGTH, validate_chapter_id, validate_url
+from app.security import MAX_REMOTE_URL_LENGTH, contains_secret_token, validate_chapter_id, validate_url
 
 router = APIRouter(prefix="/api/ai_mode", tags=["ai-mode"])
 ai_mode_jobs = AIModeJobManager()
@@ -62,6 +62,13 @@ class _AIModeBaseRequest(BaseModel):
     @classmethod
     def _lang(cls, value: str) -> str:
         return validate_lang_code(value)
+
+    @field_validator("story_notes")
+    @classmethod
+    def _story_notes(cls, value: str) -> str:
+        if contains_secret_token(str(value or "")):
+            raise ValueError("story_notes must not contain API keys or credentials")
+        return value
 
     @field_validator("budget_usd")
     @classmethod
