@@ -122,6 +122,11 @@ class AgentSession(
         self._last_command: str | None = None
         self._failing: dict[str, int] = {}
         self._commands = 0
+        self._fail_streak = 0
+        self._one_off_count = 0
+        self._saved_tool_in_req = False
+        self._used_branch = False
+        self._nudged: set[str] = set()
         self._prewalk = False
         self._interrupt: dict | None = None
         self._pinned: dict[str, str] | None = None

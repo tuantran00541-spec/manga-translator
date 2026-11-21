@@ -66,12 +66,22 @@ class AgentToolsMixin:
         return self._lean_specs()
 
     def _lean_specs(self) -> list[dict]:
-        rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else LEAN_TOOLS)]
-        if self.workspace.policy.mode != "read-only":
-            rows.append(SESSION_SPECS["create"])
+        rows: list[dict] = []
+        if self.plan_mode:
+            rows = [s for s in SPECS if s["name"] == "read_file"]
+            if self.workspace.policy.mode != "read-only":
+                rows.append(SESSION_SPECS["create"])
+                rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
+            if self.skills:
+                rows.append(SESSION_SPECS["skill"])
+            rows.append(SESSION_SPECS["exit_plan_mode"])
+        elif self.workspace.policy.mode == "read-only":
+            rows = [s for s in SPECS if s["name"] == "read_file"]
+            if self.skills:
+                rows.append(SESSION_SPECS["skill"])
+        else:
+            rows = [SESSION_SPECS["create"], SESSION_SPECS["branch"], SESSION_SPECS["adopt"]]
             rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
-        if self.skills:
-            rows.append(SESSION_SPECS["skill"])
         if self.quirks.get("direct_tools"):
             rows += [t.spec for t in self.registry.tools.values() if not self.plan_mode or t.kind == "read"]
             rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
@@ -79,9 +89,7 @@ class AgentToolsMixin:
                      if not self.plan_mode or self._role(name) == "read"]
         if self.jobs:
             rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
-        if self.plan_mode:
-            rows.append(SESSION_SPECS["exit_plan_mode"])
-        elif self.goal:
+        if not self.plan_mode and self.goal:
             rows.append(SESSION_SPECS["goal_done"])
         return rows
 
@@ -126,6 +134,10 @@ class AgentToolsMixin:
             return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
         if name == "mcp_resource":
             return self.mode != "bypass" and (self.mode == "ask" or (self.tainted and self.profile["untrusted_guard"]))
+        if name == "branch":
+            return self.mode != "bypass" and (self.tainted or self.mode == "ask" or not self._confined())
+        if name == "adopt":
+            return self.mode != "bypass" and (self.tainted or self.mode == "ask")
         if name == "create":
             if self.mode == "bypass":
                 return False

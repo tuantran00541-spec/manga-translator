@@ -100,7 +100,7 @@ class TestM2ProvenanceTaint:
         s, _, wsroot = make_session(tmp_path, mode="bypass", tag="m2a")
         (wsroot / "evil.md").write_text("benign seed", encoding="utf-8")
         s.tainted = True
-        s._run_calls([{"id": "w1", "name": "edit_file",
+        s._run_calls([{"id": "chain-w1", "name": "edit_file",
                        "args": {"path": "evil.md", "old_text": "benign seed",
                                 "new_text": "attacker instructions"}}])
         marked = str((wsroot / "evil.md").resolve())
@@ -108,17 +108,17 @@ class TestM2ProvenanceTaint:
         assert any(i.get("tainted") for i in s.history)
 
         s._new_request("later request")
-        s._run_calls([{"id": "r1", "name": "read_file", "args": {"path": "evil.md"}}])
+        s._run_calls([{"id": "chain-r1", "name": "read_file", "args": {"path": "evil.md"}}])
         assert s.tainted is True
 
     def test_clean_write_and_read_stay_clean(self, tmp_path):
         s, _, wsroot = make_session(tmp_path, mode="bypass", tag="m2b")
         (wsroot / "clean.md").write_text("hello", encoding="utf-8")
-        s._run_calls([{"id": "w1", "name": "edit_file",
+        s._run_calls([{"id": "chain-w1", "name": "edit_file",
                        "args": {"path": "clean.md", "old_text": "hello", "new_text": "hello world"}}])
         assert not s._tainted_files
         assert s.tainted is False
-        s._run_calls([{"id": "r1", "name": "read_file", "args": {"path": "clean.md"}}])
+        s._run_calls([{"id": "chain-r1", "name": "read_file", "args": {"path": "clean.md"}}])
         assert s.tainted is False
         assert not any(i.get("tainted") for i in s.history)
 
@@ -126,7 +126,7 @@ class TestM2ProvenanceTaint:
         s, _, wsroot = make_session(tmp_path, mode="bypass", tag="m2c")
         (wsroot / "evil2.md").write_text("benign seed", encoding="utf-8")
         s.tainted = True
-        s._run_calls([{"id": "w1", "name": "edit_file",
+        s._run_calls([{"id": "chain-w1", "name": "edit_file",
                        "args": {"path": "evil2.md", "old_text": "benign seed",
                                 "new_text": "attacker instructions"}}])
         marked = str((wsroot / "evil2.md").resolve())
@@ -137,7 +137,7 @@ class TestM2ProvenanceTaint:
         s2, _, _ = make_session(tmp_path, mode="bypass", tag="m2d")
         s2.restore(data)
         assert marked in s2._tainted_files
-        s2._run_calls([{"id": "r1", "name": "read_file", "args": {"path": "evil2.md"}}])
+        s2._run_calls([{"id": "chain-r1", "name": "read_file", "args": {"path": "evil2.md"}}])
         assert s2.tainted is True
 
 

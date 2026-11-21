@@ -8,8 +8,7 @@ import re
 
 ACTIONS = ("allow", "ask", "deny")
 CATEGORY = {"run_command": "bash", "read_file": "read", "list_dir": "read", "search": "read", "glob": "read",
-            "write_file": "edit", "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit",
-            "delete_file": "edit",
+            "write_file": "edit", "edit_file": "edit",
             "web_fetch": "webfetch", "web_download": "webfetch", "web_search": "websearch", "task": "task", "spawn_agent": "task", "skill": "skill"}
 CLAUDE_CATEGORY = {"Bash": "bash", "Read": "read", "Edit": "edit", "Write": "edit", "WebFetch": "webfetch", "Task": "task"}
 SETTINGS = {"user": (".manga-agent/settings.json", ".claude/settings.json"),
@@ -212,10 +211,8 @@ def _names_denied_path(rules: list[Rule], command: str) -> bool:
 def subjects(name: str, args: dict, path_of) -> list[str]:
     if name == "run_command":
         return [part.strip() for part in _shell_parts(str(args.get("command") or "")) if part.strip()]
-    if name in ("read_file", "list_dir", "search", "glob", "write_file", "edit_file", "replace_in_files", "delete_file"):
+    if name in ("read_file", "list_dir", "search", "glob", "write_file", "edit_file"):
         return [path_of(args.get("path") or ".")]
-    if name == "move_file":
-        return [path_of(args.get("path") or "."), path_of(args.get("to") or ".")]
     if name in ("web_fetch", "web_download"):
         return [str(args.get("url") or "")]
     if name == "web_search":

@@ -9,7 +9,7 @@ from app.agent.skills import frontmatter
 WORKSPACE_DIRS = (".agents/agents", ".claude/agents")
 HOME_DIRS = (".manga-agent/agents", ".claude/agents")
 READ_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "view_image", "web_fetch", "web_search", "skill"})
-EDIT_TOOLS = frozenset({"write_file", "edit_file", "replace_in_files", "move_file", "delete_file", "web_download"})
+EDIT_TOOLS = frozenset({"write_file", "edit_file", "web_download"})
 ALIASES = {"read": {"read_file"}, "grep": {"search"}, "glob": {"glob"}, "ls": {"list_dir"}, "bash": {"run_command"},
            "edit": EDIT_TOOLS, "write": EDIT_TOOLS, "multiedit": EDIT_TOOLS, "webfetch": {"web_fetch"}, "websearch": {"web_search"}, "skill": {"skill"}}
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")

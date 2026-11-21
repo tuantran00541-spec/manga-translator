@@ -15,7 +15,6 @@ from urllib.parse import urlparse
 
 from app.agent import (
     agents,
-    codemode,
     gitguard,
     isolate,
     mcp,
@@ -55,6 +54,16 @@ class AgentSubagentsMixin:
             if args.get("keep") is not False:
                 return f"{made}\n{output}"
             return f"Ran a one-off tool (not kept).\n{output}{self._note_one_off(name, kept, output)}"
+        if call["name"] == "branch":
+            output, ok = self._branch(args)
+            if not ok:
+                raise ToolError(output)
+            return output
+        if call["name"] == "adopt":
+            output, ok = self._adopt(args)
+            if not ok:
+                raise ToolError(output)
+            return output
         if call["name"] == "mcp_resource":
             return self._mcp_resource(args)
         if call["name"] == "plugin_write":
@@ -157,29 +166,6 @@ class AgentSubagentsMixin:
             child.closed = True
             return f"Closed {child.nick} (it was {state})."
         return self._subagent(str(args.get("description") or "task"), str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
-
-    def _run_script(self, args: dict, policy: "sandbox.Policy | None" = None) -> str:
-        code = str(args.get("code") or "")
-        if not code.strip():
-            raise ToolError("code is empty")
-        limit = max(1, min(3600, int(args.get("timeout") or 120)))
-        started_agents = [0]
-
-        def call_tool(name: str, tool_args: dict) -> tuple[str, bool]:
-            if name not in SCRIPT_TOOLS:
-                return f"{name} cannot be called from a script; allowed: {', '.join(sorted(SCRIPT_TOOLS))}", False
-            if name == "fan_out":
-                jobs = tool_args.get("jobs") if isinstance(tool_args.get("jobs"), list) else []
-                if started_agents[0] + min(len(jobs), MAX_FAN_OUT) > SCRIPT_AGENTS:
-                    return f"a script may start at most {SCRIPT_AGENTS} helper agents in all", False
-                started_agents[0] += min(len(jobs), MAX_FAN_OUT)
-                tool_args = {**tool_args, "as_data": True}
-            output, ok = self._run_call({"id": f"script-{uuid.uuid4().hex[:8]}", "name": name, "args": tool_args})
-            return output, ok
-
-        code_out, output, calls = codemode.run(code, policy or self.workspace.policy, self.workspace.root, limit, call_tool)
-        status = f"[stopped after {limit} s]" if code_out is None else f"[exit code {code_out}]"
-        return clip(f"{output.strip()}\n{status} [{calls} tool call{'s' if calls != 1 else ''}]", 400_000)
 
     def _run_foreground(self, args: dict) -> str:
         command = str(args.get("command") or "").strip()
@@ -631,6 +617,11 @@ class AgentSubagentsMixin:
         if call["name"] not in known and TOOL_ALIASES.get(call["name"]) in known:
             call["name"] = TOOL_ALIASES[call["name"]]
         if call["name"] not in known:
+            if not self.depth and "create" in known and call["name"] in self._chain_targets():
+                return (
+                    f"Tool {call['name']!r} is in the Python tool library, not top-level (top-level: {', '.join(sorted(known))}). "
+                    f"Call create(name='step', keep=false, code='return tools.{call['name']}(...)') instead."
+                ), False
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
         required = offered[call["name"]].get("parameters", {}).get("required") or []
         missing = [k for k in required if isinstance(call["args"], dict) and k not in call["args"]]
@@ -702,8 +693,6 @@ class AgentSubagentsMixin:
                     output, ok = self._start_job(call["args"]), True
                 elif call["name"] == "run_command" and self.profile["timeout_to_background"]:
                     output, ok = self._run_foreground(call["args"]), True
-                elif call["name"] == "run_script":
-                    output, ok = self._run_script(call["args"]), True
                 elif call["name"] in self._root().created:
                     output, ok = self._run_created(call), True
                 elif call["name"] in self.registry.tools:

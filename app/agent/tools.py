@@ -35,7 +35,7 @@ COMMAND_TIMEOUT = 120
 MAX_COMMAND_TIMEOUT = 1800
 
 KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image": "read", "search": "read", "glob": "read", "write_file": "edit",
-        "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
+        "edit_file": "edit", "run_command": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
     {"name": "list_dir", "description": "List what a folder holds, depth 1 to 4.",
@@ -61,15 +61,6 @@ SPECS = [
          "replace_all": {"type": "boolean"},
          "edits": {"type": "array", "items": {"type": "object", "required": ["old_text", "new_text"], "properties": {
              "old_text": {"type": "string"}, "new_text": {"type": "string"}}}}}}},
-    {"name": "replace_in_files", "description": "Replace text in many files at once (literal unless regex); look with dry_run first.",
-     "parameters": {"type": "object", "required": ["pattern", "replacement"], "properties": {
-         "pattern": {"type": "string"}, "replacement": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"},
-         "regex": {"type": "boolean"}, "ignore_case": {"type": "boolean"}, "dry_run": {"type": "boolean"}}}},
-    {"name": "move_file", "description": "Move or rename a file.",
-     "parameters": {"type": "object", "required": ["path", "to"], "properties": {
-         "path": {"type": "string"}, "to": {"type": "string"}, "overwrite": {"type": "boolean"}}}},
-    {"name": "delete_file", "description": "Delete a file.",
-     "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "run_command", "description": "Run a shell command in the workspace sandbox and return its output and exit code. Every other harness tool "
                                             "(skills, helper agents, web, MCP, created tools, branch, adopt) is also a shell command, "
                                             "`<name> key=value ...`, that prints its result; `agent-tool --help` lists them.",
@@ -78,11 +69,6 @@ SPECS = [
          "background": {"type": "boolean", "description": "Start it and return a job id at once; read it with job_output, stop it with job_stop."},
          "tty": {"type": "boolean", "description": "With background: run it on a terminal so job_input can type into it."},
          "outside_sandbox": {"type": "boolean", "description": "Only when the sandbox stops what the task needs; say why."}}}},
-    {"name": "run_script", "description": "Run Python in the sandbox in which tools are functions that return text: tools.read_file(path=...), "
-                                          "tools.search(pattern=...), tools.glob(...), tools.list_dir(...), tools.symbols(...), tools.web_fetch(url=...), "
-                                          "tools.web_search(query=...), tools.fan_out(jobs=[{\"prompt\": ...}], schema={...}) -> JSON list of {job, report}. "
-                                          "Only what it prints comes back; good for many lookups in one step.",
-     "parameters": {"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}, "timeout": {"type": "integer"}}}},
     {"name": "web_fetch", "description": "Fetch a web page as Markdown; offset reads further, find returns the matching lines.",
      "parameters": {"type": "object", "required": ["url"], "properties": {
          "url": {"type": "string"}, "max_chars": {"type": "integer"}, "offset": {"type": "integer"}, "find": {"type": "string"}}}},
@@ -285,14 +271,8 @@ class Workspace:
 
     def targets(self, name: str, args: dict) -> list[Path]:
         try:
-            if name in ("write_file", "edit_file", "web_download", "delete_file"):
+            if name in ("write_file", "edit_file", "web_download"):
                 return [self.resolve(args.get("path"), write=True)]
-            if name == "move_file":
-                source, target = self.resolve(args.get("path"), write=True), self.resolve(args.get("to"), write=True)
-                return [source, target / source.name if target.is_dir() else target]
-            if name == "replace_in_files" and not args.get("dry_run"):
-                return [file for file, _, _ in self._replace_plan(str(args.get("pattern") or ""), str(args.get("replacement") or ""), str(args.get("path") or "."),
-                                                                  args.get("glob"), bool(args.get("regex")), bool(args.get("ignore_case")))]
         except ToolError:
             pass
         return []
@@ -532,75 +512,6 @@ class Workspace:
             changes += count
         target.write_text(text, encoding="utf-8")
         return f"Edited {self.rel(target)} ({changes} change{'s' if changes != 1 else ''})"
-
-    def _replacer(self, pattern: str, replacement: str, regex: bool, ignore_case: bool):
-        if not pattern:
-            raise ToolError("pattern is empty")
-        try:
-            rx = re.compile(pattern if regex else re.escape(pattern), re.IGNORECASE if ignore_case else 0)
-        except re.error as exc:
-            raise ToolError(f"Bad regular expression: {exc}") from exc
-        if not regex:
-            replacement = replacement.replace("\\", "\\\\")
-        return rx, replacement
-
-    def _replace_plan(self, pattern: str, replacement: str, path: str, glob: str | None, regex: bool, ignore_case: bool):
-        rx, repl = self._replacer(pattern, replacement, regex, ignore_case)
-        plan = []
-        for file in self._files(self.resolve(path, write=True), glob):
-            try:
-                if file.stat().st_size > MAX_SEARCH_FILE_BYTES:
-                    continue
-                data = file.read_bytes()
-            except OSError:
-                continue
-            if b"\0" in data[:8192]:
-                continue
-            try:
-                text = data.decode("utf-8")
-            except UnicodeDecodeError:
-                continue
-            try:
-                new, count = rx.subn(repl, text)
-            except (re.error, IndexError) as exc:
-                raise ToolError(f"Bad replacement: {exc}") from exc
-            if count:
-                plan.append((file, new, count))
-        return plan
-
-    def _tool_replace_in_files(self, pattern: str, replacement: str, path: str = ".", glob: str | None = None, regex: bool = False,
-                               ignore_case: bool = False, dry_run: bool = False) -> str:
-        plan = self._replace_plan(pattern, replacement, path, glob, regex, ignore_case)
-        if not plan:
-            return "No file contains the pattern; nothing changed."
-        if len(plan) > MAX_LIST_ENTRIES:
-            raise ToolError(f"{len(plan)} files would change; narrow it with path or glob")
-        rows = [f"{self.rel(file)}: {count} place{'s' if count != 1 else ''}" for file, _, count in plan]
-        total = sum(count for _, _, count in plan)
-        if dry_run:
-            return f"Would change {total} places in {len(plan)} files (nothing written):\n" + "\n".join(rows)
-        for file, new, _ in plan:
-            file.write_text(new, encoding="utf-8")
-        return f"Changed {total} places in {len(plan)} files:\n" + "\n".join(rows)
-
-    def _tool_move_file(self, path: str, to: str, overwrite: bool = False) -> str:
-        source, target = self.resolve(path, write=True), self.resolve(to, write=True)
-        if not source.is_file():
-            raise self.missing(path) if not source.exists() else ToolError(f"{path!r} is a folder; move folders with run_command")
-        if target.is_dir():
-            target = target / source.name
-        if target.exists() and not overwrite:
-            raise ToolError(f"{self.rel(target)} already exists; set overwrite to replace it")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(source, target)
-        return f"Moved {self.rel(source)} to {self.rel(target)}"
-
-    def _tool_delete_file(self, path: str) -> str:
-        target = self.resolve(path, write=True)
-        if not target.is_file():
-            raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; delete folders with run_command")
-        target.unlink()
-        return f"Deleted {self.rel(target)}"
 
     def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False, background: bool = False, tty: bool = False) -> str:
         if not str(command).strip():

@@ -23,10 +23,8 @@ MAX_IMAGES = 3
 MAX_FAN_OUT = 12
 MAX_BRANCHES = 3
 BRANCH_TIMEOUT = 600
-BRANCH_LOCAL = frozenset({"read_file", "edit_file", "write_file", "replace_in_files", "move_file", "delete_file",
+BRANCH_LOCAL = frozenset({"read_file", "edit_file", "write_file",
                           "run_command", "list_dir", "search", "glob", "symbols"})
-SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "fan_out"})
-SCRIPT_AGENTS = 40
 MAX_NOTES = 16_000
 EVENT_OUTPUT = 20_000
 EMPTY_RETRIES = 3
@@ -161,8 +159,15 @@ def _call(name, args):
         if _time.time() > _deadline:
             raise RuntimeError("the agent stopped; the tool call was never answered")
         _time.sleep(0.02)
-    with open(reply, encoding="utf-8") as f:
-        data = _json.load(f)
+    for _attempt in range(5):
+        try:
+            with open(reply, encoding="utf-8") as f:
+                data = _json.load(f)
+            break
+        except PermissionError:
+            if _attempt == 4:
+                raise
+            _time.sleep(0.01)
     if not data["ok"]:
         raise RuntimeError(data["output"])
     out = data["output"]
@@ -331,15 +336,16 @@ INTENT_CHECK = ("[intent.md check: say in one line what this request has done so
 MADE_TOOLS = ("The code is a function def name(...) or a bare body, where args holds the arguments and a top-level return is allowed. "
               "With keep: false it runs once; otherwise it becomes a tool callable by name from the next reply on, and in later sessions. "
               "Only what the code prints or returns is shown. A failing tools.<name>(...) raises an exception with the tool's error.")
-LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
+LEAN_TOOLS = frozenset()
 TOOL_ALIASES = {"bash": "run_command", "shell": "run_command", "execute": "run_command",
                 "create_file": "write_file"}
 LEAN_PROMPT = IDENTITY + """
-Your tools are read_file, edit_file, run_command (the shell) and create. How they combine is described below.
+Your top-level tools are ONLY create, branch, and adopt (plus any tools you save with create).
+All workspace, shell, search, edit, web, skill, subagent, memory, checkpoint and MCP capabilities live in Python under tools.<name>(...) inside create and branch.
 
 """ + RHYTHM + "\n" + VOICE
 ACTIVE_SKILLS = "Active skills"
-SHELL_COMMANDS = ("Harness commands in the shell. Each prints its result; arguments are key=value pairs, one JSON object, or a bare value "
+SHELL_COMMANDS = ("Harness commands in the shell (via tools.run_command). Each prints its result; arguments are key=value pairs, one JSON object, or a bare value "
                   "for the first parameter.\n"
                   "- web_search query='...' and web_fetch url=...: search and read the web.\n"
                   "- think '<question>': a second opinion from another model.\n"
@@ -354,36 +360,50 @@ EXAMPLE_CHECK = '''def check():
     """PASS when the text tests pass, else the end of the failure."""
     out = tools.run_command(command="python3 -m pytest tests/test_text.py -q")
     return "PASS" if "[exit code 0]" in out else out[-1500:]'''
-EXAMPLE_BRANCH = """regex = '''
-tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
-                new_text='return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")')
-tools.edit_file(path="app/text.py", old_text="def slugify", new_text="import re\\\\n\\\\n\\\\ndef slugify")
-'''
-strip = '''
-tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
-                new_text='return text.lower().replace(" ", "-").strip("!,.")')
-'''
-return tools.branch({"regex": regex, "strip": strip}, check="print(tools.check())")"""
-EXAMPLE_ADOPT = '''tools.adopt("regex")
-return tools.check()'''
-LEAN_CREATE = ("How the tools combine:\n"
-               "- run_command does most of the work; chain steps with && or a script. read_file and edit_file read and edit one file.\n"
-               "- Everything else is in the tool library: helper agents, a second model, skills, web, view_image, ask_user, memory, "
-               "todo_write, checkpoint, schedules, plugins and MCP tools. tools.search(words) finds a tool; tools.describe(name) shows its "
-               "parameters. run_command reaches the library{script}, under the same rules and approvals.\n\n"
+EXAMPLE_BRANCH = '''branch(
+  branches={
+    "regex": "tools.edit_file(path='app/text.py', old_text='return text.lower().replace(\\\" \\\", \\\"-\\\")', new_text='return re.sub(r\\\"[^a-z0-9]+\\\", \\\"-\\\", text.lower()).strip(\\\"-\\\")')",
+    "strip": "tools.edit_file(path='app/text.py', old_text='return text.lower().replace(\\\" \\\", \\\"-\\\")', new_text='return text.lower().replace(\\\" \\\", \\\"-\\\").strip(\\\"!,._\\\")')"
+  },
+  check="print(tools.check())"
+)'''
+EXAMPLE_ADOPT = 'adopt(name="regex")'
+LEAN_CREATE = ("Code-mode workflow (prefer create, branch, and adopt for everything):\n"
+               "- Use create to write Python that composes tools.<name>(...) in one turn instead of single-step loops. "
+               "Every hidden tool is reachable via tools.<name>(...): tools.read_file, tools.edit_file, tools.write_file, "
+               "tools.search, tools.glob, tools.list_dir, tools.symbols, tools.run_command, tools.web_search, tools.web_fetch, "
+               "tools.skill, tools.agent, tools.fan_out, tools.checkpoint, tools.memory, tools.todo_write, tools.ask_user, "
+               "plugins, and MCP tools. Call tools.search(words) to discover tools and tools.describe(name) for parameters{script}.\n"
+               "- Persistent REPL state: builtins.memo (dict) survives across create runs in this session — cache parsed data, "
+               "file lists, or intermediate results in memo instead of re-reading every turn.\n"
+               "- Keep reusable helpers: save a verification tool (e.g. create name='check', args={{}}) without keep=false so you can "
+               "call check() directly in later turns. Use keep=false for one-off exploration or batch edits.\n"
+               "- Use branch(branches={{'a': code_a, 'b': code_b}}, check=check_code) (or tools.branch(...) inside Python) whenever 2-3 fixes are plausible or an attempt fails: "
+               "it runs all attempts in parallel on isolated workspace copies, runs check on each, and returns unified diffs + check outputs "
+               "without modifying the real workspace. Call adopt(name='a') to apply the winner (with an automatic checkpoint).\n"
+               "- " + MADE_TOOLS + "\n\n"
                + SHELL_COMMANDS.replace("{", "{{").replace("}", "}}") + "\n\n"
-               "- create saves Python that calls tools.<name>(...) as a tool of its own. " + MADE_TOOLS + "\n"
-               "- tools.branch({{'a': code_a, 'b': code_b}}, check=check_code), inside create, runs two or three attempts in parallel, each "
-               "on its own copy of the workspace, runs the check on each, and returns each attempt's diff, output and check result. "
-               "tools.adopt(name) applies one; until then the workspace is unchanged. Attempts cannot branch.\n\n"
-               "Example: slugify in app/text.py returns 'hello,-world!' for 'Hello, World!' instead of 'hello-world', and two fixes are plausible.\n"
-               "1. Save the check as a tool and confirm it fails (args runs it at once):\n"
+               "Example: slugify in app/text.py returns 'hello,-world!' instead of 'hello-world', and two fixes are plausible.\n"
+               "1. Save the check as a reusable tool and confirm it fails (args runs it right away):\n"
                "create name=\"check\", args={{}}, code=\n" + EXAMPLE_CHECK.replace("{", "{{").replace("}", "}}") + "\n"
-               "2. Try both fixes on copies and let the check decide (keep=false runs the code once):\n"
-               "create name=\"try_both\", keep=false, code=\n" + EXAMPLE_BRANCH.replace("{", "{{").replace("}", "}}") + "\n"
-               "3. Apply the winner and rerun the check on the workspace:\n"
-               "create name=\"keep_it\", keep=false, code=\n" + EXAMPLE_ADOPT.replace("{", "{{").replace("}", "}}") + "\n"
-               "Finish only when this returns PASS.")
+               "2. Test both fixes in parallel on isolated copies using branch:\n"
+               + EXAMPLE_BRANCH.replace("{", "{{").replace("}", "}}") + "\n"
+               "3. Apply the winning branch with adopt and rerun check():\n"
+               + EXAMPLE_ADOPT + "\n"
+               "Finish only when check() returns PASS.")
+NUDGE_BRANCH_ON_FAIL = (
+    "[Hint] Two consecutive checks/runs failed after editing. Instead of guessing again on the live workspace, "
+    "call branch(branches={'a': code_a, 'b': code_b}, check=...) to test 2-3 competing hypotheses in parallel "
+    "on isolated copies, then call adopt on the passing branch."
+)
+NUDGE_SAVE_CHECK = (
+    "[Hint] You have run multiple one-off create(keep=false) calls. Save your verification command or repeated helper "
+    "as a reusable tool (create without keep=false, e.g. name='check') and store intermediate data in memo so later turns stay fast."
+)
+NUDGE_ADOPT_BRANCH = (
+    "[Hint] You have open branch results ({names}) that have NOT been applied to the real workspace yet. "
+    "Call adopt(name='<winner>') to apply the winning branch and rerun your check, or state clearly why none were kept."
+)
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -429,6 +449,19 @@ SESSION_SPECS = {
                    "keep": {"type": "boolean", "description": "false runs it once right away (args optional) without keeping it."},
                    "kind": {"type": "string", "enum": ["read", "exec"], "description": "read: only looks, runs read-only and offline, and may call only looking tools; exec (default) asks like a command."},
                    "scope": {"type": "string", "enum": ["user", "workspace"], "description": "user (default) keeps it for every project; workspace saves it in .agents/tools/."}}}},
+    "branch": {"name": "branch", "description": (
+        "Run 2 or 3 competing Python attempts in parallel, each in its own isolated copy of the workspace, run the same check in each copy, "
+        "and return each branch's diff, output and check result without modifying the real workspace. Inside each branch's code, "
+        "tools.<name>(...) calls workspace/library/created tools. Call adopt afterwards to apply the winner."),
+               "parameters": {"type": "object", "required": ["branches"], "properties": {
+                   "branches": {"type": "object", "description": "Map of 2-3 branch names to Python code snippets to run on isolated copies.",
+                                "additionalProperties": {"type": "string"}},
+                   "check": {"type": "string", "description": "Optional Python verification code run in each copy after its attempt."}}}},
+    "adopt": {"name": "adopt", "description": (
+        "Apply the named branch's file changes from the latest branch call into the real workspace (saving a checkpoint first) "
+        "and discard the other copies."),
+              "parameters": {"type": "object", "required": ["name"], "properties": {
+                  "name": {"type": "string", "description": "Name of the winning branch from the latest branch call."}}}},
     "goal_done": {"name": "goal_done", "description": "Mark the goal met, after its check has passed.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
     "job_output": {"name": "job_output", "description": "Read what a background job printed since you last looked, waiting up to wait_s for more.",

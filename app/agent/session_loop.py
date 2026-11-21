@@ -513,6 +513,22 @@ class AgentLoopMixin:
         except (KeyError, ToolError):
             return False
 
+    def _runtime_nudge(self, *, finishing: bool = False) -> str:
+        if self.depth or self.plan_mode or self.workspace.policy.mode == "read-only":
+            return ""
+        if finishing:
+            if self._branches and "adopt_branch" not in self._nudged:
+                self._nudged.add("adopt_branch")
+                return NUDGE_ADOPT_BRANCH.format(names=", ".join(sorted(self._branches)))
+            return ""
+        if self._edited and self._fail_streak >= 2 and not self._used_branch and "branch_on_fail" not in self._nudged:
+            self._nudged.add("branch_on_fail")
+            return NUDGE_BRANCH_ON_FAIL
+        if self._one_off_count >= 3 and not self._saved_tool_in_req and "save_check" not in self._nudged:
+            self._nudged.add("save_check")
+            return NUDGE_SAVE_CHECK
+        return ""
+
     def _run_calls(self, calls: list[dict]) -> None:
         def one(call: dict) -> tuple[str, bool]:
             if self._stop:
@@ -532,6 +548,21 @@ class AgentLoopMixin:
                     self.tainted = True
                 elif self.tainted:
                     self._tainted_files.update(self._tainted_write_paths(call))
+            if not self.depth and isinstance(call.get("args"), dict):
+                cname, cargs = call["name"], call["args"]
+                if cname == "branch" and ok:
+                    self._used_branch = True
+                    self._fail_streak = 0
+                elif cname == "create":
+                    if cargs.get("keep") is False:
+                        self._one_off_count += 1
+                    elif str(cargs.get("code") or "").strip():
+                        self._saved_tool_in_req = True
+                if cname in ("create", "run_command") or cname in self._root().created:
+                    if not ok or _ses("_failed")(output):
+                        self._fail_streak += 1
+                    else:
+                        self._fail_streak = 0
             self.history.append({"role": "tool", "id": call["id"], "name": call["name"], "content": output,
                                  **({} if ok else {"failed": True}),
                                  **({"tainted": True} if self.tainted else {})})
@@ -655,6 +686,10 @@ class AgentLoopMixin:
                     self.history.append({"role": "user", "content": HANDOFF_NUDGE})
                     self.emit("notice", text="Model để lại việc cho người đọc, nhắc tự làm.")
                     continue
+                if nudge := self._runtime_nudge(finishing=True):
+                    self.history.append({"role": "user", "content": nudge})
+                    self.emit("notice", text="Có nhánh branch chưa áp dụng, nhắc model chọn adopt.")
+                    continue
                 if nudge := self._unchecked():
                     self._check_nudged = True
                     self.history.append({"role": "user", "content": nudge})
@@ -663,6 +698,9 @@ class AgentLoopMixin:
                 break
             cuts = 0
             self._run_calls(calls)
+            if hint := self._runtime_nudge(finishing=False):
+                self.history.append({"role": "user", "content": hint})
+                self.emit("notice", text="Đã gợi ý model tận dụng create/branch.")
             self._show_images()
             self._advance_prewalk()
             if self._rollover:

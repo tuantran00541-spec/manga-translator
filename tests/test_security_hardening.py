@@ -596,4 +596,93 @@ def test_agent_mode_memory_agents_md_chain_rpc_and_mcp_resource_hardening(tmp_pa
     assert memory.has_secret("-----BEGIN RSA PRIVATE KEY-----") is True
 
 
+# ---------------------------------------------------------------------------
+# 16. Pure Code-Mode surface: ONLY create, branch, adopt + Code-Mode prompt + runtime nudges
+# ---------------------------------------------------------------------------
+def test_pure_code_mode_three_tools_branch_adopt_and_runtime_nudges(tmp_path):
+    from app.agent import sandbox
+    from app.agent.session import AgentSessionManager
+    from app.agent.tools import Workspace
+
+    class _Prov:
+        id = "stub"
+        label = "stub"
+
+    home, wsroot = tmp_path / "home", tmp_path / "ws"
+    wsroot.mkdir()
+    (wsroot / "val.txt").write_text("old", encoding="utf-8")
+    mgr = AgentSessionManager(home / ".manga-agent", home=home)
+
+    # Fresh workspace-write session exposes ONLY create, branch, adopt; dead-weight tools removed
+    from app.agent.tools import KIND as AGENT_KIND, SPECS as AGENT_SPECS
+    removed = {"run_script", "replace_in_files", "move_file", "delete_file"}
+    assert not (removed & set(AGENT_KIND))
+    assert not (removed & {spec["name"] for spec in AGENT_SPECS})
+
+    s = mgr.create(
+        _Prov(), "k", "m", Workspace(wsroot, sandbox.Policy("workspace-write", False)), "bypass",
+        complete=lambda *a, **k: {"text": ""}, session_id="cm16a01cb02dc03ed",
+    )
+    assert [spec["name"] for spec in s.specs()] == ["create", "branch", "adopt"]
+
+    # System prompt promotes Code-Mode and no longer delegates most work to raw run_command
+    sys_p = s.system_prompt()
+    assert "ONLY create, branch, and adopt" in sys_p
+    assert "run_command does most of the work" not in sys_p
+    assert "builtins.memo" in sys_p
+
+    # Calling a hidden library tool directly redirects model to create + tools.<name>
+    out_hidden, ok_hidden = s._run_call({"id": "c1", "name": "read_file", "args": {"path": "val.txt"}})
+    assert ok_hidden is False
+    assert "tools.read_file" in out_hidden and "create(" in out_hidden
+
+    # Top-level branch & adopt work end-to-end without touching workspace until adopt
+    out_b, ok_b = s._run_call({
+        "id": "b1",
+        "name": "branch",
+        "args": {
+            "branches": {
+                "a": "tools.edit_file(path='val.txt', old_text='old', new_text='alpha')",
+                "b": "tools.edit_file(path='val.txt', old_text='old', new_text='beta')",
+            },
+            "check": "print('VAL=' + tools.read_file(path='val.txt').strip())",
+        },
+    })
+    assert ok_b is True
+    assert "+alpha" in out_b and "+beta" in out_b
+    assert "alpha" in out_b and "beta" in out_b
+    assert (wsroot / "val.txt").read_text(encoding="utf-8") == "old"
+
+    # Finishing with open branches fires NUDGE_ADOPT_BRANCH once
+    nudge_adopt = s._runtime_nudge(finishing=True)
+    assert "adopt(" in nudge_adopt and "a, b" in nudge_adopt
+    assert s._runtime_nudge(finishing=True) == ""
+
+    out_a, ok_a = s._run_call({"id": "a1", "name": "adopt", "args": {"name": "b"}})
+    assert ok_a is True and "Adopted branch b" in out_a
+    assert (wsroot / "val.txt").read_text(encoding="utf-8") == "beta"
+
+    # Approval gates for branch & adopt in ask/tainted modes
+    s_ask = mgr.create(
+        _Prov(), "k", "m", Workspace(wsroot, sandbox.Policy("workspace-write", False)), "ask",
+        complete=lambda *a, **k: {"text": ""}, session_id="cm16b01cb02dc03ed",
+    )
+    assert s_ask._needs_approval({"name": "branch", "args": {"branches": {"a": "1", "b": "2"}}}, None) is True
+    assert s_ask._needs_approval({"name": "adopt", "args": {"name": "a"}}, None) is True
+
+    # Runtime nudges: NUDGE_BRANCH_ON_FAIL & NUDGE_SAVE_CHECK fire once per request
+    s._new_request("fix bug")
+    s._edited = True
+    s._fail_streak = 2
+    nudge_fail = s._runtime_nudge(finishing=False)
+    assert "branch(" in nudge_fail and "adopt" in nudge_fail
+    assert s._runtime_nudge(finishing=False) == ""
+
+    s._one_off_count = 3
+    nudge_save = s._runtime_nudge(finishing=False)
+    assert "reusable tool" in nudge_save and "memo" in nudge_save
+    assert s._runtime_nudge(finishing=False) == ""
+
+
+
 
