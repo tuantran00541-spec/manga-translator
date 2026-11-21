@@ -40,7 +40,10 @@ class AgentCommandsMixin:
     """Command, plugin, MCP, hook, and skill handlers for AgentSession."""
 
     def _build_registry(self, home_path: Path) -> registry.Registry:
+        from app.agent import app_bridge
+
         reg = registry.Registry({s["name"] for s in SPECS} | set(SESSION_SPECS))
+        app_bridge.register(reg)
         registry.load_plugins(reg, self.workspace.root, home_path, self.trust, self.profile.get("plugins"))
         return reg
 

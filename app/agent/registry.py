@@ -19,7 +19,7 @@ GROUPS = {
    
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "models": "subagents", "intent": "subagents", "mcp": "mcp"}
-ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
+ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp", "app"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file",
                          "run_command", "web_fetch", "web_search", "web_download"})
 ROLES = ("read", "edit", "exec", "net")

@@ -684,5 +684,138 @@ def test_pure_code_mode_three_tools_branch_adopt_and_runtime_nudges(tmp_path):
     assert s._runtime_nudge(finishing=False) == ""
 
 
+# ---------------------------------------------------------------------------
+# 17. App <-> Harness bridge: Chaos manages Manga Translator via tools.app_*
+# ---------------------------------------------------------------------------
+def test_app_bridge_tools_manage_manga_app_safely(tmp_path, monkeypatch):
+    import json
+    from app import config as app_config, manifest_utils, series_memory
+    from app.agent import sandbox
+    from app.agent.session import AgentSessionManager
+    from app.agent.tools import Workspace
+    from app.routers import chapters as chapters_router
+
+    class _Prov:
+        id = "stub"
+        label = "stub"
+
+    # Isolate processed & series directories inside tmp_path
+    proc_dir = tmp_path / "processed"
+    series_dir = tmp_path / "series"
+    cid = "a1b2c3d4"
+    (proc_dir / cid).mkdir(parents=True)
+    manifest_data = {
+        "chapter_id": cid,
+        "chapter_name": "Demo Chapter 1",
+        "source_url": "https://example.com/manga/demo/chapter-1",
+        "workflow": {"stage": "review", "page_index": 0},
+        "pages": [{
+            "page_index": 0,
+            "width": 800,
+            "height": 1200,
+            "original": str(proc_dir / cid / "000.png"),
+            "cleaned": str(proc_dir / cid / "000_clean.png"),
+            "boxes": [{"id": "b1", "x1": 10, "y1": 10, "x2": 100, "y2": 50, "confidence": 0.95}],
+            "text_objects": [{
+                "id": "obj1",
+                "ocr_text": "Hello",
+                "translation": "",
+                "region": {"x1": 10, "y1": 10, "x2": 100, "y2": 50},
+                "source_boxes": ["b1"],
+            }],
+        }],
+    }
+    (proc_dir / cid / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+    monkeypatch.setattr(app_config, "PROCESSED_DIR", proc_dir)
+    monkeypatch.setattr(manifest_utils, "PROCESSED_DIR", proc_dir)
+    monkeypatch.setattr(chapters_router, "PROCESSED_DIR", proc_dir)
+    monkeypatch.setattr(series_memory, "SERIES_DIR", series_dir)
+    chapters_router._CHAPTER_LIST_CACHE.clear()
+
+    home, wsroot = tmp_path / "home", tmp_path / "ws"
+    wsroot.mkdir()
+    mgr = AgentSessionManager(home / ".manga-agent", home=home)
+    s = mgr.create(
+        _Prov(), "k", "m", Workspace(wsroot, sandbox.Policy("workspace-write", False)), "bypass",
+        complete=lambda *a, **k: {"text": ""}, session_id="ab17a01cb02dc03ed",
+    )
+
+    # Top-level surface stays strictly 3 tools while all 12 app_* tools live in the registry
+    assert [spec["name"] for spec in s.specs()] == ["create", "branch", "adopt"]
+    expected_app = {
+        "app_chapters", "app_page", "app_preflight", "app_update_text",
+        "app_render_page", "app_skip_pages", "app_series", "app_series_save",
+        "app_providers", "app_ai_mode_status", "app_ai_mode_start", "app_ai_mode_cancel",
+    }
+    assert expected_app <= set(s.registry.tools)
+
+    # Read & manage app via library calls (the exact RPC path used by create)
+    out_ch, ok_ch = s._run_call({"id": "chain-1", "name": "app_chapters", "args": {}})
+    assert ok_ch and cid in out_ch and "Demo Chapter 1" in out_ch
+
+    out_pg, ok_pg = s._run_call({"id": "chain-2", "name": "app_page", "args": {"chapter_id": cid, "page_index": 0}})
+    assert ok_pg and "obj1" in out_pg
+
+    out_pf, ok_pf = s._run_call({"id": "chain-3", "name": "app_preflight", "args": {"chapter_id": cid}})
+    assert ok_pf and "blocker_count" in out_pf
+
+    out_up, ok_up = s._run_call({
+        "id": "chain-4",
+        "name": "app_update_text",
+        "args": {
+            "chapter_id": cid,
+            "updates": [{"page_index": 0, "id": "obj1", "translation": "Xin chào", "editorial_reviewed": True}],
+        },
+    })
+    assert ok_up and '"updated": 1' in out_up
+    saved_m = json.loads((proc_dir / cid / "manifest.json").read_text(encoding="utf-8"))
+    assert saved_m["pages"][0]["text_objects"][0]["translation"] == "Xin chào"
+    assert saved_m["pages"][0]["text_objects"][0]["editorial_reviewed"] is True
+
+    # Series memory round-trip through app_series_save -> app_series
+    out_ss, ok_ss = s._run_call({
+        "id": "chain-5",
+        "name": "app_series_save",
+        "args": {"url": "https://example.com/manga/demo/chapter-1", "text": "Lin = Lâm", "notes": "Murim tone"},
+    })
+    assert ok_ss and "Lâm" in out_ss
+    out_sr, ok_sr = s._run_call({
+        "id": "chain-6",
+        "name": "app_series",
+        "args": {"url": "https://example.com/manga/demo/chapter-1"},
+    })
+    assert ok_sr and "Murim tone" in out_sr
+
+    # app_providers & app_ai_mode_status work safely without leaking keys
+    out_pr, ok_pr = s._run_call({"id": "chain-7", "name": "app_providers", "args": {}})
+    assert ok_pr and '"configured"' in out_pr
+    out_st, ok_st = s._run_call({"id": "chain-8", "name": "app_ai_mode_status", "args": {}})
+    assert ok_st and '"job"' in out_st
+
+    # Security gates: secret tokens rejected, app_ai_mode_start always asks, tainted edits require approval
+    fake_secret = "sk_" + "live_" + "0" * 24
+    out_bad_t, ok_bad_t = s._run_call({
+        "id": "chain-9",
+        "name": "app_update_text",
+        "args": {"chapter_id": cid, "updates": [{"page_index": 0, "id": "obj1", "translation": fake_secret}]},
+    })
+    assert not ok_bad_t and "API keys" in out_bad_t
+    out_bad_s, ok_bad_s = s._run_call({
+        "id": "chain-10",
+        "name": "app_series_save",
+        "args": {"url": "https://example.com/manga/demo/chapter-1", "notes": fake_secret},
+    })
+    assert not ok_bad_s and "API keys" in out_bad_s
+
+    assert s._always_ask({"name": "app_ai_mode_start", "args": {}}) is True
+    s_edits = mgr.create(
+        _Prov(), "k", "m", Workspace(wsroot, sandbox.Policy("workspace-write", False)), "edits",
+        complete=lambda *a, **k: {"text": ""}, session_id="ab17b01cb02dc03ed",
+    )
+    s_edits.tainted = True
+    assert s_edits._needs_approval({"name": "app_update_text", "args": {"chapter_id": cid, "updates": []}}, None) is True
+
+
+
 
 
