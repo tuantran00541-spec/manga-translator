@@ -239,15 +239,20 @@
   .inspector-section > summary, .inspector-section > h3 { padding: 9px 10px; font-size: 12px; }
   .inspector-section > h3 { margin: 0; }
   .text-editor-section-body { display: grid; gap: 10px; padding: 0 10px 10px; }
-  .text-object-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .text-object-action-btn:last-child { grid-column: span 2; }
+  .text-object-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .text-object-action-btn.text-object-delete-btn { grid-column: auto; }
   .editor-page-summary { padding: 11px; }
   .editor-page-summary h3 { padding: 0; }
   .editor-page-status { color: var(--text-secondary); font-size: 12px; }
-  .font-style-toolbar, .color-toolbar, .stroke-toolbar, .font-size-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .font-style-toolbar, .color-toolbar, .stroke-toolbar, .bg-toolbar, .corner-radius-toolbar, .gradient-toolbar, .glow-toolbar, .font-size-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .font-style-toolbar .ui-select { flex: 1 1 140px; }
-  .font-size-slider, .stroke-width-slider { flex: 1 1 100px; accent-color: var(--accent); }
-  .bold-toggle-btn.active, .size-auto-btn.selected, .align-btn.selected { border-color: var(--text-primary); background: var(--accent-soft); color: var(--text-primary); }
+  .font-size-slider, .stroke-width-slider { flex: 1 1 80px; accent-color: var(--accent); }
+  .bold-toggle-btn.active, .size-auto-btn.selected, .stroke-auto-btn.selected, .align-btn.selected { border-color: var(--text-primary); background: var(--accent-soft); color: var(--text-primary); }
+  .color-effects-block { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+  .gradient-stops-row { display: flex; align-items: center; gap: 6px; padding-left: 2px; }
+  .gradient-stops-row[hidden] { display: none; }
+  .corner-radius-toolbar.is-disabled { opacity: .5; }
+  .inspector-eyedrop-btn { width: 26px; height: 26px; padding: 0; }
   .align-group { display: grid; gap: 6px; }
   .align-btn-row { flex-wrap: wrap; }
 

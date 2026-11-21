@@ -1,4 +1,14 @@
-export const state = { variant: "clean", tool: "select", zoom: 100, fitWidth: true, chapter: null, renderToken: 0 };
+export const state = {
+  variant: "clean",
+  tool: "select",
+  zoom: 100,
+  fitWidth: true,
+  showOverlays: true,
+  livePreview: true,
+  peekOriginal: false,
+  chapter: null,
+  renderToken: 0,
+};
 
 
 export const BRUSH_CHUNK_H = 4096;
@@ -7,7 +17,7 @@ export const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400];
 
 export const MIN_BOX = 10;
 
-export const SHORTCUTS = { v: "select", r: "rectangle", o: "ellipse", b: "brush", e: "eraser", h: "hand", z: "zoom" };
+export const SHORTCUTS = { v: "select", r: "rectangle", o: "ellipse", b: "brush", e: "eraser", i: "eyedropper", h: "hand", z: "zoom" };
 
 const snapshots = new Map();
 

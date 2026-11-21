@@ -430,6 +430,7 @@ class CreateTextObjectRequest(BaseModel):
     font_selection_mode: Literal["default", "user", "ai", "auto"] | None = None
     font_match: dict | None = None
     font_ai_id: str | None = None
+    ocr_color_profile: dict | None = None
 
     @field_validator("shape")
     @classmethod
@@ -454,6 +455,7 @@ class UpdateTextObjectRequest(BaseModel):
     font_selection_mode: Literal["default", "user", "ai", "auto"] | None = None
     font_match: dict | None = None
     font_ai_id: str | None = None
+    ocr_color_profile: dict | None = None
 
     @field_validator("id")
     @classmethod
@@ -493,6 +495,7 @@ class BulkTextObjectUpdateItem(BaseModel):
     font_selection_mode: Literal["default", "user", "ai", "auto"] | None = None
     font_match: dict | None = None
     font_ai_id: str | None = None
+    ocr_color_profile: dict | None = None
 
     @field_validator("id")
     @classmethod

@@ -62,6 +62,7 @@ let _textPersistChain = Promise.resolve();
 
 function _captureTextState(obj) {
   return {
+    shape: obj.shape || "rectangle",
     ocr_text: obj.ocr_text != null ? obj.ocr_text : "",
     translation: obj.translation != null ? obj.translation : "",
     style: obj.style
@@ -70,6 +71,9 @@ function _captureTextState(obj) {
     font_selection_mode: obj.font_selection_mode || null,
     font_match: obj.font_match ? JSON.parse(JSON.stringify(obj.font_match)) : null,
     font_ai_id: obj.font_ai_id || null,
+    ocr_color_profile: obj.ocr_color_profile
+      ? JSON.parse(JSON.stringify(obj.ocr_color_profile))
+      : null,
   };
 }
 
@@ -77,6 +81,7 @@ function scheduleTextObjectPersist(pageIndex, id) {
   const obj = findTextObject(pageIndex, id);
   if (!obj) return;
   window.editorHistory?.touch(pageIndex, id);
+  window.syncOverlayForObject?.(pageIndex, id);
   document.dispatchEvent(new CustomEvent("text-object-edited", { detail: { pageIndex, id } }));
   _textDirty.set(`${pageIndex}:${id}`, Object.assign({ pageIndex, id, chapterId: currentChapterId }, _captureTextState(obj)));
   _textHasError = false;
@@ -90,12 +95,14 @@ function _bulkUpdates(items) {
   return items.map((p) => ({
     page_index: p.pageIndex,
     id: p.id,
+    shape: p.shape,
     ocr_text: p.ocr_text,
     translation: p.translation,
     style: p.style,
     font_selection_mode: p.font_selection_mode,
     font_match: p.font_match,
     font_ai_id: p.font_ai_id,
+    ocr_color_profile: p.ocr_color_profile,
   }));
 }
 
@@ -121,12 +128,14 @@ async function _persistTextObjectsIndividually(chapterId, items) {
         chapter_id: chapterId,
         page_index: p.pageIndex,
         id: p.id,
+        shape: p.shape,
         ocr_text: p.ocr_text,
         translation: p.translation,
         style: p.style,
         font_selection_mode: p.font_selection_mode,
         font_match: p.font_match,
         font_ai_id: p.font_ai_id,
+        ocr_color_profile: p.ocr_color_profile,
       });
     } catch (err) {
       failures.push(err);

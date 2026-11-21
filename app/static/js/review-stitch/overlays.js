@@ -24,6 +24,119 @@ export const sourceRegion = (desc, r) => ({
   x2: Number(r.x2), y2: desc.sourceY1 + (Number(r.y2) - desc.localY1),
 });
 
+function _hexLuminance(color) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(color || "").trim());
+  if (!m) return 0;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000;
+}
+
+function _renderOverlayPreview(overlay, obj, width, height) {
+  let preview = overlay.querySelector(".review-overlay-preview");
+  const text = String(obj.translation || "").trim();
+  overlay.classList.toggle("is-translated", Boolean(text));
+  overlay.classList.toggle("is-untranslated", !text);
+  overlay.classList.toggle("ellipse", obj.shape === "ellipse");
+
+  if (!text) {
+    if (preview) preview.remove();
+    return;
+  }
+  if (!preview) {
+    preview = document.createElement("div");
+    preview.className = "review-overlay-preview";
+    const span = document.createElement("span");
+    span.className = "review-overlay-preview-text";
+    preview.appendChild(span);
+    overlay.appendChild(preview);
+  }
+  const span = preview.querySelector(".review-overlay-preview-text");
+  span.textContent = text;
+
+  const style = obj.style || {};
+  const hAlign = style.horizontalAlign || "center";
+  const vAlign = style.verticalAlign || "middle";
+  preview.style.justifyContent = hAlign === "left" ? "flex-start" : hAlign === "right" ? "flex-end" : "center";
+  preview.style.alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
+  preview.style.textAlign = hAlign;
+
+  const bg = style.bgColor && style.bgColor !== "transparent" && style.bgColor !== "none" ? style.bgColor : "transparent";
+  preview.style.background = bg;
+  if (obj.shape === "ellipse") {
+    preview.style.borderRadius = "999px";
+  } else {
+    const cr = Math.max(0, Number(style.cornerRadius || 0));
+    preview.style.borderRadius = cr > 0 ? `${cr}px` : "0px";
+  }
+
+  const fixedSize = Number(style.fontSize);
+  const autoSize = Math.max(11, Math.min(34, Math.round(Math.min(height * 0.34, Math.sqrt((width * height) / Math.max(8, text.length * 1.4))))));
+  span.style.fontSize = `${Number.isFinite(fixedSize) && fixedSize > 0 ? fixedSize : autoSize}px`;
+  span.style.fontWeight = style.bold === true ? "700" : "500";
+
+  const colorAuto = !style.color || style.color === "auto";
+  const profile = colorAuto && obj.ocr_color_profile && typeof obj.ocr_color_profile === "object" ? obj.ocr_color_profile : null;
+  const grad = profile?.gradient;
+  const hasGradient = Boolean(grad && Array.isArray(grad.stops) && grad.stops.length >= 2);
+  const resolvedFill = !colorAuto ? style.color : (profile?.fill || obj.ocr_text_color || "#111111");
+
+  if (hasGradient) {
+    const angle = grad.direction === "horizontal" ? "90deg" : "180deg";
+    span.style.backgroundImage = `linear-gradient(${angle}, ${grad.stops.join(", ")})`;
+    span.style.webkitBackgroundClip = "text";
+    span.style.backgroundClip = "text";
+    span.style.color = "transparent";
+  } else {
+    span.style.backgroundImage = "";
+    span.style.webkitBackgroundClip = "";
+    span.style.backgroundClip = "";
+    span.style.color = resolvedFill;
+  }
+
+  const autoContrastStroke = _hexLuminance(resolvedFill) > 128 ? "#000000" : "#ffffff";
+  const strokeC = (style.strokeColor && style.strokeColor !== "auto")
+    ? style.strokeColor
+    : (profile?.stroke_color || autoContrastStroke);
+  const strokeW = style.strokeWidth === "0" || style.strokeWidth === 0 ? 0 : Math.min(3, Math.max(1, Number(style.strokeWidth) || 1));
+
+  if (hasGradient) {
+    // text-shadow paints over background-clip:text in Chromium; use filter drop-shadow so gradient stays crisp.
+    span.style.textShadow = "";
+    const drops = [];
+    if (strokeW > 0) {
+      drops.push(
+        `drop-shadow(-${strokeW}px 0 0 ${strokeC})`,
+        `drop-shadow(${strokeW}px 0 0 ${strokeC})`,
+        `drop-shadow(0 -${strokeW}px 0 ${strokeC})`,
+        `drop-shadow(0 ${strokeW}px 0 ${strokeC})`,
+      );
+    }
+    if (profile?.glow_color) {
+      const gr = Math.max(2, Math.min(12, Number(profile.glow_radius || 5)));
+      drops.push(`drop-shadow(0 0 ${gr}px ${profile.glow_color})`);
+    }
+    span.style.filter = drops.join(" ");
+  } else {
+    span.style.filter = "";
+    const shadows = [];
+    if (strokeW > 0) {
+      shadows.push(
+        `-${strokeW}px 0 0 ${strokeC}`,
+        `${strokeW}px 0 0 ${strokeC}`,
+        `0 -${strokeW}px 0 ${strokeC}`,
+        `0 ${strokeW}px 0 ${strokeC}`,
+      );
+    }
+    if (profile?.glow_color) {
+      const gr = Math.max(2, Math.min(12, Number(profile.glow_radius || 5)));
+      shadows.push(`0 0 ${gr * 2}px ${profile.glow_color}`);
+    }
+    span.style.textShadow = shadows.join(", ");
+  }
+}
+
 export function syncOverlay(shell, pageIndex, id) {
   const desc = descriptorFor(shell, pageIndex);
   const obj = window.findTextObject?.(pageIndex, id);
@@ -32,12 +145,15 @@ export function syncOverlay(shell, pageIndex, id) {
   );
   if (!desc || !obj?.region || !overlay) return false;
   const r = sourceRegion(desc, obj.region);
+  const w = Math.max(MIN_BOX, r.x2 - r.x1);
+  const h = Math.max(MIN_BOX, r.y2 - r.y1);
   Object.assign(overlay.style, {
     left: `${r.x1}px`,
     top: `${r.y1}px`,
-    width: `${Math.max(MIN_BOX, r.x2 - r.x1)}px`,
-    height: `${Math.max(MIN_BOX, r.y2 - r.y1)}px`,
+    width: `${w}px`,
+    height: `${h}px`,
   });
+  _renderOverlayPreview(overlay, obj, w, h);
   return true;
 }
 

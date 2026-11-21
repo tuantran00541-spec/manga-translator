@@ -108,9 +108,11 @@ function applyManifestResponse(manifest, pageIndex, opts = {}) {
     if (entry.pageIndex === pageIndex && entry.id === targetId) return;
     const obj = findTextObject(entry.pageIndex, entry.id);
     if (!obj) return;
+    if (entry.shape) obj.shape = entry.shape;
     if (entry.ocr_text != null) obj.ocr_text = entry.ocr_text;
     if (entry.translation != null) obj.translation = entry.translation;
     if (entry.style) obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE, obj.style || {}, entry.style);
+    if (entry.ocr_color_profile !== undefined) obj.ocr_color_profile = entry.ocr_color_profile;
   });
   if (typeof window.reapplyPendingGeom === "function") window.reapplyPendingGeom();
   renderEditorPanel(pageIndex);
@@ -192,6 +194,7 @@ async function restoreTextObject(pageIndex, snap) {
     font_selection_mode: snap.font_selection_mode,
     font_match: snap.font_match,
     font_ai_id: snap.font_ai_id,
+    ocr_color_profile: snap.ocr_color_profile ?? null,
   });
   if (chapterId !== currentChapterId) return null;
   editorState.selectedTextObjectId = created.id;
@@ -199,6 +202,39 @@ async function restoreTextObject(pageIndex, snap) {
   return created.id;
 }
 window.restoreTextObject = restoreTextObject;
+
+async function duplicateTextObject(pageIndex, id) {
+  const chapterId = currentChapterId;
+  const source = findTextObject(pageIndex, id);
+  if (!chapterId || !source?.region) return null;
+  const page = currentManifest?.pages?.[pageIndex];
+  const pw = Number(page?.width || 0);
+  const ph = Number(page?.height || 0);
+  const r = source.region;
+  const w = Math.max(10, Number(r.x2) - Number(r.x1));
+  const h = Math.max(10, Number(r.y2) - Number(r.y1));
+  const dx = 18;
+  const dy = 18;
+  let nx1 = Math.round(Number(r.x1) + dx);
+  let ny1 = Math.round(Number(r.y1) + dy);
+  if (pw > 0 && nx1 + w > pw) nx1 = Math.max(0, Math.round(Number(r.x1) - dx));
+  if (ph > 0 && ny1 + h > ph) ny1 = Math.max(0, Math.round(Number(r.y1) - dy));
+  const snap = JSON.parse(JSON.stringify({
+    shape: source.shape || "rectangle",
+    region: { x1: nx1, y1: ny1, x2: nx1 + w, y2: ny1 + h },
+    ocr_text: source.ocr_text ?? "",
+    translation: source.translation ?? "",
+    style: source.style || DEFAULT_TEXT_OBJECT_STYLE,
+    font_selection_mode: source.font_selection_mode ?? null,
+    font_match: source.font_match ?? null,
+    font_ai_id: source.font_ai_id ?? null,
+    ocr_color_profile: source.ocr_color_profile ?? null,
+  }));
+  const newId = await restoreTextObject(pageIndex, snap);
+  if (newId) window.editorHistory?.recordCreate(pageIndex, newId);
+  return newId;
+}
+window.duplicateTextObject = duplicateTextObject;
 
 async function associateTextObjectOcr(pageIndex, id) {
   const chapterId = currentChapterId;

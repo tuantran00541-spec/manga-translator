@@ -29,3 +29,44 @@ def test_ai_mode_poll_discards_stale_generations():
     assert "generation = ++pollGeneration;" in source
     assert source.count("if (generation !== pollGeneration) return;") == 2
     assert "poll(jobId, generation)" in source
+
+
+def test_editor_upgrade_controls_and_shortcuts_are_wired():
+    inspector = (JS / "editor-inspector.js").read_text(encoding="utf-8")
+    persistence = (JS / "editor-persistence.js").read_text(encoding="utf-8")
+    history = (JS / "editor-history.js").read_text(encoding="utf-8")
+    editor = (JS / "editor.js").read_text(encoding="utf-8")
+    stitch_index = (JS / "review-stitch" / "index.js").read_text(encoding="utf-8")
+    stitch_tools = (JS / "review-stitch" / "tools.js").read_text(encoding="utf-8")
+    stitch_overlays = (JS / "review-stitch" / "overlays.js").read_text(encoding="utf-8")
+
+    # Inspector exposes box fill, corner radius, stroke auto reset, shape toggle, duplicate, gradient & glow
+    for token in (
+        "bg-toolbar",
+        "corner-radius-slider",
+        "stroke-auto-btn",
+        "gradient-toolbar",
+        "glow-toolbar",
+        "duplicateTextObject",
+        "Hình dạng vùng",
+    ):
+        assert token in inspector
+
+    # Persistence & history carry shape + ocr_color_profile
+    assert "ocr_color_profile" in persistence
+    assert "shape: p.shape" in persistence
+    assert "ocr_color_profile" in history
+    assert "function duplicateTextObject" in editor
+
+    # Canvas tools expose eyedropper, peek original, live preview, overlay toggle, arrow nudge & Ctrl+D
+    assert 'eyedropper' in stitch_tools
+    for token in (
+        "setPeekOriginal",
+        "sampleCanvasHex",
+        "review-overlays-hidden",
+        "review-live-preview-off",
+        "ArrowLeft",
+        "duplicateTextObject",
+    ):
+        assert token in stitch_index
+    assert "review-overlay-preview" in stitch_overlays

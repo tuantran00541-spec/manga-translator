@@ -1,8 +1,8 @@
 import { canvasBlob, captureSnapshot, chunkHasPaint, drawBrushMask, paintPoint, paintStroke } from "./brush.js";
-import { installOverlaySync, installTextDrawing, mountTextInspector, renderOverlays, reviewPageIndexAtSourceY, sourcePoint } from "./overlays.js";
+import { descriptorFor, installOverlaySync, installTextDrawing, mountTextInspector, renderOverlays, reviewPageIndexAtSourceY, selectObject, sourcePoint, syncOverlay } from "./overlays.js";
 import { SHORTCUTS, chapterKey, deleteSnapshot, hasSnapshotPrefix, resetChapterState, snapshotKey, state } from "./state.js";
 import { installProofing } from "./proofing.js";
-import { orderedSlices, renderStrip } from "./strip.js";
+import { imageUrl, orderedSlices, renderStrip } from "./strip.js";
 import { mountActions, mountToolRail, setTool, syncTool } from "./tools.js";
 import { applyZoom, stepZoom } from "./zoom.js";
 
@@ -78,6 +78,26 @@ export function mount(workspace) {
   const rendered = button(null, "Có chữ");
   const original = button(null, "Ảnh gốc");
   viewSwitch.append(clean, rendered, original);
+
+  const viewHelpers = document.createElement("div");
+  viewHelpers.className = "review-view-helpers";
+  viewHelpers.setAttribute("role", "group");
+  viewHelpers.setAttribute("aria-label", "Hiển thị vùng chữ và đối chiếu");
+
+  const peekBtn = button("compare", "Giữ để xem ảnh gốc (\\)");
+  peekBtn.classList.add("review-helper-btn", "review-peek-btn");
+  peekBtn.title = "Giữ chuột hoặc phím \\ để đối chiếu ảnh gốc tức thì";
+  peekBtn.setAttribute("aria-pressed", "false");
+
+  const previewBtn = button("type-preview", "Bật/tắt xem trước chữ trên nền sạch (T)");
+  previewBtn.classList.add("review-helper-btn", "review-preview-btn");
+  previewBtn.title = "Xem trước chữ trực tiếp trong vùng chọn (T)";
+
+  const overlayBtn = button("eye", "Ẩn/hiện khung vùng chữ (Q)");
+  overlayBtn.classList.add("review-helper-btn", "review-overlay-btn");
+  overlayBtn.title = "Ẩn / hiện khung vùng chữ (Q)";
+
+  viewHelpers.append(peekBtn, previewBtn, overlayBtn);
 
   const zoomDock = document.createElement("div");
   zoomDock.className = "review-zoom-dock";
@@ -192,7 +212,7 @@ export function mount(workspace) {
     e.stopImmediatePropagation();
   }, { capture: true, signal });
 
-  left.append(viewSwitch);
+  left.append(viewSwitch, viewHelpers);
   right.append(actionsHost, more);
   docbar.append(left, right);
 
@@ -222,6 +242,12 @@ export function mount(workspace) {
   signal.addEventListener("abort", () => docbarObserver.disconnect(), { once: true });
 
   installOverlaySync();
+  window.refreshReviewOverlays = () => renderOverlays(shell, signal);
+  window.selectReviewTool = (toolName) => setTool(shell, toolName);
+  signal.addEventListener("abort", () => {
+    delete window.refreshReviewOverlays;
+    delete window.selectReviewTool;
+  }, { once: true });
   mountTextInspector(workspace, shell, signal);
   mountToolRail(shell, signal);
   shell.append(brushBar, zoomDock);
@@ -237,7 +263,84 @@ export function mount(workspace) {
 
   let painting = false, radius = 24, last = null, panning = false, pan = null, space = false;
 
-  const syncVariant = () => { [[clean, "clean"], [rendered, "rendered"], [original, "original"]].forEach(([b, name]) => { b.classList.toggle("ui-btn-primary", state.variant === name); b.setAttribute("aria-pressed", String(state.variant === name)); }); const readonly = state.variant !== "clean"; submit.disabled = readonly; clearMask.disabled = readonly; size.disabled = readonly; workspace.classList.toggle("review-readonly-document", readonly); syncTool(shell); };
+  const eyedropperBadge = document.createElement("div");
+  eyedropperBadge.className = "review-eyedropper-badge";
+  eyedropperBadge.hidden = true;
+  const eyedropperSwatch = document.createElement("span");
+  eyedropperSwatch.className = "review-eyedropper-swatch";
+  const eyedropperLabel = document.createElement("span");
+  eyedropperLabel.className = "review-eyedropper-hex";
+  eyedropperBadge.append(eyedropperSwatch, eyedropperLabel);
+  shell.appendChild(eyedropperBadge);
+
+  const _probeCanvas = document.createElement("canvas");
+  _probeCanvas.width = 1;
+  _probeCanvas.height = 1;
+  const _probeCtx = _probeCanvas.getContext("2d", { willReadFrequently: true });
+
+  const sampleCanvasHex = (pt) => {
+    if (!pt || !_probeCtx) return null;
+    const desc = (shell._descriptors || []).find((d) => pt.y >= d.sourceY1 && pt.y < d.sourceY2)
+      || (shell._descriptors || [])[0];
+    if (!desc) return null;
+    const sliceEl = image.querySelector(`.review-strip-slice[data-page-index="${desc.item.canonicalIndex}"] > img`);
+    if (!sliceEl || !sliceEl.complete || !sliceEl.naturalWidth || !sliceEl.naturalHeight) return null;
+    const localX = Math.max(0, Math.min(sliceEl.naturalWidth - 1, Math.floor(pt.x)));
+    const localY = Math.max(0, Math.min(sliceEl.naturalHeight - 1, Math.floor(desc.localY1 + (pt.y - desc.sourceY1))));
+    try {
+      _probeCtx.clearRect(0, 0, 1, 1);
+      _probeCtx.drawImage(sliceEl, localX, localY, 1, 1, 0, 0, 1, 1);
+      const px = _probeCtx.getImageData(0, 0, 1, 1).data;
+      return `#${[px[0], px[1], px[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const setPeekOriginal = (on) => {
+    const active = Boolean(on) && state.variant !== "original";
+    if (state.peekOriginal === active) return;
+    state.peekOriginal = active;
+    shell.classList.toggle("review-peek-active", active);
+    peekBtn.classList.toggle("ui-btn-primary", active);
+    peekBtn.setAttribute("aria-pressed", String(active));
+    const pages = window.currentManifest?.pages || [];
+    for (const desc of shell._descriptors || []) {
+      const idx = Number(desc.item.canonicalIndex);
+      const page = pages[idx];
+      const imgEl = image.querySelector(`.review-strip-slice[data-page-index="${idx}"] > img`);
+      if (!page || !imgEl) continue;
+      if (active) {
+        if (!imgEl.dataset.normalSrc) imgEl.dataset.normalSrc = imgEl.src;
+        const origUrl = imageUrl(page, "original");
+        if (origUrl && imgEl.src !== origUrl) imgEl.src = origUrl;
+      } else if (imgEl.dataset.normalSrc) {
+        imgEl.src = imgEl.dataset.normalSrc;
+        delete imgEl.dataset.normalSrc;
+      }
+    }
+  };
+
+  const syncDisplayToggles = () => {
+    shell.classList.toggle("review-overlays-hidden", !state.showOverlays);
+    shell.classList.toggle("review-live-preview-off", !state.livePreview);
+    overlayBtn.classList.toggle("active", state.showOverlays);
+    overlayBtn.setAttribute("aria-pressed", String(state.showOverlays));
+    previewBtn.classList.toggle("active", state.livePreview);
+    previewBtn.setAttribute("aria-pressed", String(state.livePreview));
+    peekBtn.disabled = state.variant === "original";
+    if (state.variant === "original" && state.peekOriginal) setPeekOriginal(false);
+  };
+
+  peekBtn.addEventListener("pointerdown", (e) => { if (e.button === 0) { e.preventDefault(); setPeekOriginal(true); } }, { signal });
+  const endPeek = () => setPeekOriginal(false);
+  peekBtn.addEventListener("pointerup", endPeek, { signal });
+  peekBtn.addEventListener("pointerleave", endPeek, { signal });
+  peekBtn.addEventListener("pointercancel", endPeek, { signal });
+  previewBtn.addEventListener("click", () => { state.livePreview = !state.livePreview; syncDisplayToggles(); }, { signal });
+  overlayBtn.addEventListener("click", () => { state.showOverlays = !state.showOverlays; syncDisplayToggles(); }, { signal });
+
+  const syncVariant = () => { [[clean, "clean"], [rendered, "rendered"], [original, "original"]].forEach(([b, name]) => { b.classList.toggle("ui-btn-primary", state.variant === name); b.setAttribute("aria-pressed", String(state.variant === name)); }); const readonly = state.variant !== "clean"; submit.disabled = readonly; clearMask.disabled = readonly; size.disabled = readonly; workspace.classList.toggle("review-readonly-document", readonly); syncTool(shell); syncDisplayToggles(); };
   shell._syncVariantUI = syncVariant;
   const syncBrushBar = () => {
     const hasMask = (shell._brushChunks || []).some((c) => c.dirty);
@@ -324,22 +427,112 @@ export function mount(workspace) {
   shell._showRendered = showRendered;
   signal.addEventListener("abort", () => captureSnapshot(shell), { once: true });
 
-  image.addEventListener("pointerdown", (e) => { if (state.variant !== "clean" || !["brush", "eraser"].includes(state.tool) || e.button !== 0) { return; } const p = sourcePoint(image, e); if (!p) { return; } e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, state.tool === "eraser"); }, { signal });
-  image.addEventListener("pointermove", (e) => { if (!painting || !last || !["brush", "eraser"].includes(state.tool)) { return; } const p = sourcePoint(image, e); if (!p) { return; } paintStroke(shell, last, p, radius, state.tool === "eraser"); last = p; }, { signal });
+  image.addEventListener("pointerdown", (e) => {
+    if (state.tool === "eyedropper" && e.button === 0) {
+      const p = sourcePoint(image, e);
+      const hex = sampleCanvasHex(p);
+      if (!hex) return;
+      e.preventDefault();
+      e.stopPropagation();
+      navigator.clipboard?.writeText?.(hex).catch(() => {});
+      const id = window.editorState?.selectedTextObjectId;
+      const pageIndex = Number(window.editorState?.activePageIndex ?? 0);
+      const obj = id ? window.findTextObject?.(pageIndex, id) : null;
+      if (obj) {
+        obj.style = Object.assign({}, window.DEFAULT_TEXT_OBJECT_STYLE, obj.style || {});
+        let targetLabel = "màu chữ";
+        if (e.shiftKey) {
+          obj.style.strokeColor = hex;
+          if (obj.style.strokeWidth === "0") obj.style.strokeWidth = "2";
+          targetLabel = "màu viền";
+        } else if (e.altKey) {
+          obj.style.bgColor = hex;
+          targetLabel = "màu nền khung";
+        } else {
+          obj.style.color = hex;
+        }
+        window.scheduleTextObjectPersist?.(pageIndex, obj.id);
+        window.renderEditorPanel?.(pageIndex);
+        window.showToast?.(`Đã áp ${hex} vào ${targetLabel} (đã sao chép).`, "success");
+      } else {
+        window.showToast?.(`Đã hút màu ${hex} (đã sao chép vào bộ nhớ tạm).`, "info");
+      }
+      return;
+    }
+    if (state.variant !== "clean" || !["brush", "eraser"].includes(state.tool) || e.button !== 0) { return; }
+    const p = sourcePoint(image, e); if (!p) { return; } e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, state.tool === "eraser");
+  }, { signal });
+  image.addEventListener("pointermove", (e) => {
+    if (state.tool === "eyedropper") {
+      const hex = sampleCanvasHex(sourcePoint(image, e));
+      if (hex) {
+        const sr = shell.getBoundingClientRect();
+        eyedropperBadge.hidden = false;
+        eyedropperSwatch.style.background = hex;
+        eyedropperLabel.textContent = hex.toUpperCase();
+        eyedropperBadge.style.left = `${Math.min(sr.width - 96, Math.max(8, e.clientX - sr.left + 14))}px`;
+        eyedropperBadge.style.top = `${Math.max(8, e.clientY - sr.top - 32)}px`;
+      } else {
+        eyedropperBadge.hidden = true;
+      }
+      return;
+    }
+    if (!eyedropperBadge.hidden) eyedropperBadge.hidden = true;
+    if (!painting || !last || !["brush", "eraser"].includes(state.tool)) { return; } const p = sourcePoint(image, e); if (!p) { return; } paintStroke(shell, last, p, radius, state.tool === "eraser"); last = p;
+  }, { signal });
+  image.addEventListener("pointerleave", () => { eyedropperBadge.hidden = true; }, { signal });
   const stopPaint = () => { painting = false; last = null; syncBrushBar(); }; image.addEventListener("pointerup", stopPaint, { signal }); image.addEventListener("pointercancel", stopPaint, { signal });
 
   window.addEventListener("keydown", (e) => {
     const tag = e.target?.tagName?.toLowerCase(), editable = e.target?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select"; if (editable) return;
     if (e.code === "Space" && !e.repeat) { space = true; return; }
+    if (e.key === "\\" && !e.repeat) { e.preventDefault(); setPeekOriginal(true); return; }
     if ((e.ctrlKey || e.metaKey) && e.key === "0") { e.preventDefault(); state.fitWidth = true; return applyZoom(shell); }
     if ((e.ctrlKey || e.metaKey) && e.key === "1") { e.preventDefault(); state.fitWidth = false; state.zoom = 100; return applyZoom(shell); }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "d" || e.key === "D") && window.editorState?.selectedTextObjectId && state.variant === "clean") {
+      e.preventDefault();
+      const pageIndex = Number(window.editorState.activePageIndex || 0), id = window.editorState.selectedTextObjectId;
+      window.duplicateTextObject?.(pageIndex, id)?.then((newId) => {
+        if (!newId) return;
+        renderOverlays(shell, signal);
+        selectObject(shell, pageIndex, newId);
+        window.showToast?.("Đã nhân đôi vùng chữ.", "success");
+      }).catch((err) => window.showToast?.("Không thể nhân đôi vùng chữ: " + err.message, "error"));
+      return;
+    }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && window.editorState?.selectedTextObjectId && state.variant === "clean") {
+      const pageIndex = Number(window.editorState.activePageIndex || 0), id = window.editorState.selectedTextObjectId;
+      const obj = window.findTextObject?.(pageIndex, id), desc = descriptorFor(shell, pageIndex);
+      if (obj?.region && desc) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        const r = obj.region, w = r.x2 - r.x1, h = r.y2 - r.y1;
+        const nx1 = Math.max(0, Math.min(Math.max(0, desc.img.naturalWidth - w), r.x1 + dx));
+        const ny1 = Math.max(desc.localY1, Math.min(Math.max(desc.localY1, desc.localY2 - h), r.y1 + dy));
+        if (nx1 !== r.x1 || ny1 !== r.y1) {
+          window.editorHistory?.watch(pageIndex, obj);
+          obj.region = { x1: Math.round(nx1), y1: Math.round(ny1), x2: Math.round(nx1 + w), y2: Math.round(ny1 + h) };
+          syncOverlay(shell, pageIndex, id);
+          window.scheduleGeomPersist?.(pageIndex, id);
+        }
+        return;
+      }
+    }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "q" || e.key === "Q")) { e.preventDefault(); state.showOverlays = !state.showOverlays; syncDisplayToggles(); return; }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "t" || e.key === "T")) { e.preventDefault(); state.livePreview = !state.livePreview; syncDisplayToggles(); return; }
     if (e.key === "[" && ["brush","eraser"].includes(state.tool)) { e.preventDefault(); radius = Math.max(4, radius - 2); size.value = String(radius); sizeOut.textContent = `${radius * 2}px`; return; }
     if (e.key === "]" && ["brush","eraser"].includes(state.tool)) { e.preventDefault(); radius = Math.min(100, radius + 2); size.value = String(radius); sizeOut.textContent = `${radius * 2}px`; return; }
     if ((e.key === "Delete" || e.key === "Backspace") && window.editorState?.selectedTextObjectId) { const pageIndex = Number(window.editorState.activePageIndex || 0), id = window.editorState.selectedTextObjectId; e.preventDefault(); window.deleteTextObject?.(pageIndex, id)?.then(() => renderOverlays(shell, signal)).catch((err) => window.showToast?.("Không thể xóa vùng chữ: " + err.message, "error")); return; }
-    if (e.key === "Escape") return setTool(shell, "select");
-    if (!e.ctrlKey && !e.metaKey && !e.altKey && SHORTCUTS[e.key.toLowerCase()]) { e.preventDefault(); setTool(shell, SHORTCUTS[e.key.toLowerCase()]); }
+    if (e.key === "Escape") { eyedropperBadge.hidden = true; return setTool(shell, "select"); }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && SHORTCUTS[e.key.toLowerCase()]) { e.preventDefault(); eyedropperBadge.hidden = true; setTool(shell, SHORTCUTS[e.key.toLowerCase()]); }
   }, { signal });
-  window.addEventListener("keyup", (e) => { if (e.code === "Space") { space = false; panning = false; pan = null; viewport.classList.remove("is-panning"); } }, { signal });
+  window.addEventListener("keyup", (e) => {
+    if (e.code === "Space") { space = false; panning = false; pan = null; viewport.classList.remove("is-panning"); }
+    if (e.key === "\\") setPeekOriginal(false);
+  }, { signal });
+  window.addEventListener("blur", () => setPeekOriginal(false), { signal });
   viewport.addEventListener("pointerdown", (e) => { if (e.button !== 0 || !(space || state.tool === "hand")) { return; } panning = true; pan = { x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop }; viewport.setPointerCapture?.(e.pointerId); viewport.classList.add("is-panning"); e.preventDefault(); }, { signal });
   viewport.addEventListener("pointermove", (e) => { if (!panning || !pan) { return; } viewport.scrollLeft = pan.left - (e.clientX - pan.x); viewport.scrollTop = pan.top - (e.clientY - pan.y); }, { signal });
   viewport.addEventListener("pointerup", () => { panning = false; pan = null; viewport.classList.remove("is-panning"); }, { signal });

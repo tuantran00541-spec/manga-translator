@@ -13,7 +13,7 @@ export function syncTool(shell) {
 }
 
 export function setTool(shell, next) {
-  if (!["select", "rectangle", "ellipse", "brush", "eraser", "hand", "zoom"].includes(next)) next = "select";
+  if (!["select", "rectangle", "ellipse", "brush", "eraser", "eyedropper", "hand", "zoom"].includes(next)) next = "select";
   state.tool = next;
   if (state.variant !== "clean" && ["rectangle", "ellipse", "brush", "eraser"].includes(state.tool)) { state.variant = "clean"; shell._syncVariantUI?.(); shell._rerender?.(); }
   if (window.editorState) window.editorState.tool = ["rectangle", "ellipse"].includes(state.tool) ? state.tool : "select";
@@ -42,6 +42,7 @@ export function mountToolRail(shell, signal) {
     ["ellipse","ellipse-select","Vùng elip","Kéo quanh bong bóng thoại tròn để tạo vùng nhận dạng chữ."],
     ["brush","brush","Cọ tẩy nền","Tô vùng cần xóa chữ hoặc vùng cần khôi phục ảnh gốc, sau đó chọn phương thức xử lý."],
     ["eraser","eraser","Tẩy vùng tô","Xóa phần vùng tô đã đánh dấu nhầm."],
+    ["eyedropper","eyedropper","Hút màu (I)","Nhấp lên ảnh để lấy màu chữ. Giữ Shift: màu viền, Alt: nền khung."],
     ["hand","hand","Bàn tay","Kéo trang tự do theo mọi hướng."],
     ["zoom","zoom","Thu phóng","Nhấp để phóng to, Alt + nhấp để thu nhỏ."],
   ].forEach((x) => main.appendChild(toolButton(shell, signal, ...x)));

@@ -4,14 +4,18 @@ import { state } from "./state.js";
 const SHORTCUT_HELP = [
   ["A / D", "Lát trước / lát sau"],
   ["Alt + mũi tên lên / xuống", "Vùng chữ trước / sau"],
+  ["Mũi tên / Shift + mũi tên", "Vi chỉnh vị trí vùng đang chọn (1px / 10px)"],
+  ["Ctrl + D", "Nhân đôi vùng chữ đang chọn"],
   ["Enter", "Sửa bản dịch của vùng đang chọn"],
   ["Ctrl + Enter", "Lưu và sang vùng sau"],
   ["Esc", "Thoát ô nhập, quay về trang"],
   ["Ctrl + Z / Ctrl + Y", "Hoàn tác / làm lại"],
   ["Ctrl + F / Ctrl + H", "Soát chữ: tìm / thay thế"],
+  ["\\ (giữ)", "Xem nhanh ảnh gốc để đối chiếu"],
+  ["Q / T", "Ẩn/hiện khung vùng chữ · Bật/tắt xem trước chữ"],
   ["1 – 9", "Áp kiểu chữ mẫu cho vùng đang chọn"],
   ["Delete", "Xóa vùng đang chọn"],
-  ["V R O B E H Z", "Chọn, chữ nhật, elip, cọ, tẩy, bàn tay, thu phóng"],
+  ["V R O B E I H Z", "Chọn, chữ nhật, elip, cọ, tẩy, hút màu, bàn tay, thu phóng"],
   ["?", "Mở / đóng bảng phím tắt"],
 ];
 
@@ -133,7 +137,11 @@ function mountHelp(shell, signal) {
   dialog.append(title, list);
   shell.appendChild(dialog);
   dialog.addEventListener("click", () => { dialog.hidden = true; }, { signal });
-  return () => { dialog.hidden = !dialog.hidden; };
+  return {
+    toggle: () => { dialog.hidden = !dialog.hidden; },
+    isOpen: () => !dialog.hidden,
+    close: () => { dialog.hidden = true; },
+  };
 }
 
 function mountProofPanel(shell, signal) {
@@ -485,14 +493,14 @@ function mountHistoryButtons(signal) {
 export function installProofing(shell, signal) {
   const left = shell.querySelector(".review-docbar-left");
   const proof = mountProofPanel(shell, signal);
-  const toggleHelp = mountHelp(shell, signal);
+  const helpDialog = mountHelp(shell, signal);
   const help = document.createElement("button");
   help.type = "button";
   help.className = "ui-btn ui-btn-ghost ui-btn-compact review-help-btn";
   help.textContent = "?";
   help.title = "Phím tắt (?)";
   help.setAttribute("aria-label", "Phím tắt");
-  help.addEventListener("click", toggleHelp, { signal });
+  help.addEventListener("click", helpDialog.toggle, { signal });
   left?.append(...mountHistoryButtons(signal), proof.toggle, help);
   const viewport = shell.querySelector(".review-document-viewport");
   if (viewport) viewport.tabIndex = -1;
@@ -545,9 +553,12 @@ export function installProofing(shell, signal) {
       return;
     }
     if (event.altKey) return;
-    if (key === "?") {
+    if (key === "Escape" && helpDialog.isOpen()) {
       event.preventDefault();
-      toggleHelp();
+      helpDialog.close();
+    } else if (key === "?") {
+      event.preventDefault();
+      helpDialog.toggle();
     } else if (key === "a" || key === "A" || key === "d" || key === "D") {
       event.preventDefault();
       stepSlice(shell, key.toLowerCase() === "d" ? 1 : -1);

@@ -98,6 +98,21 @@ function renderEditorPanel(pageIndex) {
     });
   });
 
+  const dupBtn = document.createElement("button");
+  dupBtn.type = "button";
+  dupBtn.className = "ui-btn ui-btn-ghost text-object-action-btn";
+  dupBtn.textContent = "Nhân đôi";
+  dupBtn.title = "Nhân đôi vùng chữ (Ctrl+D)";
+  dupBtn.addEventListener("click", () => {
+    window.duplicateTextObject?.(pageIndex, obj.id)?.then((newId) => {
+      if (!newId) return;
+      window.refreshReviewOverlays?.();
+      showToast("Đã nhân đôi vùng chữ.", "success");
+    }).catch((err) => {
+      showToast("Không thể nhân đôi vùng chữ: " + err.message, "error");
+    });
+  });
+
   const delBtn = document.createElement("button");
   delBtn.type = "button";
   delBtn.className = "ui-btn ui-btn-danger text-object-action-btn text-object-delete-btn";
@@ -109,12 +124,14 @@ function renderEditorPanel(pageIndex) {
       delBtn.textContent = "Xác nhận";
       return;
     }
-    deleteTextObject(pageIndex, obj.id).catch((err) => {
+    deleteTextObject(pageIndex, obj.id).then(() => {
+      window.refreshReviewOverlays?.();
+    }).catch((err) => {
       showToast("Không thể xóa vùng chữ: " + err.message, "error");
     });
   });
 
-  actions.append(ocrBtn, delBtn);
+  actions.append(ocrBtn, dupBtn, delBtn);
   panel.appendChild(actions);
 
   syncStyleDataset(panel, obj.style);
@@ -433,7 +450,7 @@ function buildTextSection(body, panel, obj, pageIndex) {
   sizeSlider.type = "range";
   sizeSlider.className = "font-size-slider";
   sizeSlider.min = "10";
-  sizeSlider.max = "60";
+  sizeSlider.max = "120";
   sizeSlider.value = "20";
   const sizeValSpan = document.createElement("span");
   sizeValSpan.className = "ui-value font-size-value";
@@ -466,6 +483,42 @@ function buildTextSection(body, panel, obj, pageIndex) {
 
   body.append(fontRow, sizeGroup);
   buildAlignmentControls(body, panel, obj, pageIndex);
+
+  const shapeGroup = document.createElement("div");
+  shapeGroup.className = "align-group shape-group";
+  const shapeLbl = document.createElement("span");
+  shapeLbl.className = "style-group-label";
+  shapeLbl.textContent = "Hình dạng vùng";
+  const shapeRow = document.createElement("div");
+  shapeRow.className = "align-btn-row";
+  [
+    ["rectangle", "Chữ nhật"],
+    ["ellipse", "Elip"],
+  ].forEach(([val, txt]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ui-btn ui-btn-ghost ui-btn-compact align-btn" + ((obj.shape || "rectangle") === val ? " selected" : "");
+    b.textContent = txt;
+    b.addEventListener("click", () => {
+      obj.shape = val;
+      shapeRow.querySelectorAll(".align-btn").forEach((x) => x.classList.remove("selected"));
+      b.classList.add("selected");
+      schedule();
+    });
+    shapeRow.appendChild(b);
+  });
+  shapeGroup.append(shapeLbl, shapeRow);
+  body.append(shapeGroup);
+}
+
+function _ensureColorProfile(obj) {
+  if (!obj.ocr_color_profile || typeof obj.ocr_color_profile !== "object") {
+    const baseFill = (obj.style?.color && obj.style.color !== "auto")
+      ? obj.style.color
+      : (obj.ocr_text_color || "#111111");
+    obj.ocr_color_profile = { fill: /^#[0-9a-f]{6}$/i.test(baseFill) ? baseFill.toLowerCase() : "#111111" };
+  }
+  return obj.ocr_color_profile;
 }
 
 function buildAppearanceSection(body, panel, obj, pageIndex) {
@@ -481,24 +534,29 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   swatchRow.className = "color-swatch-row";
 
   const colors = [
-    { name: "Tự động tương phản", value: "auto", bg: "linear-gradient(135deg, #000 50%, #fff 50%)" },
+    { name: "Tự động tương phản / Màu gốc OCR", value: "auto", bg: "linear-gradient(135deg, #000 50%, #fff 50%)" },
     { name: "Trắng", value: "#ffffff", bg: "#ffffff" },
     { name: "Đen", value: "#000000", bg: "#000000" },
     { name: "Đỏ", value: "#e8432c", bg: "#e8432c" },
     { name: "Vàng", value: "#f1c40f", bg: "#f1c40f" },
   ];
+  const syncColorSwatches = () => {
+    swatchRow.querySelectorAll(".color-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", style.color === b.dataset.colorValue ? "true" : "false");
+    });
+  };
   colors.forEach((c) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "ui-swatch color-btn";
+    btn.dataset.colorValue = c.value;
     btn.setAttribute("aria-pressed", style.color === c.value ? "true" : "false");
     btn.title = c.name;
     btn.style.background = c.bg;
     btn.addEventListener("click", () => {
-      swatchRow.querySelectorAll(".color-btn").forEach((b) => b.setAttribute("aria-pressed", "false"));
-      btn.setAttribute("aria-pressed", "true");
       style.color = c.value;
       panel.dataset.color = c.value;
+      syncColorSwatches();
       schedule();
     });
     swatchRow.appendChild(btn);
@@ -513,12 +571,24 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
     customPicker.value = style.color;
   }
   customPicker.addEventListener("input", () => {
-    swatchRow.querySelectorAll(".color-btn").forEach((b) => b.setAttribute("aria-pressed", "false"));
     style.color = customPicker.value;
     panel.dataset.color = customPicker.value;
+    syncColorSwatches();
     schedule();
   });
-  swatchRow.appendChild(customPicker);
+
+  const eyedropBtn = document.createElement("button");
+  eyedropBtn.type = "button";
+  eyedropBtn.className = "ui-icon-btn ui-btn-ghost ui-btn-compact inspector-eyedrop-btn";
+  eyedropBtn.title = "Hút màu trực tiếp từ ảnh (I)";
+  eyedropBtn.setAttribute("aria-label", "Hút màu từ ảnh");
+  eyedropBtn.appendChild(window.createUiIcon("eyedropper"));
+  eyedropBtn.addEventListener("click", () => {
+    window.selectReviewTool?.("eyedropper");
+    window.showToast?.("Nhấp lên ảnh để hút màu chữ (Shift: viền, Alt: nền).", "info");
+  });
+
+  swatchRow.append(customPicker, eyedropBtn);
   colorToolbar.append(colorLabel, swatchRow);
 
   const strokeToolbar = document.createElement("div");
@@ -535,32 +605,285 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   strokeSlider.title = "Độ dày viền chữ";
   const strokeValSpan = document.createElement("span");
   strokeValSpan.className = "ui-value stroke-width-value";
-  const strokeIsAuto = !style.strokeWidth || style.strokeWidth === "auto";
-  if (strokeIsAuto) {
-    strokeValSpan.textContent = "Tự động";
-  } else {
-    strokeSlider.value = style.strokeWidth;
-    strokeValSpan.textContent = style.strokeWidth + "px";
-  }
   const strokeColorPicker = document.createElement("input");
   strokeColorPicker.type = "color";
   strokeColorPicker.className = "ui-color-input ui-color-swatch stroke-color-picker";
-  strokeColorPicker.value = (style.strokeColor && style.strokeColor !== "auto") ? style.strokeColor : "#000000";
   strokeColorPicker.title = "Màu viền chữ";
+  const strokeAutoBtn = document.createElement("button");
+  strokeAutoBtn.type = "button";
+  strokeAutoBtn.className = "ui-btn ui-btn-ghost ui-btn-compact stroke-auto-btn";
+  strokeAutoBtn.textContent = "Tự động";
+  strokeAutoBtn.title = "Dùng độ dày và màu viền tự động";
+
+  const syncStrokeUI = () => {
+    const wAuto = !style.strokeWidth || style.strokeWidth === "auto";
+    const cAuto = !style.strokeColor || style.strokeColor === "auto";
+    strokeAutoBtn.classList.toggle("selected", wAuto && cAuto);
+    if (wAuto) {
+      strokeValSpan.textContent = "Tự động";
+    } else {
+      strokeSlider.value = style.strokeWidth;
+      strokeValSpan.textContent = style.strokeWidth + "px";
+    }
+    const defaultStroke = obj.ocr_color_profile?.stroke_color || "#000000";
+    strokeColorPicker.value = cAuto ? defaultStroke : style.strokeColor;
+  };
+  syncStrokeUI();
+
   strokeSlider.addEventListener("input", () => {
     style.strokeWidth = strokeSlider.value;
     panel.dataset.strokeWidth = strokeSlider.value;
-    strokeValSpan.textContent = strokeSlider.value + "px";
+    syncStrokeUI();
     schedule();
   });
   strokeColorPicker.addEventListener("input", () => {
     style.strokeColor = strokeColorPicker.value;
     panel.dataset.strokeColor = strokeColorPicker.value;
+    syncStrokeUI();
     schedule();
   });
-  strokeToolbar.append(strokeLabel, strokeColorPicker, strokeSlider, strokeValSpan);
+  strokeAutoBtn.addEventListener("click", () => {
+    style.strokeWidth = "auto";
+    style.strokeColor = "auto";
+    panel.dataset.strokeWidth = "auto";
+    panel.dataset.strokeColor = "auto";
+    syncStrokeUI();
+    schedule();
+  });
+  strokeToolbar.append(strokeLabel, strokeColorPicker, strokeSlider, strokeValSpan, strokeAutoBtn);
 
-  body.append(colorToolbar, strokeToolbar);
+  // Box background fill & corner radius (already supported in backend renderer)
+  const bgToolbar = document.createElement("div");
+  bgToolbar.className = "ui-control-row bg-toolbar";
+  const bgLabel = document.createElement("span");
+  bgLabel.className = "ui-control-label";
+  bgLabel.textContent = "Nền khung";
+  const bgSwatchRow = document.createElement("div");
+  bgSwatchRow.className = "color-swatch-row";
+  const bgChoices = [
+    { name: "Trong suốt", value: "transparent", bg: "repeating-conic-gradient(#bbb 0% 25%, #fff 0% 50%) 50% / 10px 10px" },
+    { name: "Trắng", value: "#ffffff", bg: "#ffffff" },
+    { name: "Đen", value: "#000000", bg: "#000000" },
+    { name: "Kem", value: "#f7f3e8", bg: "#f7f3e8" },
+  ];
+  const bgPicker = document.createElement("input");
+  bgPicker.type = "color";
+  bgPicker.className = "ui-color-input ui-color-swatch bg-color-picker";
+  bgPicker.title = "Màu nền khung tùy chỉnh";
+
+  const radiusRow = document.createElement("div");
+  radiusRow.className = "ui-control-row corner-radius-toolbar";
+  const radiusLabel = document.createElement("span");
+  radiusLabel.className = "ui-control-label";
+  radiusLabel.textContent = "Bo góc";
+  const radiusSlider = document.createElement("input");
+  radiusSlider.type = "range";
+  radiusSlider.className = "stroke-width-slider corner-radius-slider";
+  radiusSlider.min = "0";
+  radiusSlider.max = "32";
+  radiusSlider.value = String(style.cornerRadius || "0");
+  const radiusVal = document.createElement("span");
+  radiusVal.className = "ui-value corner-radius-value";
+
+  const syncBgUI = () => {
+    const curBg = style.bgColor || "transparent";
+    const isTrans = curBg === "transparent" || curBg === "none";
+    bgSwatchRow.querySelectorAll(".bg-swatch-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", curBg === b.dataset.bgValue ? "true" : "false");
+    });
+    if (!isTrans && /^#[0-9a-f]{6}$/i.test(curBg)) bgPicker.value = curBg;
+    else bgPicker.value = "#ffffff";
+    radiusSlider.disabled = isTrans;
+    radiusRow.classList.toggle("is-disabled", isTrans);
+    radiusVal.textContent = `${style.cornerRadius || 0}px`;
+  };
+
+  bgChoices.forEach((c) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ui-swatch bg-swatch-btn";
+    btn.dataset.bgValue = c.value;
+    btn.title = c.name;
+    btn.style.background = c.bg;
+    btn.addEventListener("click", () => {
+      style.bgColor = c.value;
+      panel.dataset.bgColor = c.value;
+      syncBgUI();
+      schedule();
+    });
+    bgSwatchRow.appendChild(btn);
+  });
+  bgPicker.addEventListener("input", () => {
+    style.bgColor = bgPicker.value;
+    panel.dataset.bgColor = bgPicker.value;
+    syncBgUI();
+    schedule();
+  });
+  bgSwatchRow.appendChild(bgPicker);
+  bgToolbar.append(bgLabel, bgSwatchRow);
+
+  radiusSlider.addEventListener("input", () => {
+    style.cornerRadius = radiusSlider.value;
+    panel.dataset.cornerRadius = radiusSlider.value;
+    syncBgUI();
+    schedule();
+  });
+  radiusRow.append(radiusLabel, radiusSlider, radiusVal);
+  syncBgUI();
+
+  // Gradient & Glow controls (ocr_color_profile)
+  const fxBlock = document.createElement("div");
+  fxBlock.className = "color-effects-block";
+
+  const gradRow = document.createElement("div");
+  gradRow.className = "ui-control-row gradient-toolbar";
+  const gradLabel = document.createElement("span");
+  gradLabel.className = "ui-control-label";
+  gradLabel.textContent = "Chuyển sắc";
+  const gradModes = document.createElement("div");
+  gradModes.className = "align-btn-row";
+  const gradStopsRow = document.createElement("div");
+  gradStopsRow.className = "gradient-stops-row";
+
+  const syncGradUI = () => {
+    const prof = obj.ocr_color_profile;
+    const activeDir = prof?.gradient?.direction || "none";
+    gradModes.querySelectorAll(".align-btn").forEach((b) => {
+      b.classList.toggle("selected", b.dataset.gradDir === activeDir);
+    });
+    gradStopsRow.replaceChildren();
+    if (activeDir === "none" || !Array.isArray(prof?.gradient?.stops)) {
+      gradStopsRow.hidden = true;
+      return;
+    }
+    gradStopsRow.hidden = false;
+    prof.gradient.stops.forEach((hex, idx) => {
+      const inp = document.createElement("input");
+      inp.type = "color";
+      inp.className = "ui-color-input ui-color-swatch gradient-stop-picker";
+      inp.value = /^#[0-9a-f]{6}$/i.test(hex) ? hex : "#ffaa00";
+      inp.title = `Màu điểm dừng ${idx + 1}`;
+      inp.addEventListener("input", () => {
+        const p = _ensureColorProfile(obj);
+        if (!p.gradient?.stops) return;
+        p.gradient.stops[idx] = inp.value;
+        p.fill = p.gradient.stops[Math.floor(p.gradient.stops.length / 2)] || inp.value;
+        style.color = "auto";
+        panel.dataset.color = "auto";
+        syncColorSwatches();
+        schedule();
+      });
+      gradStopsRow.appendChild(inp);
+    });
+  };
+
+  [
+    ["none", "Tắt"],
+    ["vertical", "Dọc"],
+    ["horizontal", "Ngang"],
+  ].forEach(([dir, label]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ui-btn ui-btn-ghost ui-btn-compact align-btn";
+    b.dataset.gradDir = dir;
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      if (dir === "none") {
+        if (obj.ocr_color_profile && typeof obj.ocr_color_profile === "object") {
+          delete obj.ocr_color_profile.gradient;
+        }
+      } else {
+        const p = _ensureColorProfile(obj);
+        const existingStops = p.gradient?.stops;
+        const base = /^#[0-9a-f]{6}$/i.test(p.fill || "") ? p.fill : "#f59e0b";
+        const stops = Array.isArray(existingStops) && existingStops.length >= 2
+          ? existingStops.slice(0, dir === "vertical" ? 3 : 2)
+          : (dir === "vertical" ? [base, "#f97316", "#b91c1c"] : [base, "#ec4899"]);
+        if (dir === "vertical" && stops.length === 2) stops.splice(1, 0, base);
+        p.gradient = { direction: dir, stops };
+        style.color = "auto";
+        panel.dataset.color = "auto";
+        syncColorSwatches();
+      }
+      syncGradUI();
+      schedule();
+    });
+    gradModes.appendChild(b);
+  });
+  gradRow.append(gradLabel, gradModes);
+  syncGradUI();
+
+  const glowRow = document.createElement("div");
+  glowRow.className = "ui-control-row glow-toolbar";
+  const glowLabel = document.createElement("span");
+  glowLabel.className = "ui-control-label";
+  glowLabel.textContent = "Hào quang";
+  const glowToggle = document.createElement("button");
+  glowToggle.type = "button";
+  glowToggle.className = "ui-btn ui-btn-ghost ui-btn-compact align-btn";
+  const glowColorPicker = document.createElement("input");
+  glowColorPicker.type = "color";
+  glowColorPicker.className = "ui-color-input ui-color-swatch glow-color-picker";
+  glowColorPicker.title = "Màu hào quang (Glow)";
+  const glowSlider = document.createElement("input");
+  glowSlider.type = "range";
+  glowSlider.className = "stroke-width-slider glow-radius-slider";
+  glowSlider.min = "2";
+  glowSlider.max = "12";
+  const glowVal = document.createElement("span");
+  glowVal.className = "ui-value glow-radius-value";
+
+  const syncGlowUI = () => {
+    const gc = obj.ocr_color_profile?.glow_color;
+    const on = Boolean(gc && /^#[0-9a-f]{6}$/i.test(gc));
+    glowToggle.textContent = on ? "Bật" : "Tắt";
+    glowToggle.classList.toggle("selected", on);
+    glowColorPicker.disabled = !on;
+    glowSlider.disabled = !on;
+    glowColorPicker.value = on ? gc : "#ff5522";
+    const rad = on ? Math.max(2, Math.min(12, Number(obj.ocr_color_profile?.glow_radius || 5))) : 5;
+    glowSlider.value = String(rad);
+    glowVal.textContent = on ? `${rad}px` : "—";
+  };
+
+  glowToggle.addEventListener("click", () => {
+    const on = Boolean(obj.ocr_color_profile?.glow_color);
+    if (on) {
+      delete obj.ocr_color_profile.glow_color;
+      delete obj.ocr_color_profile.glow_radius;
+    } else {
+      const p = _ensureColorProfile(obj);
+      p.glow_color = glowColorPicker.value || "#ff5522";
+      p.glow_radius = Math.max(2, Math.min(12, Number(glowSlider.value || 5)));
+      style.color = "auto";
+      panel.dataset.color = "auto";
+      syncColorSwatches();
+    }
+    syncGlowUI();
+    schedule();
+  });
+  glowColorPicker.addEventListener("input", () => {
+    const p = _ensureColorProfile(obj);
+    p.glow_color = glowColorPicker.value;
+    p.glow_radius = Math.max(2, Math.min(12, Number(glowSlider.value || 5)));
+    style.color = "auto";
+    panel.dataset.color = "auto";
+    syncColorSwatches();
+    syncGlowUI();
+    schedule();
+  });
+  glowSlider.addEventListener("input", () => {
+    const p = _ensureColorProfile(obj);
+    if (!p.glow_color) p.glow_color = glowColorPicker.value || "#ff5522";
+    p.glow_radius = Number(glowSlider.value);
+    syncGlowUI();
+    schedule();
+  });
+  glowRow.append(glowLabel, glowToggle, glowColorPicker, glowSlider, glowVal);
+  syncGlowUI();
+
+  fxBlock.append(gradRow, gradStopsRow, glowRow);
+  body.append(colorToolbar, strokeToolbar, bgToolbar, radiusRow, fxBlock);
 }
 
 function buildAlignmentControls(body, panel, obj, pageIndex) {

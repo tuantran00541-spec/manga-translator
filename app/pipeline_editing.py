@@ -668,6 +668,15 @@ class PipelineEditingMixin(PipelineMasksMixin):
                 if key in changes:
                     obj[key] = changes[key]
 
+            if "ocr_color_profile" in changes:
+                from app.ocr.visual_metadata import normalize_color_profile
+
+                norm_profile = normalize_color_profile(changes["ocr_color_profile"])
+                if norm_profile:
+                    obj["ocr_color_profile"] = norm_profile
+                else:
+                    obj.pop("ocr_color_profile", None)
+
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
         return manifest

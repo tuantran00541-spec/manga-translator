@@ -335,3 +335,24 @@ def test_page_renderer_passes_color_profile_only_when_user_color_is_auto(monkeyp
     )
     assert calls[0]["fill"] == "#0044ff"
     assert calls[0]["color_profile"] is None
+
+
+def test_update_text_object_schema_accepts_and_normalizes_color_profile():
+    from app.schemas import UpdateTextObjectRequest
+
+    req = UpdateTextObjectRequest(
+        chapter_id="ch-1",
+        page_index=0,
+        id="text_1",
+        shape="ellipse",
+        ocr_color_profile={
+            "fill": "#FFAA00",
+            "gradient": {"direction": "vertical", "stops": ["#FFE040", "#FF8010", "#B01010"]},
+            "glow_color": "#FF3010",
+            "glow_radius": 6,
+        },
+    )
+    assert req.shape == "ellipse"
+    assert "ocr_color_profile" in req.model_fields_set
+    assert normalize_color_profile(req.ocr_color_profile)["gradient"]["direction"] == "vertical"
+

@@ -440,6 +440,8 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
         changes["font_match"] = req.font_match
     if "font_ai_id" in req.model_fields_set:
         changes["font_ai_id"] = req.font_ai_id
+    if "ocr_color_profile" in req.model_fields_set:
+        changes["ocr_color_profile"] = req.ocr_color_profile
     try:
         manifest = pipeline.update_text_object(
             req.chapter_id, req.page_index, req.id, changes
@@ -484,6 +486,8 @@ def update_text_objects_bulk(req: BulkUpdateTextObjectsRequest) -> dict:
                 changes["font_match"] = item.font_match
             if "font_ai_id" in item.model_fields_set:
                 changes["font_ai_id"] = item.font_ai_id
+            if "ocr_color_profile" in item.model_fields_set:
+                changes["ocr_color_profile"] = item.ocr_color_profile
             manifest = pipeline.update_text_object(req.chapter_id, item.page_index, item.id, changes)
             if item.ocr_text is not None and item.translation is None:
                 manifest = _reconcile_translation_after_ocr_edit(item)

@@ -24,6 +24,7 @@
       font_selection_mode: obj.font_selection_mode ?? null,
       font_match: obj.font_match ?? null,
       font_ai_id: obj.font_ai_id ?? null,
+      ocr_color_profile: obj.ocr_color_profile ?? null,
     }));
   }
 
