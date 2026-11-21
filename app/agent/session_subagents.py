@@ -8,7 +8,6 @@ import shutil
 import sys
 import tempfile
 import time
-import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
