@@ -301,15 +301,6 @@ def sample_source_text_color_profile(
     return normalize_color_profile(profile)
 
 
-def sample_source_text_color(
-    image: np.ndarray,
-    box: dict,
-    text_region: dict | None,
-) -> str | None:
-    profile = sample_source_text_color_profile(image, box, text_region)
-    return profile["fill"] if profile else None
-
-
 
 def source_font_size(
     crop_bounds: tuple[int, int, int, int],

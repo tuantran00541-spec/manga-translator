@@ -204,7 +204,7 @@
   @media (max-width: 820px) {
     .review-floating-inspector { top: auto; right: 6px; bottom: 6px; left: 6px; width: auto; max-height: 54%; }
     .review-floating-inspector:not([hidden]) ~ .review-zoom-dock { display: none; }
-    .review-docbar-right, .review-docbar-actions { flex-wrap: wrap; }
+    .review-docbar-left, .review-docbar-right, .review-docbar-actions { flex-wrap: wrap; }
   }
   @media (max-width: 720px) {
     .review-single-document .review-document-toolbar-compact .ui-btn, .review-brush-bar .ui-btn, .review-zoom-dock .ui-btn { min-height: 36px; height: 36px; }

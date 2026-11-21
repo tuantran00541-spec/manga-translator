@@ -3,7 +3,7 @@ from PIL import Image
 
 from app.ocr.paddle_v6 import OCRReadResult, PaddleV6OCR
 from app.ocr.crop_geometry import ocr_text_region
-from app.ocr.visual_metadata import sample_source_text_color, source_font_size
+from app.ocr.visual_metadata import sample_source_text_color_profile, source_font_size
 from app.render import page_renderer
 from app.schemas import RenderRequest
 from app.text_objects import ensure_page_text_objects
@@ -62,11 +62,11 @@ def test_verified_text_mask_samples_source_text_color_from_original_pixels():
         "mask": mask,
     }
 
-    assert sample_source_text_color(
+    assert sample_source_text_color_profile(
         image,
         box,
         {"x1": 18, "y1": 15, "x2": 42, "y2": 25},
-    ) == "#ff0000"
+    )["fill"] == "#ff0000"
 
 
 def test_auto_text_object_carries_ocr_visual_metadata():
