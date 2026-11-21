@@ -18,7 +18,6 @@ from app.agent import (
     agents,
     client,
     context,
-    memory,
     roles,
     skills,
 )
@@ -42,7 +41,6 @@ class AgentLoopMixin:
             self._pinned = self._volatile()
         if not self.depth:
             parts.append(self._pinned.get("Project instructions", ""))
-            parts.append(self._pinned.get("Memory", ""))
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
@@ -64,12 +62,10 @@ class AgentLoopMixin:
         return "\n\n".join(p for p in parts if p)
 
     def _volatile(self) -> dict[str, str]:
-        home = self.home if self.home is not None else Path.home()
         rows = {"Skills": skills.catalog(self.skills, paths=not self.depth)}
         if not self.depth:
             rows[ACTIVE_SKILLS] = skills.active(self.skills, self.active_skills)
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home, trust=self.trust)
-            rows["Memory"] = memory.prompt(home, self.workspace.root)
         return rows
 
     def _context_update(self) -> str:

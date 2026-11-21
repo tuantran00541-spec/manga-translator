@@ -85,7 +85,8 @@ class TestH13MemoryLaundering:
         ws = Workspace(wsroot, sandbox.Policy("workspace-write", False))
         s2 = mgr.create(Prov(), "k", "m", ws, "bypass",
                         complete=lambda *a, **k: {"text": ""}, session_id="h13c01cb02dc03ed04")
-        assert "H13 legit note" in s2.system_prompt()
+        assert "H13 legit note" not in s2.system_prompt()
+        assert "H13 legit note" in s2._memory_tool({"action": "list"})
 
     def test_memory_list_still_works_when_tainted(self, tmp_path):
         s, home, wsroot = make_session(tmp_path, mode="bypass", tag="h13d")

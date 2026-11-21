@@ -508,10 +508,10 @@ SESSION_SPECS = {
     "mcp_resource": {"name": "mcp_resource", "description": "List an MCP server's resources, or read one by its uri.",
                      "parameters": {"type": "object", "required": ["server"], "properties": {
                          "server": {"type": "string"}, "uri": {"type": "string", "description": "Leave out to list them."}}}},
-    "memory": {"name": "memory", "description": "Add, remove or list notes kept for later sessions.",
+    "memory": {"name": "memory", "description": "Read, search, add or remove persistent notes kept for later sessions (on-demand; not auto-injected into system prompt).",
                "parameters": {"type": "object", "required": ["action"], "properties": {
-                   "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
-                   "text": {"type": "string"}, "index": {"type": "integer"}}}},
+                   "action": {"type": "string", "enum": ["add", "remove", "list", "search"]}, "scope": {"type": "string", "enum": ["project", "user"]},
+                   "text": {"type": "string"}, "query": {"type": "string"}, "index": {"type": "integer"}}}},
 }
 MCP_EXPORT = '''"""MCP server exported from a Chaos created tool."""
 import json, sys

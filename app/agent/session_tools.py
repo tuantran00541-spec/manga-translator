@@ -131,7 +131,7 @@ class AgentToolsMixin:
         if name == "schedule_create":
             return self.tainted or self.mode not in HANDS_OFF
         if name == "memory":
-            return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
+            return self.mode not in HANDS_OFF and call["args"].get("action") not in ("list", "search")
         if name == "mcp_resource":
             return self.mode != "bypass" and (self.mode == "ask" or (self.tainted and self.profile["untrusted_guard"]))
         if name == "branch":
@@ -212,7 +212,8 @@ class AgentToolsMixin:
 
     def _always_ask(self, call: dict) -> bool:
         plugin = self.registry.tools.get(call["name"])
-        return bool(plugin and plugin.always_ask) or call["name"] in ("memory", "plugin_write") or self._typing_outside(call) or bool(
+        mem_mutating = call["name"] == "memory" and (call.get("args") or {}).get("action") not in ("list", "search")
+        return bool(plugin and plugin.always_ask) or mem_mutating or call["name"] == "plugin_write" or self._typing_outside(call) or bool(
             call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
 
     def _user_messages(self) -> list[str]:

@@ -866,13 +866,12 @@ def test_memory_notes_persist_into_the_next_session(ws, home):
     session.decide("allow")
     wait_for(session, "idle")
     later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("hi")))
-    assert "1. Tests run with pytest -q" in later.system_prompt()
+    assert "Tests run with pytest -q" not in later.system_prompt()
+    assert "1. Tests run with pytest -q" in later._memory_tool({"action": "list"})
+    assert "1. Tests run with pytest -q" in later._memory_tool({"action": "search", "query": "pytest"})
     assert "pytest" in later.command("/memory")["message"]
     later.command("/memory rm project 1")
-    assert "Tests run" in later.system_prompt(), "the system prompt is kept so the provider's cached prefix still matches"
-    run_to_idle(later, "next")
-    update = [m["content"] for m in later.history if m["role"] == "user" and m["content"].startswith("<context_update>")]
-    assert update and "- 1. Tests run with pytest -q" in update[0] and later.cache_log["context updates"] == 1
+    assert later._memory_tool({"action": "list"}) == "No notes."
 
 
 def test_plan_mode_is_read_only_until_the_plan_is_approved(ws, home):

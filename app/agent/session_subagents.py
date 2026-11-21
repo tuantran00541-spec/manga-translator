@@ -382,8 +382,10 @@ class AgentSubagentsMixin:
                 memory.add(home, root, scope, args.get("text") or "")
             elif action == "remove":
                 memory.remove(home, root, scope, int(args.get("index") or 0))
+            elif action == "search":
+                return memory.search(home, root, str(args.get("query") or args.get("text") or ""))
             elif action != "list":
-                raise ToolError("action must be add, remove or list")
+                raise ToolError("action must be add, remove, list or search")
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
         return memory.prompt(home, root) or "No notes."

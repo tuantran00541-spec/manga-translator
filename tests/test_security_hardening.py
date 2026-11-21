@@ -536,8 +536,13 @@ def test_agent_mode_memory_agents_md_chain_rpc_and_mcp_resource_hardening(tmp_pa
         _Prov(), "k", "m", Workspace(wsroot, sandbox.Policy("workspace-write", False)), "edits",
         complete=lambda *a, **k: {"text": ""}, session_id="sec15b01cb02dc03ed",
     )
-    assert "<memory_notes>" in s_next.system_prompt()
-    assert "untrusted reference notes" in s_next.system_prompt().lower()
+    # Memory is NOT auto-injected into system_prompt; model reads/searches it on demand via tools.memory
+    assert "remember coding convention" not in s_next.system_prompt()
+    out_mem, ok_mem = s_next._run_call({"id": "chain-mem1", "name": "memory", "args": {"action": "search", "query": "coding"}})
+    assert ok_mem and "<memory_notes>" in out_mem and "remember coding convention" in out_mem
+    assert s_next._always_ask({"name": "memory", "args": {"action": "list"}}) is False
+    assert s_next._always_ask({"name": "memory", "args": {"action": "search", "query": "coding"}}) is False
+    assert s_next._always_ask({"name": "memory", "args": {"action": "add", "text": "x"}}) is True
     # Persistent user-scoped create tool requires approval in edits mode
     assert s_edits._needs_approval(
         {"name": "create", "args": {"name": "pwn", "code": "def pwn(): return 1", "scope": "user"}}, None,
