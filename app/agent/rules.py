@@ -261,8 +261,6 @@ def safe_readonly(command: str) -> bool:
     masked = _mask_quotes(command)
     if _SUBST_TRICKS.search(command) or _REDIRECT_OPS.search(masked) or _READONLY_UNSAFE_EXPANSION.search(masked):
         return False
-    if "%" in command:
-        return False
     if _PROC_ENVIRON.search(_dequote(command)):
         return False
     if _names_denied_path(_DEFAULT_RULES, command):

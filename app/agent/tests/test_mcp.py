@@ -213,7 +213,7 @@ def test_l1_redirect_to_private_rejected():
 
     with mock.patch.object(mcp, "validate_url", side_effect=fake_validate):
         transport = mcp._HttpTransport({"url": "https://mcp.example.test/"})
-        with mock.patch("requests.post", return_value=Redirect()):
+        with mock.patch.object(transport._session, "post", return_value=Redirect()):
             with pytest.raises(mcp.MCPError, match="refusing MCP server redirect"):
                 transport.request({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {}}, 5)
 
@@ -247,14 +247,15 @@ def test_l1_legitimate_http_server_still_works(tmp_path):
     httpd = HTTPServer(("127.0.0.1", 0), _MCPHandler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        with mock.patch.object(mcp, "validate_url", lambda url: url):
+        with mock.patch.object(mcp, "validate_url", lambda url: url), \
+                mock.patch("app.downloader.http.public_address", side_effect=lambda host, port: host):
             server = mcp.Server("h", {"type": "http",
                                       "url": f"http://127.0.0.1:{httpd.server_address[1]}/mcp"}, tmp_path)
-        try:
-            assert [t["name"] for t in server.tools] == ["get_status"]
-            text, ok = server.call_tool("get_status", {})
-            assert (text, ok) == ("all good", True)
-        finally:
-            server.close()
+            try:
+                assert [t["name"] for t in server.tools] == ["get_status"]
+                text, ok = server.call_tool("get_status", {})
+                assert (text, ok) == ("all good", True)
+            finally:
+                server.close()
     finally:
         httpd.shutdown()

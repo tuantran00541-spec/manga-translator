@@ -5,6 +5,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
+import app.config as config
 import app.manifest_utils as manifest_utils
 from app.pipeline import ChapterPipeline
 
@@ -15,7 +16,9 @@ def test_editor_state_operations_survive_pipeline_module_split():
         root = Path(temporary)
         processed = root / chapter_id
         processed.mkdir()
-        original = processed / "page.png"
+        raw_root = root / "raw"
+        original = raw_root / chapter_id / "page.png"
+        original.parent.mkdir(parents=True)
         assert cv2.imwrite(str(original), np.zeros((80, 120, 3), np.uint8))
         manifest_utils.save_manifest_raw(
             processed,
@@ -38,7 +41,7 @@ def test_editor_state_operations_survive_pipeline_module_split():
         pipeline = ChapterPipeline.__new__(ChapterPipeline)
         with patch.object(manifest_utils, "PROCESSED_DIR", root), patch(
             "app.pipeline_editing.PROCESSED_DIR", root
-        ):
+        ), patch.object(config, "RAW_DIR", raw_root):
             created = pipeline.create_text_object(
                 chapter_id,
                 0,

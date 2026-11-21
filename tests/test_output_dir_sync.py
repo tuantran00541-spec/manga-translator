@@ -117,9 +117,11 @@ def test_invalidate_renders_drops_stale_output_files(monkeypatch):
 
 def test_failed_render_commit_drops_stale_output(monkeypatch, tmp_path):
     out_dir = tmp_path / "output"
-    base = _write_png(tmp_path / "base.png")
+    proc_dir = tmp_path / "processed"
+    base = _write_png(proc_dir / CHAPTER / "base.png")
     stale = _write_png(out_dir / CHAPTER / "page_000.png", "blue")
     monkeypatch.setattr(render_commit, "OUTPUT_DIR", out_dir)
+    monkeypatch.setattr(config, "PROCESSED_DIR", proc_dir)
     monkeypatch.setattr(render_commit, "get_manifest_lock", lambda *_: nullcontext())
     monkeypatch.setattr(
         render_commit, "_load_render_snapshot",
@@ -139,9 +141,11 @@ def test_failed_render_commit_drops_stale_output(monkeypatch, tmp_path):
 
 def test_failed_render_commit_keeps_file_when_manifest_still_says_rendered(monkeypatch, tmp_path):
     out_dir = tmp_path / "output"
-    base = _write_png(tmp_path / "base.png")
+    proc_dir = tmp_path / "processed"
+    base = _write_png(proc_dir / CHAPTER / "base.png")
     fresh = _write_png(out_dir / CHAPTER / "page_000.png", "blue")
     monkeypatch.setattr(render_commit, "OUTPUT_DIR", out_dir)
+    monkeypatch.setattr(config, "PROCESSED_DIR", proc_dir)
     monkeypatch.setattr(render_commit, "get_manifest_lock", lambda *_: nullcontext())
     monkeypatch.setattr(
         render_commit, "_load_render_snapshot",
