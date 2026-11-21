@@ -121,13 +121,18 @@ class AgentToolsMixin:
         if name == "job_input" and self._typing_outside(call):
             return True
         if name == "schedule_create":
-            return self.mode not in HANDS_OFF
+            return self.tainted or self.mode not in HANDS_OFF
         if name == "memory":
             return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
+        if name == "mcp_resource":
+            return self.mode != "bypass" and (self.mode == "ask" or (self.tainted and self.profile["untrusted_guard"]))
         if name == "create":
             if self.mode == "bypass":
                 return False
-            if self.tainted:
+            if self.tainted or self.mode == "ask":
+                return True
+            scope = str(call["args"].get("scope") or "user")
+            if scope == "user" and str(call["args"].get("code") or "").strip() and call["args"].get("keep") is not False:
                 return True
             if call["args"].get("args") is not None and not self._confined():
                 return True
@@ -287,6 +292,11 @@ class AgentToolsMixin:
     def trust_tools(self) -> None:
         self.trust.allow(self.workspace.root, "tools", self._workspace_tools_digest())
         self._root().created.update(self._load_created())
+
+    def trust_instructions(self) -> None:
+        from app.agent import context as _ctx
+        self.trust.allow(self.workspace.root, "instructions", _ctx.workspace_instructions_digest(self.workspace.root))
+        self._pinned = None
 
     def _create(self, args: dict) -> str:
         asked = str(args.get("name") or "").strip()
@@ -554,8 +564,6 @@ class AgentToolsMixin:
                     if ok:
                         role = {"role": str(args["model"])} if args.get("model") else {}
                         output = self._subagent("chain", str(args.get("prompt") or ""), str(args.get("agent") or "explore"), **role)
-                elif name == "create":
-                    output, ok = self._create(args), True
                 else:
                     output, ok = self._run_call({"id": f"{origin}{uuid.uuid4().hex[:8]}", "name": name, "args": args})
             except Exception as exc:

@@ -379,6 +379,13 @@ class SeriesMemoryRequest(BaseModel):
     text: str | None = Field(default=None, max_length=60000)
     notes: str | None = Field(default=None, max_length=1500)
 
+    @field_validator("text", "notes")
+    @classmethod
+    def _reject_secrets(cls, value: str | None) -> str | None:
+        if value and contains_secret_token(value):
+            raise ValueError("Series memory must not contain API keys or credentials")
+        return value
+
 
 def _series_key(url: str) -> str:
     key = series_memory.series_key(url)

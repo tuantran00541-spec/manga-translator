@@ -68,7 +68,7 @@ class AgentLoopMixin:
         rows = {"Skills": skills.catalog(self.skills, paths=not self.depth)}
         if not self.depth:
             rows[ACTIVE_SKILLS] = skills.active(self.skills, self.active_skills)
-            rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
+            rows["Project instructions"] = context.instructions(self.workspace.root, self.home, trust=self.trust)
             rows["Memory"] = memory.prompt(home, self.workspace.root)
         return rows
 
@@ -393,6 +393,9 @@ class AgentLoopMixin:
             before = len(self.schedules)
             self.schedules = [t for t in self.schedules if t["id"] != str(args.get("id") or "").strip()]
             return "Cancelled." if len(self.schedules) < before else f"No schedule with id {args.get('id')!r}."
+        if self.tainted:
+            return ("Refused: this session has read untrusted content (web/MCP), so creating scheduled prompts "
+                    "is disabled to keep attacker instructions out of future turns.")
         prompt = str(args.get("prompt") or "").strip()
         try:
             first, every = int(args.get("in_minutes") or 0), int(args.get("every_minutes") or 0)

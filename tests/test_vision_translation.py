@@ -239,8 +239,8 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
     second = translator.translate_page(original, clean, [item("c"), item("d"), item("f")], api_key="k", source_lang="ko",
                                        target_lang="vi", memory=memory, slice_number=2, slice_total=2)
 
-    assert "SLICE 1 of 2" in prompts[0] and "Academy regression story" not in prompts[0]
-    assert systems[0] == systems[1] and "Academy regression story" in systems[0], "fixed chapter notes sit in the cached system text"
+    assert "SLICE 1 of 2" in prompts[0] and "Academy regression story" in prompts[0]
+    assert systems[0] == systems[1] and "Academy regression story" not in systems[0], "untrusted chapter notes stay out of system prompt while system prefix remains cacheable"
     carried = prompts[1]
     assert '"self":"em","other":"thầy"' in carried
     assert '"name":"Baldur"' in carried

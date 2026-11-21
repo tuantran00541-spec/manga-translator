@@ -43,10 +43,14 @@ _BLOCKED_NETWORKS = [
 
 _SECRET_TOKEN_RE = re.compile(
     r"(?:sk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{16,}"
+    r"|sk_(?:live|test)_[A-Za-z0-9]{16,}"
+    r"|gsk_[A-Za-z0-9]{20,}"
+    r"|hf_[A-Za-z0-9]{20,}"
     r"|AIza[0-9A-Za-z_-]{30,}"
     r"|gh[pousr]_[A-Za-z0-9]{25,}"
     r"|AKIA[0-9A-Z]{16}"
     r"|xox[baprs]-[0-9A-Za-z-]{20,}"
+    r"|Bearer\s+[A-Za-z0-9._-]{20,}"
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----)"
 )
 
