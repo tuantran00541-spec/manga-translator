@@ -27,6 +27,11 @@ on:
         required: false
         default: ""
         type: string
+      crops_zip4:
+        description: "repo path of a fourth crops zip (unzipped at repo root); empty = none"
+        required: false
+        default: ""
+        type: string
       init_adapter_run_id:
         description: "nano-sft-text-stage run id whose nano-sft-text artifact holds the stage-1 adapter (empty = fresh LoRA)"
         required: false
@@ -113,6 +118,11 @@ jobs:
         if: ${{ inputs.crops_zip3 != '' }}
         run: |
           unzip -o -q "${{ inputs.crops_zip3 }}" -d .
+          ls crops/ | wc -l
+      - name: Unzip trial crops 4 (optional)
+        if: ${{ inputs.crops_zip4 != '' }}
+        run: |
+          unzip -o -q "${{ inputs.crops_zip4 }}" -d .
           ls crops/ | wc -l
       - name: Download stage-1 adapter (optional)
         if: ${{ inputs.init_adapter_run_id != '' }}
