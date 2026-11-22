@@ -223,16 +223,25 @@ def stamp_machine_cache(
     text_color = str(_metadata_value(metadata, "text_color", "") or "").strip()
     if text_color:
         box["ocr_text_color"] = text_color
-    else:
-        box.pop("ocr_text_color", None)
 
     from app.ocr.visual_metadata import normalize_color_profile
 
     color_profile = normalize_color_profile(_metadata_value(metadata, "color_profile"))
     if color_profile:
-        box["ocr_color_profile"] = color_profile
-    else:
-        box.pop("ocr_color_profile", None)
+        existing_profile = normalize_color_profile(box.get("ocr_color_profile"))
+        def _profile_rank(p: dict | None) -> tuple:
+            if not p:
+                return (0, 0, 0, 0.0)
+            return (
+                1 if "gradient" in p else 0,
+                1 if "glow_color" in p else 0,
+                1 if "stroke_color" in p else 0,
+                float(p.get("lab_span") or 0.0),
+            )
+        if _profile_rank(color_profile) >= _profile_rank(existing_profile):
+            box["ocr_color_profile"] = color_profile
+            if not text_color:
+                box["ocr_text_color"] = color_profile["fill"]
 
     font_size = _metadata_value(metadata, "font_size")
     try:

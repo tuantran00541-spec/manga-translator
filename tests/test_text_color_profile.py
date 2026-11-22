@@ -356,3 +356,93 @@ def test_update_text_object_schema_accepts_and_normalizes_color_profile():
     assert "ocr_color_profile" in req.model_fields_set
     assert normalize_color_profile(req.ocr_color_profile)["gradient"]["direction"] == "vertical"
 
+
+def test_kiuyha_process_page_automatically_captures_color_profile_without_ocr(tmp_path):
+    from app.detector.boxes import BubbleBox
+    from app.page_processing import PageProcessingMixin
+
+    # Build a synthetic manga page with a gold->crimson vertical gradient title on a dark panel.
+    h, w = 140, 260
+    img = np.full((h, w, 3), (18, 18, 22), dtype=np.uint8)
+    y0, y1, x0, x1 = 30, 110, 40, 220
+    # Dilated inpaint mask covers whole box; Kiuyha's exact `letters` covers only the inner glyph block.
+    letters = np.zeros((y1 - y0, x1 - x0), dtype=bool)
+    letters[12:68, 16:164] = True
+    dilated_mask = np.full((y1 - y0, x1 - x0), 255, dtype=np.uint8)
+    for ly in range(12, 68):
+        t = (ly - 12) / max(1, (68 - 12 - 1))
+        r = int(round(255 * (1 - t) + 185 * t))
+        g = int(round(230 * (1 - t) + 20 * t))
+        b = int(round(50 * (1 - t) + 20 * t))
+        img[y0 + ly, x0 + 16:x0 + 164] = (b, g, r)
+
+    raw_path = tmp_path / "page_000.png"
+    cv2.imwrite(str(raw_path), img)
+    processed_dir = tmp_path / "processed"
+    processed_dir.mkdir()
+
+    detected_box = BubbleBox(
+        x0, y0, x1, y1, 0.96, dilated_mask,
+        source_model="kiuyha", class_name="text", semantic_type="free_text",
+        mask_source="text_segmenter", safe_to_inpaint=True, ocr_eligible=True,
+        source_role="text_segmenter", letters=letters,
+    )
+
+    class _DummyDetector:
+        def detect(self, _image):
+            return [detected_box]
+        def last_metrics(self):
+            return {}
+        def leftover_boxes(self, _clean, _boxes):
+            return []
+
+    class _DummyInpainter:
+        session_loaded = False
+        _prefer_dynamic = False
+        serialized_inference = True
+        lama_model_path = None
+        def inpaint(self, image, _boxes, protected_regions=None):
+            return np.full_like(image, (18, 18, 22))
+        def last_metrics(self):
+            return {}
+
+    class _Harness(PageProcessingMixin):
+        detector = _DummyDetector()
+        inpainter = _DummyInpainter()
+        def _auto_clean_path(self, pdir, ipath):
+            return pdir / f"auto_clean_{ipath.name}"
+        def _manual_mask_path(self, pdir, ipath, force_lama=False):
+            return pdir / f"manual_{'lama_' if force_lama else ''}{ipath.name}"
+        def _read_manual_mask(self, _path, _shape):
+            return None
+        def _apply_restore_mask(self, _clean, _orig, _pdir, _ipath):
+            return None
+
+    res = _Harness()._process_page(raw_path, processed_dir)
+    assert len(res["boxes"]) == 1
+    saved_box = res["boxes"][0]
+    assert saved_box.get("ocr_text_color")
+    prof = saved_box.get("ocr_color_profile")
+    assert isinstance(prof, dict)
+    assert prof["gradient"]["direction"] == "vertical"
+    assert len(prof["gradient"]["stops"]) == 3
+
+    # Propagate straight to text_objects WITHOUT running OCR, and confirm renderer uses it automatically.
+    page = {"boxes": res["boxes"], "text_objects": []}
+    ensure_page_text_objects(page)
+    obj = page["text_objects"][0]
+    assert obj["ocr_color_profile"] == prof
+
+    # Even if OCR runs later with empty color_profile, Kiuyha's richer profile is preserved.
+    stamp_machine_cache(
+        saved_box,
+        text="POWER",
+        lang="en",
+        engine="paddle",
+        source_revision=1,
+        original_revision=(1, 2, 3),
+        metadata={"confidence": 0.9, "text_color": "", "color_profile": None},
+    )
+    assert saved_box["ocr_color_profile"] == prof
+
+

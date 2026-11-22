@@ -324,7 +324,7 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
                       "x2": int(box["x2"]), "y2": int(box["y2"])}
             box_id = str(box.get("id"))
             ocr_text = str(box.get("ocr_text") or "")
-            page.setdefault("text_objects", []).append({
+            mirror = {
                 "id": _auto_object_id(box_id),
                 "shape": "rectangle",
                 "region": copy.deepcopy(region),
@@ -340,7 +340,11 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
                 "auto_geometry": copy.deepcopy(region),
                 "auto_ocr_text": ocr_text,
                 "seam_owner": {"page": owner_page, "id": owner_id},
-            })
+            }
+            for color_key in ("ocr_text_color", "ocr_color_profile"):
+                if box.get(color_key):
+                    mirror[color_key] = copy.deepcopy(box[color_key])
+            page.setdefault("text_objects", []).append(mirror)
             created.append((page_index, _auto_object_id(box_id)))
     return created
 

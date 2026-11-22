@@ -84,30 +84,48 @@ def _extract_roi_and_mask(
     if image is None or image.size == 0:
         return None
 
-    if str(box.get("source_role") or "").strip().lower() == "text_segmenter":
-        region = box_region(box)
-        raw_mask = box.get("mask")
-        mask = raw_mask if isinstance(raw_mask, np.ndarray) else decode_mask_value(raw_mask)
-        if region is not None and mask is not None:
-            expected = (region["y2"] - region["y1"], region["x2"] - region["x1"])
-            if mask.shape == expected:
-                patch = image[region["y1"]:region["y2"], region["x1"]:region["x2"]]
-                if patch.shape[:2] == mask.shape:
-                    fg_mask = mask > 127
-                    if int(np.count_nonzero(fg_mask)) >= 8:
-                        bg_mask = ~fg_mask
-                        lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
-                        bg_lab = np.median(lab[bg_mask], axis=0) if int(np.count_nonzero(bg_mask)) >= 8 else None
-                        return patch, fg_mask, bg_lab
+    region = box_region(box)
+    if region is not None:
+        h, w = image.shape[:2]
+        x1 = max(0, min(w, int(region["x1"])))
+        y1 = max(0, min(h, int(region["y1"])))
+        x2 = max(x1, min(w, int(region["x2"])))
+        y2 = max(y1, min(h, int(region["y2"])))
+        expected = (y2 - y1, x2 - x1)
+        if expected[0] > 0 and expected[1] > 0:
+            # Prefer Kiuyha's exact un-dilated glyph strokes (`_letters_array` / `letters_mask`)
+            # over the dilated inpainting mask so core fill, gradient, stroke, and outer glow
+            # align directly with the true letter boundaries.
+            mask_candidates = (
+                box.get("_letters_array"),
+                box.get("letters_mask"),
+                box.get("_mask_array") if str(box.get("source_role") or "").strip().lower() == "text_segmenter" else None,
+                box.get("mask") if str(box.get("source_role") or "").strip().lower() == "text_segmenter" else None,
+            )
+            for raw_mask in mask_candidates:
+                if raw_mask is None:
+                    continue
+                mask = raw_mask if isinstance(raw_mask, np.ndarray) else decode_mask_value(raw_mask)
+                if mask is None or mask.shape != expected:
+                    continue
+                patch = image[y1:y2, x1:x2]
+                if patch.shape[:2] != mask.shape:
+                    continue
+                fg_mask = mask > 127 if mask.dtype != bool else mask
+                if int(np.count_nonzero(fg_mask)) >= 8:
+                    bg_mask = ~fg_mask
+                    lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
+                    bg_lab = np.median(lab[bg_mask], axis=0) if int(np.count_nonzero(bg_mask)) >= 8 else None
+                    return patch, fg_mask, bg_lab
 
-    if not isinstance(text_region, dict):
+    fallback_region = text_region if isinstance(text_region, dict) else region
+    if not isinstance(fallback_region, dict):
         return None
-    x1, y1, x2, y2 = (
-        int(text_region["x1"]),
-        int(text_region["y1"]),
-        int(text_region["x2"]),
-        int(text_region["y2"]),
-    )
+    h, w = image.shape[:2]
+    x1 = max(0, min(w, int(fallback_region["x1"])))
+    y1 = max(0, min(h, int(fallback_region["y1"])))
+    x2 = max(x1, min(w, int(fallback_region["x2"])))
+    y2 = max(y1, min(h, int(fallback_region["y2"])))
     roi = image[y1:y2, x1:x2]
     if roi.size == 0 or min(roi.shape[:2]) < 2:
         return None

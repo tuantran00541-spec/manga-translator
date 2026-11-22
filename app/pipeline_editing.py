@@ -127,14 +127,23 @@ COVERED_SHARE = 0.3
 def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
     from app.detector.kiuyha_detector import letter_mask
     from app.image_io import encode_mask
+    from app.ocr.visual_metadata import sample_source_text_color_profile
 
     grown, mask = letter_mask(image, rect)
     too_big = (grown[2] - grown[0]) * (grown[3] - grown[1]) > STROKE_BOX_MAX_SHARE * image.shape[0] * image.shape[1]
     if too_big or not mask.any():
         grown, mask = rect, None
-    return {"id": new_box_id(), "origin": "manual", "x1": int(grown[0]), "y1": int(grown[1]),
-            "x2": int(grown[2]), "y2": int(grown[3]), "confidence": 1.0, "manual": True,
-            "mask": encode_mask(mask.astype(np.uint8) * 255) if mask is not None else None}
+    box = {"id": new_box_id(), "origin": "manual", "x1": int(grown[0]), "y1": int(grown[1]),
+           "x2": int(grown[2]), "y2": int(grown[3]), "confidence": 1.0, "manual": True,
+           "mask": encode_mask(mask.astype(np.uint8) * 255) if mask is not None else None}
+    probe = dict(box)
+    if mask is not None:
+        probe["_letters_array"] = mask.astype(np.uint8) * 255
+    profile = sample_source_text_color_profile(image, probe, None)
+    if profile:
+        box["ocr_text_color"] = profile["fill"]
+        box["ocr_color_profile"] = profile
+    return box
 
 class PipelineEditingMixin(PipelineMasksMixin):
     """Box, text-object, and manual mask editing operations for ChapterPipeline."""
@@ -571,15 +580,22 @@ class PipelineEditingMixin(PipelineMasksMixin):
         if x2 - x1 < 10 or y2 - y1 < 10:
             raise ValueError(f"Chapter {chapter_id}: Region too small (min 10px)")
 
+        from app.ocr.visual_metadata import sample_source_text_color_profile
+
+        region_dict = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
         obj = {
             "id": uuid.uuid4().hex,
             "shape": shape,
-            "region": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+            "region": region_dict,
             "source_boxes": [],
             "ocr_text": "",
             "translation": "",
             "style": dict(DEFAULT_TEXT_OBJECT_STYLE),
         }
+        profile = sample_source_text_color_profile(image, region_dict, region_dict)
+        if profile:
+            obj["ocr_text_color"] = profile["fill"]
+            obj["ocr_color_profile"] = profile
 
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)

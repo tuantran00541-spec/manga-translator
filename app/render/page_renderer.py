@@ -533,11 +533,17 @@ def render_text_objects(
         user_color_auto = _is_auto_style(
             requested_color if requested_color is not None else stored_color
         )
+        raw_color_profile = obj.get("ocr_color_profile")
+        profile_fill_default = (
+            raw_color_profile.get("fill")
+            if isinstance(raw_color_profile, dict) and raw_color_profile.get("fill")
+            else None
+        )
         lettering_c = obj.get("lettering_color")
         ocr_color_default = (
             lettering_c
             if lettering_c and str(lettering_c).lower() != "auto"
-            else (obj.get("ocr_text_color") or lettering_c)
+            else (obj.get("ocr_text_color") or profile_fill_default or lettering_c)
         )
         box_color = _resolve_ocr_style(
             requested_color,
@@ -545,7 +551,6 @@ def render_text_objects(
             ocr_color_default,
             "auto",
         )
-        raw_color_profile = obj.get("ocr_color_profile")
         active_color_profile = (
             raw_color_profile
             if user_color_auto and isinstance(raw_color_profile, dict)

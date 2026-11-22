@@ -124,6 +124,11 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
             obj["auto_ocr_text"] = box_text
             changed = True
         changed = _sync_ocr_metadata(obj, box, skip_geometry=merged) or changed
+    else:
+        for color_key in ("ocr_text_color", "ocr_color_profile"):
+            if color_key in box and not obj.get(color_key):
+                obj[color_key] = copy.deepcopy(box[color_key])
+                changed = True
     if not merged:
         if isinstance(box.get("bubble_mask"), dict):
             value = copy.deepcopy(box["bubble_mask"])
