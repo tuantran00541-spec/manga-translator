@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GATEWAY = "http://127.0.0.1:8100"
 APP = "http://127.0.0.1:8000"
 ADMIN = "cost-run-admin"
-TERMINAL = {"completed", "failed", "cancelled"}
+TERMINAL = {"completed", "completed_with_blockers", "failed", "cancelled"}
 
 
 def _wait(url: str, proc: subprocess.Popen, timeout: float = 180) -> None:
@@ -284,7 +284,7 @@ def main() -> int:
             rows = [dict(r) for r in conn.execute(
                 "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd, charged_micros FROM jobs")]
         exported = None
-        if job["status"] == "completed" and job.get("chapter_id"):
+        if job["status"] in {"completed", "completed_with_blockers"} and job.get("chapter_id"):
             exported = requests.get(f"{APP}/api/export/{job['chapter_id']}.zip", timeout=600)
     finally:
         for proc in (app, gateway):
@@ -377,7 +377,7 @@ def main() -> int:
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "transport", "per_chapter", "per_slice", "readability", "scorecard")},
                      ensure_ascii=False, indent=1))
-    return 0 if job["status"] == "completed" else 1
+    return 0 if job["status"] in {"completed", "completed_with_blockers"} else 1
 
 
 if __name__ == "__main__":

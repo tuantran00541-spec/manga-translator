@@ -87,13 +87,14 @@ def main() -> int:
             f"{s['key']}={s['done']}/{s['total']}" for s in job.get("stages", [])
         )
         print(f"[{time.strftime('%H:%M')}] {job.get('status')} {stages}", flush=True)
-        if job.get("status") in ("completed", "failed", "cancelled"):
+        if job.get("status") in ("completed", "completed_with_blockers", "failed", "cancelled"):
             r = job.get("report", {})
             print("translated:", r.get("translated"), "| unreadable:", r.get("unreadable"),
                   "| scan_errors:", len(r.get("scan_errors", [])),
                   "| translate_errors:", len(r.get("translate_errors", [])),
-                  "| render_errors:", len(r.get("render_errors", [])))
-            return 0 if job.get("status") == "completed" else 1
+                  "| render_errors:", len(r.get("render_errors", [])),
+                  "| editorial_blockers:", r.get("editorial_blockers"))
+            return 0 if job.get("status") in ("completed", "completed_with_blockers") else 1
         time.sleep(args.poll_seconds)
     print("timed out waiting for the job", file=sys.stderr)
     return 1
