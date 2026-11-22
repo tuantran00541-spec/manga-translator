@@ -58,7 +58,12 @@ def _prob(img: np.ndarray, scale: float) -> np.ndarray:
 
 
 def probability(img: np.ndarray) -> np.ndarray:
-    return np.max([_prob(img, s) for s in SCALES], axis=0)
+    h, w = img.shape[:2]
+    prob = np.max([_prob(img, s) for s in SCALES], axis=0)
+    if min(h, w) >= 360 and max(h, w) >= 560:
+        p25 = _prob(img, 0.25)
+        prob = np.maximum(prob, np.where(p25 >= 0.48, p25, 0.0))
+    return prob
 
 
 def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:
@@ -127,6 +132,7 @@ def _plate(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, bg: np.ndarray,
 
 
 def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.ndarray:
+    reach = min(int(reach), 48)
     if reach < 1 or not seed.any() or len(bg) < 20:
         return seed
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -372,7 +378,7 @@ def _edge_fragments(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, size: 
 def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_letters: bool = False):
     x1, y1, x2, y2 = box
     h, w = image.shape[:2]
-    pad = max(8, int((y2 - y1) * PAD_SHARE))
+    pad = min(48, max(8, int((y2 - y1) * PAD_SHARE)))
     first = (max(0, x1 - pad), max(0, y1 - pad), min(w, x2 + pad), min(h, y2 + pad))
     if min(first[2] - first[0], first[3] - first[1]) < 8:
         empty = np.zeros((max(0, first[3] - first[1]), max(0, first[2] - first[0])), bool)

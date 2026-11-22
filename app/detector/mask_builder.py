@@ -13,7 +13,7 @@ from app.parameters import (
 )
 
 AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(
-    {"text_segmenter", "bubble_flat_contrast"}
+    {"text_segmenter", "bubble_flat_contrast", "border_protected_display"}
 )
 
 
@@ -81,6 +81,8 @@ def _repair_mask_from_ink(
             continue
         if not any(_component_in_box(x, y, w, h, rect) for rect in box_rects):
             continue
+        if any(_is_frame_component(w, h, area, rect) for rect in box_rects):
+            continue
         component = labels[y:y + h, x:x + w] == label
         if not np.any(component & near_mask[y:y + h, x:x + w]):
             continue
@@ -98,6 +100,18 @@ def _component_in_box(x: int, y: int, w: int, h: int,
     return (w <= (bx2 - bx1) + 2 * margin and h <= (by2 - by1) + 2 * margin
             and x >= bx1 - margin and y >= by1 - margin
             and x + w <= bx2 + margin and y + h <= by2 + margin)
+
+
+def _is_frame_component(w: int, h: int, area: int,
+                        rect: tuple[int, int, int, int]) -> bool:
+    rw = rect[2] - rect[0]
+    rh = rect[3] - rect[1]
+    if rw < 240 and rh < 200:
+        return False
+    long_side = max(w, h)
+    if long_side > 300:
+        return True
+    return long_side > 180 and area < 0.35 * w * h
 
 
 def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
@@ -197,6 +211,9 @@ def build_mask(
             y2 = min(h, box.y2 + MASK_EXPAND)
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
             box_rects.append((x1, y1, x2, y2))
+
+    if boxes and all(getattr(b, "mask_source", "") == "border_protected_display" for b in boxes):
+        return mask
 
     mask = _repair_mask_from_ink(mask, crop_img, box_rects)
 

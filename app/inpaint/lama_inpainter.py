@@ -415,7 +415,10 @@ class Inpainter:
                 hole = build_mask((cy2 - cy1, cx2 - cx1), others, crop_img)
                 hole = np.maximum(self._subtract_protected_regions(hole, crop_box, protected_regions), local_mask)
 
-            result = self._smart_paint_region(result, local_mask, crop_box, hole=hole)
+            if cluster and all(getattr(b, "mask_source", "") == "border_protected_display" for b in cluster):
+                result = self._paint_border_protected_display(result, local_mask, crop_box)
+            else:
+                result = self._smart_paint_region(result, local_mask, crop_box, hole=hole)
 
         return result
 
@@ -520,6 +523,67 @@ class Inpainter:
         fill_color: np.ndarray,
     ) -> np.ndarray | None:
         return smart_fill_surface(crop, local_mask, fill_color)
+
+    def _paint_border_protected_display(
+        self,
+        image: np.ndarray,
+        local_mask: np.ndarray,
+        crop_box: tuple[int, int, int, int],
+    ) -> np.ndarray:
+        cx1, cy1, cx2, cy2 = crop_box
+        crop = image[cy1:cy2, cx1:cx2]
+        if crop.shape[0] < 4 or crop.shape[1] < 4:
+            return image
+        mask_bool = local_mask > 127
+        if not np.any(mask_bool):
+            return image
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+        paper_px = crop[(~mask_bool) & (gray >= 235)]
+        paper_color = (
+            np.median(paper_px, axis=0).astype(np.float32)
+            if len(paper_px)
+            else np.array([254.0, 254.0, 254.0], dtype=np.float32)
+        )
+        alpha = cv2.GaussianBlur(mask_bool.astype(np.float32), (5, 5), 0.9)
+        alpha = np.where(mask_bool, np.clip(alpha * 1.4, 0.0, 1.0), 0.0)
+        if crop.ndim == 3:
+            alpha = alpha[..., None]
+        filled = np.clip(
+            crop.astype(np.float32) * (1.0 - alpha) + paper_color * alpha,
+            0,
+            255,
+        ).astype(np.uint8)
+
+        # Repair only tiny notches where giant display letters protruded into colored panel art.
+        if crop.ndim == 3 and crop.shape[2] == 3:
+            hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+            colored_art = (~mask_bool) & (hsv[..., 1] >= 45) & (hsv[..., 2] >= 35) & (gray < 220)
+            near_art = cv2.dilate(
+                colored_art.astype(np.uint8),
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (41, 41)),
+            ) > 0
+            art_overlap = mask_bool & near_art
+            if int(np.count_nonzero(art_overlap)) >= 100:
+                ys, xs = np.nonzero(art_overlap)
+                ay1 = max(0, int(ys.min()) - 64)
+                ay2 = min(crop.shape[0], int(ys.max()) + 64)
+                ax1 = max(0, int(xs.min()) - 64)
+                ax2 = min(crop.shape[1], int(xs.max()) + 64)
+                sub_img = filled[ay1:ay2, ax1:ax2].copy()
+                sub_mask = (art_overlap[ay1:ay2, ax1:ax2].astype(np.uint8) * 255)
+                self._metric_add("lama_regions")
+                painted_sub = self._lama_fill_single(sub_img, sub_mask)
+                sub_img[sub_mask > 127] = painted_sub[sub_mask > 127]
+                filled[ay1:ay2, ax1:ax2] = sub_img
+            else:
+                self._metric_add("smart_fill_regions")
+        else:
+            self._metric_add("smart_fill_regions")
+
+        result = image.copy()
+        result[cy1:cy2, cx1:cx2] = filled
+        return result
 
     def _smart_paint_region(
         self,

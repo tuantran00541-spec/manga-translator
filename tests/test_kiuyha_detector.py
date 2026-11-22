@@ -751,3 +751,84 @@ def test_kiuyha_model_contract_validates_io_and_shipped_weights():
             sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
             c = validate_kiuyha_session(sess)
             assert c.input_size == 1280 and c.output_channels == 5
+
+
+def test_overview_pass_catches_oversized_display_text_and_skips_covered_boxes():
+    from app.detector.kiuyha_detector import OVERVIEW_GAP, OVERVIEW_PAD_Y, OVERVIEW_WIDTHS
+
+    image = np.full((2400, 900, 3), 255, np.uint8)
+    # Compute where the first overview column (315px) places a large display title at (40, 80, 860, 440)
+    size_h, size_w = 1280, 1280
+    scaled = []
+    for tw in OVERVIEW_WIDTHS:
+        sc = min(1.0, tw / 900, (size_h - OVERVIEW_PAD_Y) / 2400)
+        scaled.append((max(1, int(round(900 * sc))), max(1, int(round(2400 * sc))), sc))
+    total_w = sum(d[0] for d in scaled) + OVERVIEW_GAP * (len(scaled) - 1)
+    ox = max(OVERVIEW_GAP, (size_w - total_w) // 2)
+    sw, sh, sc = scaled[0]
+    oy = (size_h - sh) // 2
+    box_in_canvas = (ox + 40 * sc, oy + 80 * sc, ox + 860 * sc, oy + 440 * sc, 0.80)
+    small_noise = (ox + 50 * sc, oy + 1200 * sc, ox + 200 * sc, oy + 1300 * sc, 0.85)
+
+    primary = _FixedSession([])
+    aux = _FixedSession([box_in_canvas, small_noise])
+    detector = KiuyhaTextDetector("unused", session=primary, aux_session=aux)
+    ov = detector._overview_boxes(image, [])
+    assert len(ov) == 1, "only the oversized display block passes; small noise is ignored"
+    bx1, by1, bx2, by2, score = ov[0]
+    assert abs(bx1 - 40) <= 5 and abs(by1 - 80) <= 5 and abs(bx2 - 860) <= 5 and abs(by2 - 440) <= 5
+    assert score == pytest.approx(0.80, abs=1e-4)
+
+    # Already covered by primary detection -> suppressed so tight primary boxes are not disturbed
+    assert detector._overview_boxes(image, [(30, 70, 870, 450, 0.90)]) == []
+
+
+def test_luminous_glow_mask_targets_bright_display_letters_on_dark_ground():
+    from app.detector.kiuyha_detector import _luminous_glow_mask
+
+    dark = np.zeros((400, 800, 3), np.uint8)
+    cv2.putText(dark, "DEMON", (80, 260), cv2.FONT_HERSHEY_DUPLEX, 5.0, (255, 255, 255), 24)
+    mask = _luminous_glow_mask(dark, (0, 0, 800, 400))
+    assert mask is not None and mask.shape == (400, 800)
+    assert 0.05 < float((mask > 0).mean()) < 0.75, "masks letters+glow tightly instead of wiping the whole box"
+
+    light = np.full((400, 800, 3), 240, np.uint8)
+    assert _luminous_glow_mask(light, (0, 0, 800, 400)) is None
+
+
+def test_repair_mask_skips_hollow_spiky_bubble_frame():
+    from app.detector.mask_builder import _is_frame_component
+
+    rect = (0, 0, 860, 500)
+    assert _is_frame_component(820, 460, 45000, rect) is True
+    assert _is_frame_component(260, 140, 6000, rect) is True, "long thin bubble-outline arc is skipped"
+    assert _is_frame_component(120, 140, 8000, rect) is False
+    assert _is_frame_component(220, 140, 18000, rect) is False, "compact solid stroke is kept"
+
+
+def test_white_bubble_display_mask_erases_letters_while_protecting_spiky_border():
+    from app.detector.kiuyha_detector import _white_bubble_display_mask
+
+    img = np.full((600, 900, 3), 255, np.uint8)
+    # Draw thin jagged speech-bubble outline surrounded by white outer page margin
+    pts = np.array([
+        [90, 90], [260, 130], [450, 70], [640, 130], [810, 90],
+        [770, 300], [820, 500], [600, 460], [450, 520], [300, 460], [80, 500], [130, 300],
+    ], np.int32)
+    cv2.polylines(img, [pts], True, (0, 0, 0), 8)
+    # Draw large bold letters strictly inside the bubble
+    cv2.putText(img, "ROAR!", (210, 360), cv2.FONT_HERSHEY_DUPLEX, 5.2, (0, 0, 0), 22)
+
+    out = _white_bubble_display_mask(img, (60, 60, 840, 530))
+    assert out is not None
+    (cx1, cy1, cx2, cy2), mask, _letters = out
+    full = np.zeros(img.shape[:2], bool)
+    full[cy1:cy2, cx1:cx2] = mask > 127
+
+    border = np.zeros(img.shape[:2], np.uint8)
+    cv2.polylines(border, [pts], True, 255, 8)
+    assert float((full & (border > 0)).mean()) == 0.0, "bubble border stays 100% outside the erase mask"
+
+    text_only = np.zeros(img.shape[:2], np.uint8)
+    cv2.putText(text_only, "ROAR!", (210, 360), cv2.FONT_HERSHEY_DUPLEX, 5.2, 255, 22)
+    assert float((full & (text_only > 0)).sum()) >= 0.98 * float((text_only > 0).sum()), "bold letters are masked"

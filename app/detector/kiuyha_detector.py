@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 from pathlib import Path
@@ -17,7 +18,7 @@ from app.detector.bubble_mask import (
     find_waist,
     split_bubble_mask,
 )
-from app.detector.ctd_mask import letter_mask, still_reads
+from app.detector.ctd_mask import letter_mask, probability, still_reads
 from app.knobs import knob
 from app.model_contracts import validate_kiuyha_session
 from app.ort_utils import make_session
@@ -31,6 +32,22 @@ HALVES_MIN_OVERLAP = 256
 PAGE_WIDTH = 400
 PAGE_OVERLAP = 0.15
 PAGE_CONFIDENCE = 0.45
+OVERVIEW_WIDTHS = (315, 225)
+OVERVIEW_GAP = 32
+OVERVIEW_PAD_Y = 64
+OVERVIEW_CONFIDENCE = 0.55
+OVERVIEW_WHITE_BUBBLE_CONFIDENCE = 0.30
+OVERVIEW_MIN_LONG = 350
+OVERVIEW_MIN_SHORT = 160
+OVERVIEW_WHITE_BUBBLE_MIN_WIDTH_SHARE = 0.60
+OVERVIEW_WHITE_BUBBLE_BRIGHT_L = 215
+OVERVIEW_WHITE_BUBBLE_MIN_SHARE = 0.35
+OVERVIEW_WHITE_BUBBLE_DARK_L = 50
+OVERVIEW_WHITE_BUBBLE_DARK_SHARE = 0.15
+OVERVIEW_EXISTING_OVERLAP = 0.35
+OVERVIEW_SELF_OVERLAP = 0.40
+AUX_MODEL_NAME = "kiuyha-tuned-transient-1024.onnx"
+AUX_MODEL_ENV = "MANGA_KIUYHA_AUX_MODEL"
 MASKLESS_MIN_SCORE = 0.5
 MASKLESS_MIN_PIECES = 3
 MASKLESS_PIECE_PX = 20
@@ -279,11 +296,22 @@ def split_waist_boxes(boxes: list[BubbleBox]) -> list[BubbleBox]:
     return out
 
 
-def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None, core=None) -> BubbleBox:
+def _text_box(
+    x1,
+    y1,
+    x2,
+    y2,
+    score,
+    mask,
+    source_model,
+    letters=None,
+    core=None,
+    mask_source: str = "text_segmenter",
+) -> BubbleBox:
     box = BubbleBox(
         x1, y1, x2, y2, score, mask,
         source_model=source_model, class_name="text", semantic_type="free_text",
-        mask_source="text_segmenter", safe_to_inpaint=True, ocr_eligible=True,
+        mask_source=mask_source, safe_to_inpaint=True, ocr_eligible=True,
         source_role="text_segmenter",
         letters=letters,
         core=core,
@@ -409,14 +437,17 @@ def _join_grown(boxes: list[BubbleBox], cores: list[tuple[int, int, int, int]] |
     for (x1, y1, x2, y2, score), _geometry, core in groups:
         mask = np.zeros((y2 - y1, x2 - x1), np.uint8)
         letters = np.zeros((y2 - y1, x2 - x1), bool)
+        src_kind = "text_segmenter"
         for b in boxes:
             if b.x1 >= x1 and b.y1 >= y1 and b.x2 <= x2 and b.y2 <= y2:
                 view = mask[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1]
                 np.maximum(view, b.mask, out=view)
                 if getattr(b, "letters", None) is not None:
                     letters[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1] |= b.letters
+                if getattr(b, "mask_source", "") == "border_protected_display":
+                    src_kind = "border_protected_display"
         joined.append(_text_box(x1, y1, x2, y2, score, mask, boxes[0].source_model,
-                                letters if letters.any() else None, core=core))
+                                letters if letters.any() else None, core=core, mask_source=src_kind))
     return joined
 
 
@@ -491,7 +522,7 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
         rect = (box.x1 + x1, box.y1 + y1, box.x1 + x2, box.y1 + y2)
         pieces.append(_text_box(*rect, box.confidence,
                                 np.ascontiguousarray(box.mask[y1:y2, x1:x2]), box.source_model, letters[y1:y2, x1:x2],
-                                core=_clip_core(box.core, rect)))
+                                core=_clip_core(box.core, rect), mask_source=box.mask_source))
     return pieces
 
 
@@ -539,7 +570,7 @@ def _split_sideways(box: BubbleBox) -> list[BubbleBox]:
         rect = (box.x1 + x1, box.y1 + y1, box.x1 + x2, box.y1 + y2)
         pieces.append(_text_box(*rect, box.confidence,
                                 np.ascontiguousarray(box.mask[y1:y2, x1:x2]), box.source_model, letters[y1:y2, x1:x2],
-                                core=_clip_core(box.core, rect)))
+                                core=_clip_core(box.core, rect), mask_source=box.mask_source))
     return [part for piece in pieces for part in _split_sideways(piece)]
 
 
@@ -573,6 +604,185 @@ def _dark_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
     areas = stats[1:, cv2.CC_STAT_AREA]
     cap = MASKLESS_PIECE_SHARE * (x2 - x1) * (y2 - y1)
     return int(((areas >= MASKLESS_PIECE_PX) & (areas <= cap)).sum())
+
+
+def _bright_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
+    x1, y1, x2, y2 = box
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        return 0
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    ink = (gray > min(235, int(np.median(gray)) + MASKLESS_DARK_DROP)).astype(np.uint8)
+    _, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    cap = MASKLESS_PIECE_SHARE * (x2 - x1) * (y2 - y1)
+    return int(((areas >= MASKLESS_PIECE_PX) & (areas <= cap)).sum())
+
+
+def _luminous_glow_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray | None:
+    x1, y1, x2, y2 = box
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0 or crop.ndim != 3:
+        return None
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    if float(np.median(gray)) > 100.0:
+        return None
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    core = (gray >= 180) | ((hsv[..., 2] >= 165) & (hsv[..., 1] <= 90))
+    if float(core.mean()) < 0.03:
+        return None
+    near = cv2.dilate(core.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))) > 0
+    glow = near & (hsv[..., 2] >= 35)
+    mask = cv2.dilate((core | glow).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))) > 0
+    return mask.astype(np.uint8) * 255
+
+
+def _is_white_bubble_display(image: np.ndarray, box: tuple[int, int, int, int]) -> bool:
+    h, w = image.shape[:2]
+    x1, y1, x2, y2 = box
+    if x2 - x1 < OVERVIEW_WHITE_BUBBLE_MIN_WIDTH_SHARE * w:
+        return False
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        return False
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    bright = float((gray >= OVERVIEW_WHITE_BUBBLE_BRIGHT_L).mean())
+    dark = float((gray <= OVERVIEW_WHITE_BUBBLE_DARK_L).mean())
+    return bright >= OVERVIEW_WHITE_BUBBLE_MIN_SHARE and dark >= OVERVIEW_WHITE_BUBBLE_DARK_SHARE
+
+
+def _white_bubble_display_mask(
+    image: np.ndarray,
+    box: tuple[int, int, int, int],
+) -> tuple[tuple[int, int, int, int], np.ndarray, np.ndarray] | None:
+    """Build a border-protected glyph mask for oversized bold brush text inside white spiky bubbles.
+
+    Separates interior bold letter components from thin spiky bubble borders and adjacent panel art
+    so jagged speech-bubble outlines and neighboring panel artwork stay intact.
+    """
+    h_img, w_img = image.shape[:2]
+    x1, y1, x2, y2 = box
+    pad = 40
+    cx1, cy1 = max(0, x1 - pad), max(0, y1 - pad)
+    cx2, cy2 = min(w_img, x2 + pad), min(h_img, y2 + pad)
+    crop = image[cy1:cy2, cx1:cx2]
+    ch, cw = crop.shape[:2]
+    if ch < 32 or cw < 32 or crop.ndim != 3:
+        return None
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    prob = probability(crop)
+
+    dark = (gray < 140).astype(np.uint8)
+    # Morphologically close narrow white letter-outline gaps so outer page margin never leaks inside.
+    wall = cv2.morphologyEx(
+        (gray < 185).astype(np.uint8),
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (17, 17)),
+    )
+    free = (wall == 0).astype(np.uint8)
+    _, flabels = cv2.connectedComponents(free, connectivity=4)
+    edge_ids = set(
+        np.unique(
+            np.concatenate([flabels[0, :], flabels[-1, :], flabels[:, 0], flabels[:, -1]])
+        ).tolist()
+    )
+    edge_ids.discard(0)
+    outer_margin = np.zeros((ch, cw), bool)
+    for eid in edge_ids:
+        region = flabels == eid
+        if region.sum() >= 0.015 * ch * cw:
+            outer_margin |= region
+    if not outer_margin.any():
+        return None
+    near_outer = cv2.dilate(
+        outer_margin.astype(np.uint8),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (19, 19)),
+    ) > 0
+
+    n_c, clabels, cstats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    letter_mask_local = np.zeros((ch, cw), bool)
+    protect_local = np.zeros((ch, cw), bool)
+    unassigned: list[tuple[int, int]] = []
+
+    for cid in range(1, n_c):
+        cx, cy, bw, bh, area = (int(v) for v in cstats[cid])
+        if area < 6:
+            continue
+        comp = clabels == cid
+        touches_edge = (cx <= 1) or (cy <= 1) or (cx + bw >= cw - 1) or (cy + bh >= ch - 1)
+        ctd_mean = float(prob[comp].mean())
+        ctd_high = float((prob[comp] >= 0.45).mean())
+        outer_touch = float((comp & near_outer).sum()) / max(1, area)
+        fill = area / max(1.0, bw * bh)
+
+        if touches_edge and area > 2000:
+            protect_local |= comp
+            continue
+        if fill < 0.28 and (outer_touch >= 0.40 or (outer_touch >= 0.22 and ctd_high < 0.70)):
+            protect_local |= comp
+            continue
+        in_core = (
+            cx + bw > (x1 - cx1) + 4
+            and cx < (x2 - cx1) - 4
+            and cy + bh > (y1 - cy1) + 4
+            and cy < (y2 - cy1) - 4
+        )
+        if not in_core:
+            protect_local |= comp
+            continue
+        if ctd_high >= 0.10 or (ctd_mean >= 0.14 and area >= 40):
+            letter_mask_local |= comp
+        elif outer_touch >= 0.25 and fill < 0.28:
+            protect_local |= comp
+        else:
+            unassigned.append((cid, area))
+
+    if not letter_mask_local.any() or not protect_local.any():
+        return None
+
+    near_core_letters = cv2.dilate(
+        letter_mask_local.astype(np.uint8),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (65, 65)),
+    ) > 0
+    for cid, area in unassigned:
+        comp = clabels == cid
+        if area < 4000 and (comp & near_core_letters).any():
+            letter_mask_local |= comp
+
+    protect_wall = cv2.dilate(
+        protect_local.astype(np.uint8),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+    ) > 0
+    near_letters = cv2.dilate(
+        letter_mask_local.astype(np.uint8),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (61, 61)),
+    ) > 0
+    chroma = crop.max(axis=2).astype(np.int16) - crop.min(axis=2).astype(np.int16)
+    letter_halo = near_letters & ((gray < 248) | (chroma > 5)) & ~protect_wall
+    final_local = (
+        cv2.dilate(
+            (letter_mask_local | letter_halo).astype(np.uint8),
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)),
+        )
+        > 0
+    ) & ~protect_wall
+    if not final_local.any():
+        return None
+    return (cx1, cy1, cx2, cy2), final_local.astype(np.uint8) * 255, letter_mask_local
+
+
+def _resolve_aux_model_path(model_path) -> Path | None:
+    override = os.getenv(AUX_MODEL_ENV, "").strip()
+    if override.lower() in {"0", "false", "no", "off", "none"}:
+        return None
+    base = Path(str(model_path))
+    if override:
+        candidate = Path(override) if Path(override).is_absolute() else base.parent / override
+        return candidate if candidate.is_file() else None
+    if base.name == AUX_MODEL_NAME:
+        return None
+    sibling = base.parent / AUX_MODEL_NAME
+    return sibling if sibling.is_file() else None
 
 
 def _has_letter_piece(image: np.ndarray, box: tuple[int, int, int, int], *, allow_wide: bool = False) -> bool:
@@ -666,7 +876,13 @@ def _union_coherent(image: np.ndarray, boxes: list[tuple[int, int, int, int, flo
 
 
 class KiuyhaTextDetector:
-    def __init__(self, model_path, conf_threshold: float = knob("detect.confidence"), session=None):
+    def __init__(
+        self,
+        model_path,
+        conf_threshold: float = knob("detect.confidence"),
+        session=None,
+        aux_session=None,
+    ):
         if session is not None:
             self.session = session
         else:
@@ -679,15 +895,47 @@ class KiuyhaTextDetector:
         self.conf_threshold = float(conf_threshold)
         self._metrics = threading.local()
         self.source_model = Path(str(model_path)).name
+        self._aux_session = None
+        self._aux_input_name = None
+        self._aux_fixed = None
+        if aux_session is not None:
+            self._attach_aux_session(aux_session)
+        elif session is None:
+            aux_path = _resolve_aux_model_path(model_path)
+            if aux_path is not None:
+                try:
+                    loaded_aux = make_session(aux_path)
+                    validate_kiuyha_session(loaded_aux)
+                    self._attach_aux_session(loaded_aux)
+                except Exception:
+                    self._aux_session = None
+
+    def _attach_aux_session(self, aux_session) -> None:
+        aux_inp = aux_session.get_inputs()[0]
+        ah, aw = aux_inp.shape[2], aux_inp.shape[3]
+        if isinstance(ah, int) and isinstance(aw, int):
+            self._aux_session = aux_session
+            self._aux_input_name = aux_inp.name
+            self._aux_fixed = (int(ah), int(aw))
 
     def _input_size(self, height: int, width: int) -> tuple[int, int]:
         if self.fixed is not None:
             return self.fixed
         return int(math.ceil(height / STRIDE) * STRIDE), int(math.ceil(width / STRIDE) * STRIDE)
 
-    def raw_boxes(self, image: np.ndarray, conf_threshold: float | None = None) -> list[tuple[int, int, int, int, float]]:
+    def _run_raw_boxes(
+        self,
+        session,
+        input_name: str,
+        fixed: tuple[int, int] | None,
+        image: np.ndarray,
+        conf_threshold: float,
+    ) -> list[tuple[int, int, int, int, float]]:
         h, w = image.shape[:2]
-        in_h, in_w = self._input_size(h, w)
+        in_h, in_w = fixed if fixed is not None else (
+            int(math.ceil(h / STRIDE) * STRIDE),
+            int(math.ceil(w / STRIDE) * STRIDE),
+        )
         scale = min(in_w / w, in_h / h)
         rw, rh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
         pad_x, pad_y = (in_w - rw) // 2, (in_h - rh) // 2
@@ -695,8 +943,7 @@ class KiuyhaTextDetector:
         resized = image if (rw, rh) == (w, h) else cv2.resize(image, (rw, rh), interpolation=cv2.INTER_LINEAR)
         canvas[pad_y:pad_y + rh, pad_x:pad_x + rw] = resized
         blob = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB).astype(np.float32).transpose(2, 0, 1)[None] / 255.0
-        rows = _rows(self.session.run(None, {self.input_name: blob})[0],
-                     self.conf_threshold if conf_threshold is None else conf_threshold)
+        rows = _rows(session.run(None, {input_name: blob})[0], conf_threshold)
         boxes = []
         for x1, y1, x2, y2, score in rows:
             bx1 = int(max(0.0, (x1 - pad_x) / scale))
@@ -706,6 +953,15 @@ class KiuyhaTextDetector:
             if bx2 > bx1 and by2 > by1:
                 boxes.append((bx1, by1, bx2, by2, float(score)))
         return boxes
+
+    def raw_boxes(self, image: np.ndarray, conf_threshold: float | None = None) -> list[tuple[int, int, int, int, float]]:
+        return self._run_raw_boxes(
+            self.session,
+            self.input_name,
+            self.fixed,
+            image,
+            self.conf_threshold if conf_threshold is None else conf_threshold,
+        )
 
     def halves_plan(self, height: int, width: int) -> tuple[float, list[tuple[int, int]]] | None:
         if self.fixed is None or self.fixed[0] != self.fixed[1]:
@@ -721,8 +977,83 @@ class KiuyhaTextDetector:
         half = (height + min(overlap, height) + 1) // 2
         return scale, [(0, half), (height - half, height)]
 
+    def _overview_boxes(
+        self,
+        image: np.ndarray,
+        existing: list[tuple[int, int, int, int, float]],
+    ) -> list[tuple[int, int, int, int, float]]:
+        if self._aux_session is None or self._aux_fixed is None:
+            return []
+        h, w = image.shape[:2]
+        if max(h, w) < OVERVIEW_MIN_LONG or min(h, w) < OVERVIEW_MIN_SHORT:
+            return []
+        size_h, size_w = self._aux_fixed
+        canvas = np.full((size_h, size_w, 3), LETTERBOX_VALUE, np.uint8)
+        scaled = []
+        max_h = max(32, size_h - OVERVIEW_PAD_Y)
+        for target_w in OVERVIEW_WIDTHS:
+            scale = min(1.0, target_w / w, max_h / h)
+            sw = max(1, int(round(w * scale)))
+            sh = max(1, int(round(h * scale)))
+            scaled.append((sw, sh, scale))
+        total_w = sum(d[0] for d in scaled) + OVERVIEW_GAP * max(0, len(scaled) - 1)
+        x = max(OVERVIEW_GAP, (size_w - total_w) // 2)
+        columns = []
+        for sw, sh, scale in scaled:
+            if x + sw > size_w:
+                break
+            oy = (size_h - sh) // 2
+            canvas[oy:oy + sh, x:x + sw] = cv2.resize(image, (sw, sh), interpolation=cv2.INTER_AREA)
+            columns.append((x, oy, sw, sh, scale))
+            x += sw + OVERVIEW_GAP
+        if not columns:
+            return []
+        raw = self._run_raw_boxes(
+            self._aux_session,
+            self._aux_input_name,
+            self._aux_fixed,
+            canvas,
+            OVERVIEW_WHITE_BUBBLE_CONFIDENCE,
+        )
+        candidates: list[tuple[int, int, int, int, float]] = []
+        for cx1, cy1, cx2, cy2, score in raw:
+            centre = (cx1 + cx2) / 2
+            col = next((c for c in columns if c[0] <= centre < c[0] + c[2]), None)
+            if col is None:
+                continue
+            ox, oy, sw, sh, scale = col
+            bx1 = int(max(0, cx1 - ox) / scale)
+            bx2 = int(min(w, math.ceil(min(sw, cx2 - ox) / scale)))
+            by1 = int(max(0, cy1 - oy) / scale)
+            by2 = int(min(h, math.ceil(min(sh, cy2 - oy) / scale)))
+            bw, bh = bx2 - bx1, by2 - by1
+            if max(bw, bh) < OVERVIEW_MIN_LONG or min(bw, bh) < OVERVIEW_MIN_SHORT:
+                continue
+            if score < OVERVIEW_CONFIDENCE and not _is_white_bubble_display(image, (bx1, by1, bx2, by2)):
+                continue
+            candidates.append((bx1, by1, bx2, by2, float(score)))
+        candidates.sort(key=lambda b: b[4], reverse=True)
+        kept: list[tuple[int, int, int, int, float]] = []
+        for box in candidates:
+            area = max(1, (box[2] - box[0]) * (box[3] - box[1]))
+            if any(
+                max(0, min(box[2], k[2]) - max(box[0], k[0])) * max(0, min(box[3], k[3]) - max(box[1], k[1]))
+                >= OVERVIEW_SELF_OVERLAP * min(area, max(1, (k[2] - k[0]) * (k[3] - k[1])))
+                for k in kept
+            ):
+                continue
+            if any(
+                max(0, min(box[2], ex[2]) - max(box[0], ex[0])) * max(0, min(box[3], ex[3]) - max(box[1], ex[1]))
+                >= OVERVIEW_EXISTING_OVERLAP * area
+                for ex in existing
+            ):
+                continue
+            kept.append(box)
+        return kept
+
     def _raw_slice_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         found = self._coarse_boxes(image) + self.page_boxes(image)
+        found = found + self._overview_boxes(image, found)
         if not found:
             found = self._rotated_boxes(image)
         return found
@@ -870,15 +1201,36 @@ class KiuyhaTextDetector:
         cores = []
         for x1, y1, x2, y2, score in self._raw_slice_boxes(image):
             core = (x1, y1, x2, y2)
+            bw, bh = x2 - x1, y2 - y1
+            if (
+                max(bw, bh) >= OVERVIEW_MIN_LONG
+                and min(bw, bh) >= OVERVIEW_MIN_SHORT
+                and _is_white_bubble_display(image, core)
+            ):
+                protected = _white_bubble_display_mask(image, core)
+                if protected is not None:
+                    (px1, py1, px2, py2), pmask, pletters = protected
+                    boxes.append(_text_box(
+                        px1, py1, px2, py2, score, pmask, self.source_model, pletters,
+                        core=core, mask_source="border_protected_display",
+                    ))
+                    cores.append(core)
+                    continue
             (x1, y1, x2, y2), mask, letters = letter_mask(image, core, with_letters=True)
             if mask.any() and float(mask.sum()) / max(1, mask.size) >= MASKLESS_MIN_COVERAGE:
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
                 cores.append(core)
             elif (score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1
                   and (_dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
+                       or _bright_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
                        or (x2 - x1) * (y2 - y1) <= MASKLESS_SMALL_BOX_AREA)):
-                full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
-                boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None, core=core))
+                luminous = (
+                    _luminous_glow_mask(image, (x1, y1, x2, y2))
+                    if (x2 - x1) * (y2 - y1) > MASKLESS_SMALL_BOX_AREA
+                    else None
+                )
+                mask_arr = luminous if luminous is not None else np.full((y2 - y1, x2 - x1), 255, np.uint8)
+                boxes.append(_text_box(x1, y1, x2, y2, score, mask_arr, self.source_model, None, core=core))
                 cores.append(core)
         kept = [part for box in _join_grown(boxes, cores) for piece in _split_blocks(box) for part in _split_sideways(piece)]
         final = kept + self._rescue_boxes(image, kept)
@@ -888,6 +1240,8 @@ class KiuyhaTextDetector:
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         boxes = []
         for t in targets:
+            if getattr(t, "mask_source", "") == "border_protected_display":
+                continue
             if still_reads(clean, (t.x1, t.y1, t.x2, t.y2)):
                 (x1, y1, x2, y2), mask = letter_mask(clean, (t.x1, t.y1, t.x2, t.y2))
                 if mask.any():
