@@ -360,14 +360,18 @@ EXAMPLE_CHECK = '''def check():
     """PASS when the text tests pass, else the end of the failure."""
     out = tools.run_command(command="python3 -m pytest tests/test_text.py -q")
     return "PASS" if "[exit code 0]" in out else out[-1500:]'''
-EXAMPLE_BRANCH = '''branch(
-  branches={
-    "regex": "tools.edit_file(path='app/text.py', old_text='return text.lower().replace(\\\" \\\", \\\"-\\\")', new_text='return re.sub(r\\\"[^a-z0-9]+\\\", \\\"-\\\", text.lower()).strip(\\\"-\\\")')",
-    "strip": "tools.edit_file(path='app/text.py', old_text='return text.lower().replace(\\\" \\\", \\\"-\\\")', new_text='return text.lower().replace(\\\" \\\", \\\"-\\\").strip(\\\"!,._\\\")')"
-  },
-  check="print(tools.check())"
-)'''
-EXAMPLE_ADOPT = 'adopt(name="regex")'
+EXAMPLE_BRANCH = """regex = '''
+tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
+                new_text='return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")')
+tools.edit_file(path="app/text.py", old_text="def slugify", new_text="import re\\\\n\\\\n\\\\ndef slugify")
+'''
+strip = '''
+tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
+                new_text='return text.lower().replace(" ", "-").strip("!,.")')
+'''
+return tools.branch({"regex": regex, "strip": strip}, check="print(tools.check())")"""
+EXAMPLE_ADOPT = '''tools.adopt("regex")
+return tools.check()'''
 LEAN_CREATE = ("Code-mode workflow (prefer create, branch, and adopt for everything):\n"
                "- Use create to write Python that composes tools.<name>(...) in one turn instead of single-step loops. "
                "Every hidden tool is reachable via tools.<name>(...): tools.read_file, tools.edit_file, tools.write_file, "
@@ -424,11 +428,11 @@ SESSION_SPECS = {
     "spawn_agent": {"name": "spawn_agent", "description": "Start a helper agent in the background (the agents of task); collect its report with wait_agent.",
                     "parameters": {"type": "object", "required": ["message"], "properties": {"message": {"type": "string"}, "agent": {"type": "string"}}}},
     "fan_out": {"name": "fan_out", "description": "Run up to 12 independent jobs on helper agents at once and return every report. With schema, each report "
-                                                  "must be JSON of that shape (null when a helper fails).",
+                                                  "must be JSON of that shape (null when a helper fails). With as_data, return the reports as JSON data instead of text.",
                 "parameters": {"type": "object", "required": ["jobs"], "properties": {
                     "jobs": {"type": "array", "items": {"type": "object", "required": ["prompt"], "properties": {
                         "description": {"type": "string"}, "prompt": {"type": "string"}}}},
-                    "agent": {"type": "string"}, "schema": {"type": "object"}}}},
+                    "agent": {"type": "string"}, "schema": {"type": "object"}, "as_data": {"type": "boolean"}}}},
     "wait_agent": {"name": "wait_agent", "description": "Wait for helper agents (every one when ids is empty) and return their reports.",
                    "parameters": {"type": "object", "properties": {"ids": {"type": "array", "items": {"type": "string"}}, "timeout_s": {"type": "integer"}}}},
     "send_input": {"name": "send_input", "description": "Send a helper agent another message.",

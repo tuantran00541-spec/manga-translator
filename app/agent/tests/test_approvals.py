@@ -60,7 +60,7 @@ def test_c3_pre_tool_hook_cannot_rewrite_args(tmp_path):
         call["args"]["command"] = f"touch {evil}"
         return ""
     s.registry.hook("pre_tool", mutating_hook)
-    out, ok = s._run_call({"id": "c3b1", "name": "run_command",
+    out, ok = s._run_call({"id": "chain-c3b1", "name": "run_command",
                            "args": {"command": f"touch {benign}"}})
     assert ok and benign.exists()
     assert not evil.exists()
@@ -126,7 +126,7 @@ def test_h10_allow_runs_approved_command(tmp_path):
     marker = wsroot / "h10_plain"
     asked, wait = allow_spy()
     s._wait_for_decision = wait
-    out, ok = s._run_call({"id": "h10b1", "name": "run_command",
+    out, ok = s._run_call({"id": "chain-h10b1", "name": "run_command",
                            "args": {"command": f"touch {marker}"}})
     assert asked and ok and marker.exists()
 

@@ -248,7 +248,7 @@ def turn(text="", calls=()):
     return {"text": text, "calls": list(calls), "reasoning": "", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
 
 
-MODEL_TOOLS = {"read_file", "edit_file", "run_command", "create", "exit_plan_mode", "goal_done", "job_output", "job_input", "job_stop"}
+MODEL_TOOLS = {"create", "exit_plan_mode", "goal_done", "job_output", "job_input", "job_stop"}
 
 
 def call(tool, **args):
@@ -577,7 +577,7 @@ def test_profile_swaps_built_in_tools_for_mcp_tools_and_gives_them_roles(ws, hom
     assert specs["read_file"]["description"].startswith("[MCP fs] Read a file over MCP"), "the model keeps the familiar name"
     assert "mcp__fs__read_text" not in specs and "mcp__fs__sh" not in specs, "a swapped-in tool is not listed twice"
     assert "count" in specs["web_search"]["parameters"]["properties"], "an unconnected server leaves our tool in place"
-    output, ok = session._run_call({"id": "1", "name": "read_file", "args": {"path": "pkg/a.py"}})
+    output, ok = session._run_call({"id": "chain-1", "name": "read_file", "args": {"path": "pkg/a.py"}})
     assert ok and output.startswith('mcp read_text {"path": "pkg/a.py"}')
     assert not session.tainted, "a swapped built-in is the user's own choice, not untrusted content"
     assert session._needs_approval(call("run_command", command="ls")), "a command an MCP server runs is outside our sandbox, so it asks"
@@ -713,7 +713,7 @@ def test_unknown_tools_and_editor_commands_we_lack_are_still_refused(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session._run_call({"id": "chain-1", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
     assert session._run_call({"id": "chain-2", "name": "str_replace_editor", "args": {"command": "undo_edit", "path": "x"}})[0].startswith("Unknown tool")
-    output, ok = session._run_call({"id": "3", "name": "read_file", "args": {"path": "pkg/a.py"}})
+    output, ok = session._run_call({"id": "chain-3", "name": "read_file", "args": {"path": "pkg/a.py"}})
     assert ok and not output.startswith("["), "a call already in our names gets no note"
 
 
@@ -894,7 +894,7 @@ def test_plan_mode_is_read_only_until_the_plan_is_approved(ws, home):
     assert not {"write_file", "edit_file", "run_command"} & names[0] and "exit_plan_mode" in names[0] and "Plan mode: you can read and search but change nothing" in fake.seen[0][0][0]["content"]
     session.decide("allow")
     wait_for(session, "idle")
-    assert "edit_file" in names[1] and "exit_plan_mode" not in names[1] and (ws.root / "out.txt").exists()
+    assert "create" in names[1] and "exit_plan_mode" not in names[1] and (ws.root / "out.txt").exists()
 
 
 def test_ask_user_returns_the_answer(ws, home):
@@ -2030,23 +2030,20 @@ def test_the_agent_can_keep_a_notebook_and_start_a_fresh_context_window_from_it(
     assert session.cache_log["context rollovers"] == 1 and session.notes.startswith("Goal: rename f")
 
 
-def test_a_script_calls_read_tools_as_functions_and_cannot_write(ws, home):
+def test_a_created_tool_calls_read_tools_as_functions_and_can_write(ws, home):
     code = ("files = tools.glob(pattern='**/*.py')\n"
             "print('found', files.strip())\n"
             "print(tools.read_file(path='pkg/a.py').count('return'))\n"
-            "try:\n    tools.write_file(path='x.txt', content='no')\nexcept RuntimeError as error:\n    print('refused:', error)\n")
-    fake = scripted(turn(calls=[call("run_script", code=code)]), turn("done"))
+            "tools.write_file(path='x.txt', content='no')\n"
+            "print('wrote x.txt')\n")
+    fake = scripted(turn(calls=[call("create", name="step", code=code, keep=False)]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     name, ok, out = tool_outputs(session)[0]
-    assert name == "run_script" and ok, out
+    assert name == "create" and ok, out
     assert "found" in out and "pkg/a.py" in out and "\n1\n" in out
-    assert "refused: write_file cannot be called from a script" in out and not (ws.root / "x.txt").exists()
-    assert "[exit code 0] [3 tool calls]" in out
-    fake = scripted(turn(calls=[call("run_script", code="import time\ntime.sleep(30)", timeout=1)]), turn("ok"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    assert "[stopped after 1 s]" in tool_outputs(session)[0][2]
+    assert "wrote x.txt" in out and (ws.root / "x.txt").read_text() == "no"
+    assert "[exit code 0]" in out
 
 
 def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
@@ -2246,14 +2243,14 @@ def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(
     assert any(e["type"] == "error" for e in session.events), "with no fallback the failure surfaces as before"
 
 
-def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, home):
+def test_a_created_tool_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, home):
     schema = {"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}}}
     code = ("import json\n"
             "jobs = [{'description': n, 'prompt': 'check ' + n} for n in ('a', 'b', 'c')]\n"
             "todo, rounds = jobs, 0\n"
             "while todo and rounds < 3:\n"
             "    rounds += 1\n"
-            "    got = json.loads(tools.fan_out(jobs=todo, schema=" + json.dumps(schema) + "))\n"
+            "    got = tools.fan_out(jobs=todo, as_data=True, schema=" + json.dumps(schema) + ")\n"
             "    todo = [j for j, r in zip(todo, got) if r['report'] is None or not r['report']['ok']]\n"
             "print('rounds', rounds, 'left', [j['description'] for j in todo])\n")
     calls_seen = {}
@@ -2263,7 +2260,7 @@ def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, ho
         calls_seen[name] = calls_seen.get(name, 0) + 1
         return turn('{"ok": %s}' % ("true" if name != "c" or calls_seen[name] > 2 else "false"))
 
-    fake = routed([turn(calls=[call("run_script", code=code, timeout=300)]), turn("done")], child)
+    fake = routed([turn(calls=[call("create", name="rounds", code=code, keep=False)]), turn("done")], child)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = tool_outputs(session)[0][2]
@@ -2896,31 +2893,51 @@ def test_search_shows_context_lines_or_only_the_files(ws):
     assert ws.run("search", {"pattern": "needle", "files_only": True}).splitlines() == ["more.txt (2)", "notes.txt (1)"]
 
 
-def test_replace_in_files_previews_then_changes_every_file(ws):
+def test_replace_in_files_previews_then_changes_every_file(ws, home):
     (ws.root / "pkg" / "b.py").write_text("from pkg.a import f\nprint(f())\n", encoding="utf-8")
-    preview = ws.run("replace_in_files", {"pattern": "f()", "replacement": "g()", "glob": "*.py", "dry_run": True})
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    code = ("def replace_in_files(pattern, replacement, dry_run=False):\n"
+            "    places, hit = 0, 0\n"
+            "    for path in tools.glob(pattern='pkg/*.py').splitlines():\n"
+            "        found = tools.read_file(path=path).count(pattern)\n"
+            "        if not found:\n"
+            "            continue\n"
+            "        hit += 1\n"
+            "        places += found\n"
+            "        if not dry_run:\n"
+            "            tools.edit_file(path=path, old_text=pattern, new_text=replacement, replace_all=True)\n"
+            "    if not hit:\n"
+            "        return 'No file contains the pattern; nothing changed.'\n"
+            "    if dry_run:\n"
+            "        return f'Would change {places} places in {hit} files'\n"
+            "    return f'Changed {places} places in {hit} files'\n")
+    session._session_tool({"id": "c", "name": "create", "args": {"name": "replace_in_files", "code": code, "keep": True}})
+    preview = session._run_call({"id": "p", "name": "replace_in_files", "args": {"pattern": "f()", "replacement": "g()", "dry_run": True}})[0]
     assert "Would change 3 places in 2 files" in preview and "f()" in (ws.root / "pkg" / "a.py").read_text()
-    done = ws.run("replace_in_files", {"pattern": r"\bf\b", "replacement": "g", "regex": True, "path": "pkg"})
-    assert "Changed" in done and (ws.root / "pkg" / "a.py").read_text() == "def g():\n    return 1\n\nx = g()\n"
-    assert ws.run("replace_in_files", {"pattern": "a\\b", "replacement": "x\\1"}) == "No file contains the pattern; nothing changed."
+    done = session._run_call({"id": "d", "name": "replace_in_files", "args": {"pattern": "f()", "replacement": "g()"}})[0]
+    assert "Changed 3 places in 2 files" in done and (ws.root / "pkg" / "a.py").read_text() == "def g():\n    return 1\n\nx = g()\n"
+    assert "No file contains the pattern; nothing changed." in session._run_call({"id": "n", "name": "replace_in_files", "args": {"pattern": "zzz", "replacement": "x"}})[0]
 
 
 def test_move_and_delete_files_then_review_and_revert_through_the_session(ws, home):
-    fake = scripted(turn(calls=[call("move_file", path="pkg/a.py", to="lib/a.py"), call("write_file", path="new.txt", content="hi")]),
-                    turn(calls=[call("delete_file", path="new.txt"), call("checkpoint", diff=True)]),
+    move = ("tools.run_command(command='mkdir -p lib && mv pkg/a.py lib/a.py')\n"
+            "tools.write_file(path='new.txt', content='hi')\n"
+            "print('Moved pkg/a.py to lib/a.py')\n")
+    fake = scripted(turn(calls=[call("create", name="reorganise", code=move, keep=False)]),
+                    turn("moved it"),
+                    turn(calls=[call("run_command", command="rm new.txt"), call("checkpoint", diff=True)]),
                     turn(calls=[call("checkpoint", action="restore", path="pkg/a.py"), call("checkpoint", action="restore", path="lib/a.py")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "reorganise")
-    outputs = {name: output for name, ok, output in tool_outputs(session)}
-    assert "Moved pkg/a.py to lib/a.py" in outputs["move_file"] and outputs["delete_file"] == "Deleted new.txt"
-    diff = [output for name, ok, output in tool_outputs(session) if name == "checkpoint"][0]
+    outs = tool_outputs(session)
+    assert "Moved pkg/a.py to lib/a.py" in outs[0][2], "the move and the write land"
+    diff = [output for name, ok, output in outs if name == "checkpoint"][0]
     assert "--- a/pkg/a.py" in diff and "+++ b/lib/a.py" in diff and "new.txt" not in diff, "a file created and deleted again shows no change"
     assert (ws.root / "pkg" / "a.py").is_file() and not (ws.root / "lib" / "a.py").exists(), "both ends of the move are put back"
     assert session.command("/undo")["message"].startswith("Đã hoàn tác")
-    with pytest.raises(ToolError):
-        ws.run("move_file", {"path": "pkg/a.py", "to": "pkg/a.py"})
-    with pytest.raises(ToolError):
-        ws.run("delete_file", {"path": "pkg"})
+    assert "same file" in ws.run("run_command", {"command": "mv pkg/a.py pkg/a.py"})
+    assert "Is a directory" in ws.run("run_command", {"command": "rm pkg"})
 
 
 def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
@@ -2929,7 +2946,7 @@ def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
     assert not session._needs_approval(call("checkpoint")) and not session._needs_approval(call("checkpoint", action="save", name="a"))
     edits = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted())
     assert not edits._needs_approval(call("move_file", path="a", to="b")) and not edits._needs_approval(call("checkpoint", action="restore", path="a"))
-    output, ok = edits._run_call(call("delete_file", path=".env"))
+    output, ok = edits._run_call(call("write_file", path=".env", content="x"))
     assert not ok and "Denied" in output, "the .env rule covers the new edit tools"
     reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "bypass", complete=scripted())
     output, ok = reader._run_call(call("checkpoint", action="restore", path="pkg/a.py"))
@@ -2978,9 +2995,9 @@ def test_created_tools_guard_names_and_run_read_only_in_plan_mode(ws, home):
         assert not (ws.root / "nope.txt").exists(), "plan mode runs created tools read-only"
 
 
-def test_writing_a_tool_never_asks_and_a_read_tool_runs_unasked_read_only_and_may_only_look(ws, home):
+def test_creating_a_tool_asks_in_ask_mode_and_a_read_tool_runs_unasked_read_only_and_may_only_look(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("x")))
-    assert not session._needs_approval({"name": "create", "args": {"name": "x", "code": "return 1"}})
+    assert session._needs_approval({"name": "create", "args": {"name": "x", "code": "return 1"}})
     session._create({"name": "peek", "kind": "read", "code": "def peek(path):\n    return tools.read_file(path=path)\n"})
     session._create({"name": "sneak", "kind": "read", "code": "def sneak():\n    return tools.write_file(path='w.txt', content='x')\n"})
     session._create({"name": "scribble", "kind": "read", "code": "def scribble():\n    open('direct.txt', 'w').write('x')\n    return 'wrote'\n"})
@@ -3097,18 +3114,18 @@ def test_chains_search_and_describe_the_tools_they_can_reach(ws, home):
 def test_redoing_work_after_a_summary_is_noted_then_blocked(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("summary")))
     session._new_request("go")
-    calls = [{"id": f"r{n}", "name": "run_command", "args": {"command": f"echo step{n}"}} for n in range(3)]
+    calls = [{"id": f"chain-r{n}", "name": "run_command", "args": {"command": f"echo step{n}"}} for n in range(3)]
     session.history.append({"role": "user", "content": "build it", "from_user": True})
     for c in calls:
         session.history += [{"role": "assistant", "content": "", "calls": [c]}, {"role": "tool", "id": c["id"], "name": c["name"], "content": session._run_call(c)[0]}]
     session.history += [{"role": "assistant", "content": "done", "calls": []}, {"role": "user", "content": "next", "from_user": True}]
     assert session.compact() and len(session._before_summary) == 3
-    session._run_calls([{"id": "x", "name": "run_command", "args": {"command": "echo new"}}])
+    session._run_calls([{"id": "chain-x", "name": "run_command", "args": {"command": "echo new"}}])
     assert "before the summary" not in session.history[-1]["content"], "new work gets no note"
     for c in calls:
         session._run_calls([{**c, "id": c["id"] + "b"}])
         assert "made this exact call before the summary" in session.history[-1]["content"]
-    assert session._run_call({**calls[0], "id": "again"})[0].startswith("Blocked: after the summary"), "three redone calls, then the guard blocks"
+    assert session._run_call({**calls[0], "id": "chain-again"})[0].startswith("Blocked: after the summary"), "three redone calls, then the guard blocks"
 
 
 def test_chains_hand_steps_to_model_roles_with_budgets_fallbacks_and_votes(ws, home, monkeypatch):
@@ -3251,7 +3268,7 @@ def test_commands_and_created_tools_never_wait_on_input(ws, home):
     output, ok = session._run_call({"id": "chain-a", "name": "ask", "args": {}})
     assert "EOFError" in output and time.time() - started < 30, "a program a tool runs gets end-of-file instead of a prompt that waits"
     started = time.time()
-    output, _ = session._run_call({"id": "r", "name": "run_command", "args": {"command": "read x || echo no-input; echo done"}})
+    output, _ = session._run_call({"id": "chain-r", "name": "run_command", "args": {"command": "read x || echo no-input; echo done"}})
     assert "no-input" in output and "done" in output and time.time() - started < 30, output
 
 
@@ -3404,19 +3421,18 @@ def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_th
     assert not ok and "only in bypass" in output, "outside bypass a failing tool is not rewritten unseen"
 
 
-def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, home):
-    write_profile(home, {"tools": "hybrid"})
+def test_the_model_sees_code_mode_tools_and_chains_reach_them_and_the_library(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
-    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "skill"], "skills are listed, so skill is offered"
+    assert [s["name"] for s in session.specs()] == ["create", "branch", "adopt"]
     prompt = session.system_prompt()
-    assert "Your tools are read_file, edit_file, run_command" in prompt and "Finish only after you have seen the check pass" in prompt and "from agent_tools import tools" in prompt and "agent-tool <name>" in prompt
+    assert "Your top-level tools are ONLY create, branch, and adopt" in prompt and "Finish only after you have seen the check pass" in prompt and "from agent_tools import tools" in prompt
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})
     assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
-    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go", "skill"], "a kept tool joins them"
-    assert "Everything else is in the tool library" in prompt
+    assert [s["name"] for s in session.specs()] == ["create", "branch", "adopt", "go"], "a kept tool joins them"
+    assert "live in Python under tools.<name>(...) inside create and branch" in prompt
 
 
 @pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="bash and stand-ins are for POSIX shells")

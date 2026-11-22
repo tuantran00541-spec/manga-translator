@@ -117,12 +117,13 @@ def test_prompts_become_slash_commands_and_fill_their_first_argument(tmp_path):
 
 def test_resources_are_listed_and_read_and_count_as_outside_content(tmp_path):
     s, _ = _session(tmp_path)
+    s._wait_for_decision = lambda call: {"decision": "allow"}
     try:
         assert "mcp_resource" in {r["name"] for r in s.library_specs()}
         out, ok = s._run_call({"id": "chain-r1", "name": "mcp_resource", "args": {"server": "fake"}})
         assert ok and "note://1" in out
         out, ok = s._run_call({"id": "chain-r2", "name": "mcp_resource", "args": {"server": "fake", "uri": "note://1"}})
-        assert ok and out == "note body" and s.tainted
+        assert ok and "note body" in out and "[UNTRUSTED MCP RESOURCE" in out and s.tainted
     finally:
         s.close()
 
