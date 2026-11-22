@@ -7,6 +7,7 @@ import pytest
 from ctd_fake import InkModel
 
 from app.detector import ctd_mask
+from app.detector.boxes import BubbleBox
 from app.detector.kiuyha_detector import KiuyhaTextDetector, _split_blocks, _text_box
 
 
@@ -832,3 +833,36 @@ def test_white_bubble_display_mask_erases_letters_while_protecting_spiky_border(
     text_only = np.zeros(img.shape[:2], np.uint8)
     cv2.putText(text_only, "ROAR!", (210, 360), cv2.FONT_HERSHEY_DUPLEX, 5.2, 255, 22)
     assert float((full & (text_only > 0)).sum()) >= 0.98 * float((text_only > 0).sum()), "bold letters are masked"
+
+
+def test_leftover_pass_stays_inside_original_text_mask_support(monkeypatch):
+    import app.detector.kiuyha_detector as detector_module
+
+    target_mask = np.zeros((80, 100), np.uint8)
+    target_mask[30:50, 35:65] = 255
+    target = BubbleBox(
+        50,
+        60,
+        150,
+        140,
+        0.8,
+        target_mask,
+        mask_source="text_segmenter",
+        safe_to_inpaint=True,
+    )
+    candidate = np.ones((120, 140), bool)
+    monkeypatch.setattr(detector_module, "still_reads", lambda *_args: True)
+    monkeypatch.setattr(
+        detector_module,
+        "letter_mask",
+        lambda *_args, **_kwargs: ((30, 40, 170, 160), candidate),
+    )
+    detector = KiuyhaTextDetector("unused", session=_FixedSession([]))
+
+    leftovers = detector.leftover_boxes(np.zeros((200, 200, 3), np.uint8), [target])
+
+    assert len(leftovers) == 1
+    leftover = leftovers[0]
+    assert leftover.x1 >= target.x1 and leftover.y1 >= target.y1
+    assert leftover.x2 <= target.x2 and leftover.y2 <= target.y2
+    assert (leftover.x1, leftover.y1, leftover.x2, leftover.y2) == (81, 86, 119, 114)

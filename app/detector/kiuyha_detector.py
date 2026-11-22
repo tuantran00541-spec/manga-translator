@@ -753,16 +753,19 @@ def _white_bubble_display_mask(
         protect_local.astype(np.uint8),
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
     ) > 0
+    # Keep the erase authority close to the glyphs.  A wide halo here used to
+    # absorb the faint texture and parts of the outline of a large white
+    # speech bubble, which then made the whole interior look airbrushed.
     near_letters = cv2.dilate(
         letter_mask_local.astype(np.uint8),
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (61, 61)),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21)),
     ) > 0
     chroma = crop.max(axis=2).astype(np.int16) - crop.min(axis=2).astype(np.int16)
     letter_halo = near_letters & ((gray < 248) | (chroma > 5)) & ~protect_wall
     final_local = (
         cv2.dilate(
             (letter_mask_local | letter_halo).astype(np.uint8),
-            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)),
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
         )
         > 0
     ) & ~protect_wall
@@ -1244,8 +1247,41 @@ class KiuyhaTextDetector:
                 continue
             if still_reads(clean, (t.x1, t.y1, t.x2, t.y2)):
                 (x1, y1, x2, y2), mask = letter_mask(clean, (t.x1, t.y1, t.x2, t.y2))
+                if not mask.any():
+                    continue
+                target_mask = getattr(t, "mask", None)
+                target_h, target_w = t.y2 - t.y1, t.x2 - t.x1
+                if (
+                    target_mask is not None
+                    and target_mask.shape == (target_h, target_w)
+                    and np.any(target_mask > 0)
+                ):
+                    support = cv2.dilate(
+                        (target_mask > 0).astype(np.uint8),
+                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)),
+                    ) > 0
+                    limited = np.zeros_like(mask, dtype=bool)
+                    ix1, iy1 = max(x1, t.x1), max(y1, t.y1)
+                    ix2, iy2 = min(x2, t.x2), min(y2, t.y2)
+                    if ix2 > ix1 and iy2 > iy1:
+                        limited[iy1 - y1:iy2 - y1, ix1 - x1:ix2 - x1] = (
+                            mask[iy1 - y1:iy2 - y1, ix1 - x1:ix2 - x1]
+                            & support[iy1 - t.y1:iy2 - t.y1, ix1 - t.x1:ix2 - t.x1]
+                        )
+                    mask = limited
                 if mask.any():
-                    boxes.append(_text_box(x1, y1, x2, y2, t.confidence, mask.astype(np.uint8) * 255, self.source_model))
+                    rows, cols = np.nonzero(mask)
+                    mx1, my1 = int(cols.min()), int(rows.min())
+                    mx2, my2 = int(cols.max()) + 1, int(rows.max()) + 1
+                    boxes.append(_text_box(
+                        x1 + mx1,
+                        y1 + my1,
+                        x1 + mx2,
+                        y1 + my2,
+                        t.confidence,
+                        mask[my1:my2, mx1:mx2].astype(np.uint8) * 255,
+                        self.source_model,
+                    ))
         return boxes
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:

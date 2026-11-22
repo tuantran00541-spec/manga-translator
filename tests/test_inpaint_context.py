@@ -54,3 +54,41 @@ def test_lama_never_sees_the_pixels_under_the_hole():
     with pytest.raises(StopIteration):
         inpainter._run_lama(canvas, mask)
     assert fed["image"][0, :, 4:12, 4:12].max() == 0 and fed["image"][0, :, 0, 0].min() > 0.9
+
+
+def test_lama_context_dilation_does_not_expand_write_authority():
+    image = np.random.default_rng(8).integers(40, 220, (120, 140, 3), dtype=np.uint8)
+    mask = np.zeros(image.shape[:2], np.uint8)
+    mask[42:78, 52:88] = 255
+    seen = []
+    inpainter = Inpainter()
+    inpainter.dynamic_lama = True
+    inpainter._ensure_session = lambda: None
+    inpainter._lama_fill_single = lambda crop, model_mask: (
+        seen.append(model_mask.copy()), np.zeros_like(crop)
+    )[1]
+    inpainter._begin_metrics()
+
+    result = inpainter._lama_fill(
+        image.copy(), image.copy(), mask, (0, 0, image.shape[1], image.shape[0])
+    )
+
+    assert np.count_nonzero(seen[0]) > np.count_nonzero(mask)
+    assert np.array_equal(result[mask == 0], image[mask == 0])
+    assert not np.array_equal(result[mask > 0], image[mask > 0])
+
+
+def test_protected_pixels_survive_lama_context_dilation():
+    image = np.random.default_rng(9).integers(40, 220, (120, 140, 3), dtype=np.uint8)
+    box = _box(28, 30, 100, 92)
+    protected = {"x1": 75, "y1": 30, "x2": 100, "y2": 92}
+    inpainter = Inpainter()
+    inpainter.dynamic_lama = True
+    inpainter._ensure_session = lambda: None
+    inpainter._smart_fill_color = lambda *_args: None
+    inpainter._ring_fill_color = lambda *_args: None
+    inpainter._lama_fill_single = lambda crop, _mask: np.zeros_like(crop)
+
+    result = inpainter.inpaint(image, [box], protected_regions=[protected])
+
+    assert np.array_equal(result[30:92, 75:100], image[30:92, 75:100])

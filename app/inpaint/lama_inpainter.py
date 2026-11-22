@@ -545,15 +545,17 @@ class Inpainter:
             if len(paper_px)
             else np.array([254.0, 254.0, 254.0], dtype=np.float32)
         )
-        alpha = cv2.GaussianBlur(mask_bool.astype(np.float32), (5, 5), 0.9)
-        alpha = np.where(mask_bool, np.clip(alpha * 1.4, 0.0, 1.0), 0.0)
-        if crop.ndim == 3:
-            alpha = alpha[..., None]
-        filled = np.clip(
-            crop.astype(np.float32) * (1.0 - alpha) + paper_color * alpha,
-            0,
-            255,
-        ).astype(np.uint8)
+        filled = crop.copy()
+        surface = self._smart_fill_surface(
+            crop,
+            local_mask,
+            np.clip(np.rint(paper_color), 0, 255).astype(np.uint8),
+        )
+        if surface is not None:
+            self._metric_add("smart_fill_gradient_regions")
+            filled[mask_bool] = surface
+        else:
+            filled[mask_bool] = np.clip(np.rint(paper_color), 0, 255).astype(np.uint8)
 
         # Repair only tiny notches where giant display letters protruded into colored panel art.
         if crop.ndim == 3 and crop.shape[2] == 3:
@@ -581,8 +583,10 @@ class Inpainter:
         else:
             self._metric_add("smart_fill_regions")
 
+        filled = restore_ambient_grain(crop, filled, local_mask, crop_box)
         result = image.copy()
-        result[cy1:cy2, cx1:cx2] = filled
+        result_crop = result[cy1:cy2, cx1:cx2]
+        result_crop[mask_bool] = filled[mask_bool]
         return result
 
     def _smart_paint_region(
@@ -626,13 +630,15 @@ class Inpainter:
                    feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
         if self._use_migan:
             return self._migan_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)
+        write_mask = local_mask
+        model_mask = local_mask
         if hole is None:
             ys, xs = np.where(local_mask > 127)
             if len(ys):
                 side = min(int(ys.max()) - int(ys.min()) + 1, int(xs.max()) - int(xs.min()) + 1)
                 radius = int(np.clip(round(side * LAMA_MASK_DILATE_SCALE), LAMA_MASK_DILATE_MIN, LAMA_MASK_DILATE_MAX))
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
-                local_mask = cv2.dilate(local_mask, kernel, iterations=1)
+                model_mask = cv2.dilate(local_mask, kernel, iterations=1)
         self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
@@ -649,11 +655,11 @@ class Inpainter:
         if (
             INPAINT_NATIVE_TILE_ENABLED
             and max_dim > DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
-            and int(np.count_nonzero(local_mask > 127)) >= INPAINT_NATIVE_TILE_MASK_AREA_MIN
+            and int(np.count_nonzero(write_mask > 127)) >= INPAINT_NATIVE_TILE_MASK_AREA_MIN
         ):
             gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
             edges = cv2.Canny(gray, SMART_FILL_CANNY_LOW, SMART_FILL_CANNY_HIGH)
-            context = local_mask <= 127
+            context = write_mask <= 127
             edge_density = float(np.mean(edges[context] > 0)) if np.any(context) else 0.0
             texture_tiling = edge_density >= INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN
 
@@ -664,19 +670,26 @@ class Inpainter:
             and max_dim <= DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
             and crop_pixels <= DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS
         )
-        fill_mask = local_mask if hole is None else hole
+        fill_mask = model_mask if hole is None else hole
         if dynamic_native_ok:
             self._metric_add("lama_native_single_regions")
             painted = self._lama_fill_single(crop, fill_mask)
         elif long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
             self._metric_add("lama_tiled_regions")
-            painted = self._lama_fill_tiled(crop, fill_mask, own=local_mask)
+            painted = self._lama_fill_tiled(crop, fill_mask, own=write_mask)
         else:
             painted = self._lama_fill_single(crop, fill_mask)
 
-        painted = match_boundary_tone(crop, painted, local_mask, hole=hole)
-        painted = restore_ambient_grain(crop, painted, local_mask, crop_box, hole=hole)
-        return self._blend_painted(image, painted, local_mask, crop_box, feather, hole=hole)
+        painted = match_boundary_tone(crop, painted, write_mask, hole=fill_mask)
+        painted = restore_ambient_grain(crop, painted, write_mask, crop_box, hole=fill_mask)
+        return self._blend_painted(
+            image,
+            painted,
+            write_mask,
+            crop_box,
+            feather,
+            hole=fill_mask,
+        )
 
     def _migan_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
                     feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
