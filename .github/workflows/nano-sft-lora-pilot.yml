@@ -32,6 +32,26 @@ on:
         required: false
         default: ""
         type: string
+      crops_zip5:
+        description: "repo path of a fifth crops zip (unzipped at repo root); empty = none"
+        required: false
+        default: ""
+        type: string
+      crops_zip6:
+        description: "repo path of a sixth crops zip (unzipped at repo root); empty = none"
+        required: false
+        default: ""
+        type: string
+      crops_zip7:
+        description: "repo path of a seventh crops zip (unzipped at repo root); empty = none"
+        required: false
+        default: ""
+        type: string
+      crops_zip8:
+        description: "repo path of an eighth crops zip (unzipped at repo root); empty = none"
+        required: false
+        default: ""
+        type: string
       init_adapter_run_id:
         description: "nano-sft-text-stage run id whose nano-sft-text artifact holds the stage-1 adapter (empty = fresh LoRA)"
         required: false
@@ -123,6 +143,26 @@ jobs:
         if: ${{ inputs.crops_zip4 != '' }}
         run: |
           unzip -o -q "${{ inputs.crops_zip4 }}" -d .
+          ls crops/ | wc -l
+      - name: Unzip trial crops 5 (optional)
+        if: ${{ inputs.crops_zip5 != '' }}
+        run: |
+          unzip -o -q "${{ inputs.crops_zip5 }}" -d .
+          ls crops/ | wc -l
+      - name: Unzip trial crops 6 (optional)
+        if: ${{ inputs.crops_zip6 != '' }}
+        run: |
+          unzip -o -q "${{ inputs.crops_zip6 }}" -d .
+          ls crops/ | wc -l
+      - name: Unzip trial crops 7 (optional)
+        if: ${{ inputs.crops_zip7 != '' }}
+        run: |
+          unzip -o -q "${{ inputs.crops_zip7 }}" -d .
+          ls crops/ | wc -l
+      - name: Unzip trial crops 8 (optional)
+        if: ${{ inputs.crops_zip8 != '' }}
+        run: |
+          unzip -o -q "${{ inputs.crops_zip8 }}" -d .
           ls crops/ | wc -l
       - name: Download stage-1 adapter (optional)
         if: ${{ inputs.init_adapter_run_id != '' }}
