@@ -219,7 +219,6 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
                 is_gemini=False,
                 raise_on_image_split=len(encoded) > 1,
                 allow_image_strip=False,
-                post_fn=requests.post,
                 allow_local=provider.builtin,
             )
         except (requests.RequestException, HTTPException) as exc:
@@ -278,7 +277,6 @@ def _gemini(model, api_key, prompt, encoded, *, schema, max_tokens) -> VisionJSO
                 is_gemini=True,
                 raise_on_image_split=len(encoded) > 1,
                 allow_image_strip=False,
-                post_fn=requests.post,
                 allow_local=True,
             )
         except (requests.RequestException, HTTPException) as exc:

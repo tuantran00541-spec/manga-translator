@@ -997,6 +997,7 @@
   .koharu-canvas-pane {
     position: relative;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 0 auto minmax(0, 1fr) 32px;
     min-width: 0;
     min-height: 0;
@@ -1788,7 +1789,10 @@
   @media (max-width: 720px) {
     .review-canvas-only .review-document-shell.koharu-studio-shell,
     .review-single-document .review-document-shell.koharu-studio-shell,
-    .koharu-process-shell {
+    .review-canvas-only .review-document-shell.koharu-studio-shell.koharu-rail-collapsed,
+    .review-single-document .review-document-shell.koharu-studio-shell.koharu-rail-collapsed,
+    .koharu-process-shell,
+    .koharu-process-shell.koharu-rail-collapsed {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr) minmax(220px, 42%);
     }

@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 from app import api_proxy
 from app.ai_providers import AIProvider, auth_headers
+from app.downloader.http import public_request
 from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -438,9 +439,10 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
 
 
 def _cancellable_post(url: str, *, headers: dict, payload: dict, timeout: tuple[float, float], stream: bool) -> requests.Response:
+    kwargs = dict(headers=headers, json=payload, timeout=timeout, allow_redirects=False, stream=stream)
     ev = CANCEL_EVENT.get()
     if ev is None:
-        return requests.post(url, headers=headers, json=payload, timeout=timeout, allow_redirects=False, stream=stream)
+        return public_request("POST", url, **kwargs)
     _check_cancelled()
     done = threading.Event()
     result: list[requests.Response | None] = [None]
@@ -448,7 +450,7 @@ def _cancellable_post(url: str, *, headers: dict, payload: dict, timeout: tuple[
 
     def _run() -> None:
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=timeout, allow_redirects=False, stream=stream)
+            resp = public_request("POST", url, **kwargs)
             if ev.is_set():
                 _force_close_response(resp)
                 return
@@ -648,6 +650,7 @@ def output_cap(provider: AIProvider, model: str) -> int | None:
 def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
              max_tokens: int | None = None) -> dict:
     for attempt in range(NETWORK_RETRIES + 1):
+        _check_cancelled()
         try:
             return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)
         except TransientError as exc:
@@ -655,7 +658,7 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
                 raise
             wait = min(90.0, 2.0 * 2 ** attempt) * random.uniform(0.75, 1.0)
             logger.warning("{} ({}); asking again in {:.0f}s", exc, provider.label, wait)
-            time.sleep(wait)
+            _sleep_interruptible(wait)
     raise AssertionError("unreachable")
 
 

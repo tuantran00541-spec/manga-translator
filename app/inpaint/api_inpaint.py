@@ -10,10 +10,10 @@ from typing import Any
 import cv2
 import numpy as np
 from PIL import Image
-import requests
 
 from app.ai_providers import PROVIDERS, auth_headers, normalize_provider_id
 from app.config import BASE_DIR
+from app.downloader.http import public_request
 from app.inpaint.smart_fill import (
     blend_painted,
     match_boundary_tone,
@@ -21,6 +21,7 @@ from app.inpaint.smart_fill import (
     ring_fill_color,
     smart_fill_color,
 )
+from app.logging_config import logger
 from app.secret_store import get_provider_api_key, list_provider_configs
 from app.security import validate_url
 
@@ -530,7 +531,8 @@ def _call_images_edit_endpoint(
     files = {"image": ("panel.png", png_bytes, "image/png")}
     headers = auth_headers(provider, api_key)
 
-    resp = requests.post(
+    resp = public_request(
+        "POST",
         url,
         headers=headers,
         data=data,
@@ -555,7 +557,7 @@ def _call_images_edit_endpoint(
     img_url = item.get("url")
     if img_url:
         validate_url(img_url)
-        r2 = requests.get(img_url, timeout=(10, 60), allow_redirects=False)
+        r2 = public_request("GET", img_url, timeout=(10, 60), allow_redirects=False)
         r2.raise_for_status()
         return Image.open(io.BytesIO(r2.content)).convert("RGB")
     raise RuntimeError(f"{provider.label} ({model}) returned no image data")
@@ -589,27 +591,33 @@ def inpaint_regions_via_api(
     if not batches:
         return results
 
-    def _run_batch(indices: list[int]) -> None:
-        crops = [regions[i]["crop"] for i in indices]
-        atlas_pil, slots, grid_dim = pack_regions_to_atlas(crops)
-        edited_pil = _call_images_edit_endpoint(
-            provider,
-            api_key,
-            effective_model,
-            effective_quality,
-            atlas_pil,
-            grid_dim=grid_dim,
-        )
-        unpacked = unpack_atlas(edited_pil, slots)
+    def _run_batch(indices: list[int]) -> Exception | None:
+        try:
+            crops = [regions[i]["crop"] for i in indices]
+            atlas_pil, slots, grid_dim = pack_regions_to_atlas(crops)
+            edited_pil = _call_images_edit_endpoint(
+                provider,
+                api_key,
+                effective_model,
+                effective_quality,
+                atlas_pil,
+                grid_dim=grid_dim,
+            )
+            unpacked = unpack_atlas(edited_pil, slots)
+        except Exception as exc:
+            logger.warning("Image edit batch with {} regions failed ({})", len(indices), type(exc).__name__)
+            return exc
         for idx, ai_crop in zip(indices, unpacked):
             results[idx] = ai_crop
+        return None
 
     if len(batches) == 1:
-        _run_batch(batches[0])
+        outcomes = [_run_batch(batches[0])]
     else:
         with ThreadPoolExecutor(max_workers=min(MAX_ATLAS_WORKERS, len(batches))) as pool:
-            futures = [pool.submit(_run_batch, batch) for batch in batches]
-            for fut in futures:
-                fut.result()
+            outcomes = list(pool.map(_run_batch, batches))
+
+    if all(outcome is not None for outcome in outcomes):
+        raise outcomes[0]
 
     return results

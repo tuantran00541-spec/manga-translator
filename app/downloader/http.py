@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import threading
 from urllib.parse import urljoin, urlsplit
 import uuid
 
@@ -58,6 +59,7 @@ class _PublicOnlyAdapter(HTTPAdapter):
 
 _ADAPTER = _PublicOnlyAdapter()
 PUBLIC_ADAPTER = _ADAPTER
+_PUBLIC_SESSION_LOCAL = threading.local()
 
 
 def _session() -> requests.Session:
@@ -65,6 +67,15 @@ def _session() -> requests.Session:
     session.mount("http://", _ADAPTER)
     session.mount("https://", _ADAPTER)
     return session
+
+
+def public_request(method: str, url: str, **kwargs) -> requests.Response:
+    session = getattr(_PUBLIC_SESSION_LOCAL, "session", None)
+    if session is None:
+        session = _session()
+        session.trust_env = False
+        _PUBLIC_SESSION_LOCAL.session = session
+    return session.request(method, url, **kwargs)
 
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _SENSITIVE_REDIRECT_HEADERS = frozenset({"authorization", "x-goog-api-key", "api-key", "x-api-key", "cookie"})

@@ -133,7 +133,7 @@ def test_agent_client_rescues_tool_count_limit_instead_of_dropping_tools(monkeyp
             return _FakeResp(400, {"error": {"message": "tools array length must be <= 2 tools"}})
         return _FakeResp(200, {"choices": [{"message": {"content": "done", "tool_calls": []}, "finish_reason": "stop"}], "usage": {}})
 
-    monkeypatch.setattr(agent_client.requests, "post", fake_post)
+    monkeypatch.setattr(agent_client, "public_request", lambda _method, url, **kw: fake_post(url, **kw))
     specs = [{"name": f"t{i}", "description": "d", "parameters": {"type": "object", "properties": {}}} for i in range(6)]
     out = agent_client.complete(
         PROVIDERS["openai"],

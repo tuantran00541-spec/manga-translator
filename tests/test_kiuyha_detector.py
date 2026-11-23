@@ -425,15 +425,18 @@ def _blind_ctd(monkeypatch):
     monkeypatch.setattr(ctd_mask, "_session", InkModel(dark_below=0))
 
 
-def test_a_confident_box_the_letter_model_cannot_read_is_kept_whole(monkeypatch):
+def test_flat_lettering_the_segmenter_misses_uses_an_ink_mask(monkeypatch):
     _blind_ctd(monkeypatch)
     image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
     cv2.putText(image, "SHANDONG", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (60, 50, 40), 4)
     boxes = KiuyhaTextDetector("unused", session=_BlobSession()).text_boxes(image)
     assert len(boxes) == 1
     box = boxes[0]
-    assert box.mask.any() and (box.mask > 0).all(), "a kept box is masked whole, so it is erased and read"
-    assert box.letters is None, "no letters were read; downstream falls back to the box extent"
+    glyphs = image[box.y1:box.y2, box.x1:box.x2, 0] == 60
+    assert box.safe_to_inpaint and box.mask_source == "local_ink"
+    assert np.array_equal(box.letters, glyphs)
+    assert np.all(box.mask[glyphs] == 255)
+    assert np.count_nonzero(box.mask) < box.mask.size // 2
 
 
 def test_one_connected_shape_the_letter_model_cannot_read_is_still_dropped(monkeypatch):
@@ -515,8 +518,9 @@ def test_a_word_in_a_low_box_is_rescued_as_its_own_box():
     rescued = [b for b in boxes if b.confidence < 0.25]
     assert len(rescued) == 1, "only the low box is rescued; the kept word is untouched"
     box = rescued[0]
-    assert box.letters is None, "a rescued word is masked whole, like the maskless keep"
-    assert box.mask.any() and (box.mask > 0).all()
+    assert box.letters is not None and box.letters.any()
+    assert np.all(box.mask[box.letters] == 255)
+    assert np.count_nonzero(box.mask) < box.mask.size
     assert box.x1 <= 610 and box.x2 >= 740 and box.y1 <= 135 and box.y2 >= 155, "the box holds the whole word"
 
 
@@ -675,7 +679,21 @@ def test_a_box_cut_by_an_inner_window_edge_is_kept_in_page_boxes():
     assert (100, 400, 300, 500) in rects, "the whole rect is still seen in a later window"
 
 
-def test_a_small_box_with_no_letter_mask_is_kept_not_dropped(monkeypatch):
+def test_page_pass_keeps_medium_scores_for_segmenter_verification(monkeypatch):
+    image = np.full((620, 400, 3), 255, np.uint8)
+    detector = KiuyhaTextDetector("unused", conf_threshold=0.25, session=_Session([1, 3, 640, 640]))
+    predictions = [(10, 20, 70, 60, 0.05), (90, 20, 150, 60, 0.18),
+                   (170, 20, 230, 60, 0.35), (250, 20, 310, 60, 0.65)]
+    monkeypatch.setattr(detector, "_call_raw_boxes", lambda image, min_conf: predictions)
+    rescue = []
+
+    accepted = detector.page_boxes(image, low_out=rescue)
+
+    assert [box[4] for box in accepted] == [0.65]
+    assert [box[4] for box in rescue] == [0.18, 0.35]
+
+
+def test_a_small_box_with_no_letter_mask_is_kept_for_review(monkeypatch):
     from app.detector import kiuyha_detector as kd
 
     image = np.full((600, 800, 3), 255, np.uint8)
@@ -692,6 +710,62 @@ def test_a_small_box_with_no_letter_mask_is_kept_not_dropped(monkeypatch):
     monkeypatch.setattr(detector, "_rescue_boxes", lambda _image, kept: [])
     boxes = detector.text_boxes(image)
     assert [(b.x1, b.y1, b.x2, b.y2) for b in boxes] == [(100, 100, 220, 180)]
+    (box,) = boxes
+    assert box.needs_review and not box.ocr_eligible and not box.safe_to_inpaint
+    assert box.deferred_reason == "missing_glyph_mask"
+    assert box.mask is None
+
+
+def test_a_detection_without_a_glyph_mask_keeps_textured_art_for_review(monkeypatch):
+    _blind_ctd(monkeypatch)
+    image = np.full((500, 600, 3), (160, 140, 215), np.uint8)
+    for i in range(12):
+        cv2.line(image, (10 + 48 * i, 100), (40 + 48 * i, 150), (70, 50, 60), 4)
+    cv2.ellipse(image, (300, 400), (275, 175), 0, 0, 360, (160, 90, 65), -1)
+    detector = KiuyhaTextDetector("unused", session=_GivenSession([(0, 70, 600, 500, 0.56)]))
+
+    (box,) = detector.text_boxes(image)
+
+    assert box.needs_review and not box.safe_to_inpaint
+    assert box.mask is None
+
+
+def test_chromatic_recovery_accepts_confirmed_strokes_and_rejects_solid_shapes(monkeypatch):
+    background = (180, 171, 160)
+    ink = (22, 86, 210)
+    image = np.full((180, 280, 3), background, np.uint8)
+
+    def verified_on_contrast(probe, scale):
+        return (probe[..., 0] < 30).astype(np.float32)
+
+    monkeypatch.setattr(ctd_mask, "_prob", verified_on_contrast)
+    for x in (30, 112, 194):
+        cv2.putText(image, "K", (x, 125), cv2.FONT_HERSHEY_SIMPLEX, 2.6, ink, 7)
+    glyphs = image[..., 0] == ink[0]
+    mask, letters = ctd_mask.chromatic_stroke_mask(image)
+    assert np.array_equal(letters, glyphs)
+    assert np.all(mask[glyphs] == 255)
+    assert np.count_nonzero(mask) < image.shape[0] * image.shape[1] // 5
+
+    image[:] = background
+    for x in (50, 119, 188):
+        cv2.circle(image, (x, 90), 15, ink, -1)
+    assert ctd_mask.chromatic_stroke_mask(image) is None
+
+
+def test_bright_stroke_completion_follows_the_glyph_line():
+    image = np.full((240, 350, 3), (104, 90, 85), np.uint8)
+    parts = []
+    for x, y in ((33, 70), (143, 125), (253, 180), (143, 222)):
+        part = np.zeros(image.shape[:2], np.uint8)
+        cv2.putText(part, "K", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 2.1, 1, 6)
+        parts.append(part > 0)
+        image[part > 0] = (226, 246, 255)
+
+    completed = ctd_mask._complete_bright_strokes(image, parts[0] | parts[2])
+
+    assert np.all(completed[parts[1]])
+    assert not np.any(completed[parts[3]])
 
 
 def test_a_leftover_without_a_usable_mask_leaves_its_record_unfolded():

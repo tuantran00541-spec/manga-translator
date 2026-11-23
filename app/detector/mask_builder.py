@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 
 from app.detector.boxes import BubbleBox
+from app.detector.ink_mask import PRECISE_INK_MASK_SOURCES, expand_local_ink, fills_rectangle, flat_background_ink
 from app.parameters import DETECTOR_CONFIDENCE_MAX
 from app.logging_config import logger
 from app.parameters import (
@@ -141,6 +142,7 @@ def build_mask(
 ) -> np.ndarray:
     h, w = image_shape
     mask = np.zeros((h, w), dtype=np.uint8)
+    precise_mask = None
     box_rects: list[tuple[int, int, int, int]] = []
 
     for box in boxes:
@@ -186,6 +188,22 @@ def build_mask(
             if x2 <= x1 or y2 <= y1:
                 continue
             src = box.mask[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
+            precise = box.mask_source in PRECISE_INK_MASK_SOURCES or box.mask_source == "border_protected_display"
+            if (box.source_role == box.mask_source == "text_segmenter"
+                    and not _rectangle_fallback_allowed(box) and fills_rectangle(box.mask)):
+                ink = flat_background_ink(crop_img[y1:y2, x1:x2]) if crop_img is not None else None
+                if ink is None:
+                    continue
+                src = expand_local_ink(ink)
+                if fills_rectangle(src):
+                    continue
+                precise = True
+            if precise:
+                if precise_mask is None:
+                    precise_mask = np.zeros_like(mask)
+                dest = precise_mask[y1:y2, x1:x2]
+                np.maximum(dest, src, out=dest)
+                continue
             dest = mask[y1:y2, x1:x2]
             mask[y1:y2, x1:x2] = np.maximum(dest, src)
             box_rects.append((max(0, box.x1), max(0, box.y1), min(w, box.x2), min(h, box.y2)))
@@ -213,14 +231,14 @@ def build_mask(
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
             box_rects.append((x1, y1, x2, y2))
 
-    if boxes and all(getattr(b, "mask_source", "") == "border_protected_display" for b in boxes):
-        return mask
-
     if repair_ink:
         mask = _repair_mask_from_ink(mask, crop_img, box_rects)
 
-    return adaptive_dilate_mask(
+    mask = adaptive_dilate_mask(
         mask,
         crop_img,
         force_max_dilation=force_max_dilation,
     )
+    if precise_mask is not None:
+        np.maximum(mask, precise_mask, out=mask)
+    return mask

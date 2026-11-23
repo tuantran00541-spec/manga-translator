@@ -774,6 +774,7 @@ def capture_processing_state(manifest: dict, page_index: int, processed_dir: Pat
     img_path = Path(page.get("original", ""))
     return {
         "original": page.get("original"),
+        "clean_revision": page.get("clean_revision", 0),
         "skipped": page.get("skipped", False),
         "process_required": bool(page.get("process_required", False)),
         "preserve_regions": copy.deepcopy(page.get("preserve_regions", [])),

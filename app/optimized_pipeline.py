@@ -15,29 +15,6 @@ from app.region_policy import subtract_regions_from_mask
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
-    @staticmethod
-    def _restore_preserve_pixels(
-        clean_image: np.ndarray,
-        original_image: np.ndarray,
-        preserve_regions: list[dict] | None,
-    ) -> None:
-        if not preserve_regions:
-            return
-        h, w = clean_image.shape[:2]
-        for region in preserve_regions:
-            if not isinstance(region, dict):
-                continue
-            try:
-                x1 = max(0, min(w, int(region["x1"])))
-                y1 = max(0, min(h, int(region["y1"])))
-                x2 = max(0, min(w, int(region["x2"])))
-                y2 = max(0, min(h, int(region["y2"])))
-            except (KeyError, TypeError, ValueError):
-                continue
-            if x2 <= x1 or y2 <= y1:
-                continue
-            clean_image[y1:y2, x1:x2] = original_image[y1:y2, x1:x2]
-
     def _exact_manual_repaint_candidate(
         self,
         image: np.ndarray,

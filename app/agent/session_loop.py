@@ -23,6 +23,7 @@ from app.agent import (
 )
 from app.agent.session_config import *  # noqa: F401, F403
 from app.agent.tools import KIND, ToolError, clip
+from app.api_proxy import redact_secret
 from app.logging_config import logger
 
 
@@ -542,6 +543,11 @@ class AgentLoopMixin:
             started = time.time()
             try:
                 return self._run_call(call)
+            except client.CancelledError:
+                return "Stopped by the user while this call was running.", False
+            except Exception as exc:
+                logger.warning("Tool {} failed in agent session {} ({})", call["name"], self.id, type(exc).__name__)
+                return f"Error: {type(exc).__name__}: {redact_secret(str(exc), self.api_key)[:1000]}", False
             finally:
                 with self._usage_lock:
                     self.stats["tool_s"] += time.time() - started

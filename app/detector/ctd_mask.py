@@ -70,6 +70,94 @@ def probability(img: np.ndarray) -> np.ndarray:
     return prob
 
 
+def _complete_bright_strokes(crop: np.ndarray, strokes: np.ndarray) -> np.ndarray:
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    if np.mean(gray[strokes] >= 200) < 0.35:
+        return strokes
+
+    height, width = strokes.shape
+    completed = strokes.copy()
+    for cutoff in (225, 185):
+        count, labels, stats, centers = cv2.connectedComponentsWithStats((gray >= cutoff).astype(np.uint8))
+        x, y, w, h, area = stats.T
+        overlap = np.bincount(labels[completed], minlength=count)
+        eligible = (
+            (x > 0) & (y > 0) & (x + w < width) & (y + h < height)
+            & (w >= 4) & (h >= 5) & (area >= max(24, 0.0004 * strokes.size))
+            & (area <= 0.13 * strokes.size) & (area <= 0.66 * w * h)
+        )
+        eligible[0] = False
+        anchored = eligible & (overlap >= np.maximum(12, 0.12 * area))
+        completed |= anchored[labels]
+        if np.count_nonzero(anchored) < 2:
+            continue
+
+        reference = centers[anchored]
+        center = reference.mean(axis=0)
+        _, _, axes = np.linalg.svd(reference - center, full_matrices=False)
+        along, across = ((centers - center) @ axes.T).T
+        scale = np.median(h[anchored])
+        start, stop = along[anchored].min(), along[anchored].max()
+        if stop - start < 0.65 * scale:
+            continue
+        peers = (along >= start) & (along <= stop) & (np.abs(across) <= 0.42 * scale)
+        peers &= (h >= 0.15 * scale) & (h <= 1.7 * scale)
+        radius = int(np.clip(round(0.12 * scale), 4, 14))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1,) * 2)
+        nearby = cv2.dilate(completed.astype(np.uint8), kernel) > 0
+        adjacent = np.bincount(labels[nearby], minlength=count) >= 0.4 * area
+
+        def color(index: int) -> np.ndarray:
+            roi = np.s_[y[index]:y[index] + h[index], x[index]:x[index] + w[index]]
+            return np.median(crop[roi][labels[roi] == index], axis=0)
+
+        palette = np.array([color(index) for index in np.flatnonzero(anchored)])
+        recover = np.zeros(count, dtype=bool)
+        for index in np.flatnonzero(eligible & ~anchored & (peers | adjacent)):
+            recover[index] = bool(np.any(np.max(np.abs(palette - color(index)), axis=1) <= 38))
+        completed |= recover[labels]
+
+    return completed if float(completed.mean()) <= 0.30 else strokes
+
+
+def chromatic_stroke_mask(crop: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """Recover display glyphs from CTD evidence on local saturation contrast."""
+    height, width = crop.shape[:2]
+    if min(height, width) < 96:
+        return None
+    sat = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)[..., 1]
+    contrast = cv2.subtract(sat, cv2.medianBlur(sat, 51))
+    ridges = contrast > 20
+    if np.count_nonzero(ridges) < 0.015 * ridges.size:
+        return None
+    normalized = cv2.cvtColor(255 - cv2.convertScaleAbs(contrast, alpha=3), cv2.COLOR_GRAY2BGR)
+    scores = np.maximum(_prob(normalized, 0.5), _prob(normalized, 0.75))
+    strong = scores >= 0.55
+    if np.count_nonzero(strong) < 0.03 * strong.size:
+        return None
+
+    count, labels, stats, _ = cv2.connectedComponentsWithStats((scores >= 0.25).astype(np.uint8))
+    _, _, w, h, area = stats.T
+    peaks = np.bincount(labels[strong], minlength=count)
+    visible = np.bincount(labels[ridges], minlength=count)
+    keep = (
+        (area >= 30) & (area <= 0.30 * strong.size) & (w >= 4) & (h >= 4)
+        & (area <= 0.58 * w * h)
+        & (peaks >= np.maximum(10, 0.2 * area)) & (visible >= 0.1 * area)
+    )
+    keep[0] = False
+    if np.count_nonzero(keep) < 2:
+        return None
+    strokes = keep[labels]
+    if not 0.035 <= float(strokes.mean()) <= 0.30:
+        return None
+
+    strokes = _complete_bright_strokes(crop, strokes)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    mask = cv2.dilate(strokes.astype(np.uint8) * 255, kernel)
+    return mask, strokes
+
+
 def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:
     if prob is not None and prob.shape == part.shape:
         ink = (prob > CORE).sum(axis=1)

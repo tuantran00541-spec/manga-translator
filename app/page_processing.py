@@ -91,6 +91,7 @@ def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
     for box in sorted(boxes, key=lambda b: (b.x2 - b.x1) * (b.y2 - b.y1), reverse=True):
         home = next((group for group in groups
                      if _contained(box, group[0]) and _coherent(box, group[0])
+                     and box.safe_to_inpaint == group[0].safe_to_inpaint
                      and not bubble_masks_are_separate_lobes(box.bubble_mask, group[0].bubble_mask)), None)
         if home is None:
             groups.append([box])
@@ -100,6 +101,83 @@ def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
 
 
 class PageProcessingMixin:
+    @staticmethod
+    def _restore_preserve_pixels(
+        clean_image: np.ndarray,
+        original_image: np.ndarray,
+        preserve_regions: list[dict] | None,
+    ) -> None:
+        h, w = clean_image.shape[:2]
+        for region in preserve_regions or []:
+            if not isinstance(region, dict):
+                continue
+            try:
+                x1 = max(0, min(w, int(region["x1"])))
+                y1 = max(0, min(h, int(region["y1"])))
+                x2 = max(0, min(w, int(region["x2"])))
+                y2 = max(0, min(h, int(region["y2"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if x2 > x1 and y2 > y1:
+                clean_image[y1:y2, x1:x2] = original_image[y1:y2, x1:x2]
+
+    @staticmethod
+    def _discard_page_temporaries(page_data: dict) -> None:
+        for field in ("tmp_clean", "tmp_auto_clean"):
+            if path := page_data.get(field):
+                try:
+                    Path(path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def _write_page_cleanup(
+        self,
+        page_data: dict,
+        image: np.ndarray | None,
+        clean_image: np.ndarray,
+        img_path: Path,
+        processed_dir: Path,
+        preserve_regions: list[dict] | None,
+    ) -> None:
+        started = time.perf_counter()
+        has_restore = self._restore_mask_path(processed_dir, img_path).exists()
+        if image is None and (preserve_regions or has_restore):
+            image = read_image(img_path)
+        if image is not None:
+            self._restore_preserve_pixels(clean_image, image, preserve_regions)
+        auto_path = self._auto_clean_path(processed_dir, img_path)
+        manual_passes = (
+            ("manual_mask", self._manual_mask_path(processed_dir, img_path), False),
+            ("manual_lama_mask", self._manual_mask_path(processed_dir, img_path, force_lama=True), True),
+        )
+        if auto_path.exists() or has_restore or any(path.exists() for _, path, _ in manual_passes):
+            tmp_auto_path = processed_dir / f"auto_clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+            page_data["tmp_auto_clean"] = tmp_auto_path.as_posix()
+            write_image(tmp_auto_path, clean_image)
+
+        metrics = page_data["processing_metrics"]
+        timings = metrics["timing_ms"]
+        manual_ms = 0.0
+        for field, path, force_lama in manual_passes:
+            mask = self._read_manual_mask(path, clean_image.shape[:2])
+            mask = subtract_regions_from_mask(mask, preserve_regions)
+            if mask is None or not cv2.countNonZero(mask):
+                continue
+            manual_started = time.perf_counter()
+            clean_image = self.inpainter.inpaint_mask(clean_image.copy(), mask, force_lama=force_lama)
+            manual_ms += (time.perf_counter() - manual_started) * 1000.0
+            for name, value in self.inpainter.last_metrics().items():
+                metrics["manual_inpaint"][name] = metrics["manual_inpaint"].get(name, 0) + int(value)
+            page_data[field] = path.as_posix()
+
+        if image is not None:
+            self._apply_restore_mask(clean_image, image, processed_dir, img_path)
+        write_started = time.perf_counter()
+        write_image(Path(page_data["tmp_clean"]), clean_image)
+        timings["write"] += round((time.perf_counter() - write_started) * 1000.0, 3)
+        timings["manual_inpaint"] = round(manual_ms, 3)
+        timings["total"] += round((time.perf_counter() - started) * 1000.0, 3)
+
     def _process_page(
         self,
         img_path: Path,
@@ -209,6 +287,7 @@ class PageProcessingMixin:
                     record["safe_to_inpaint"] = False
                     record["ocr_eligible"] = True
                     record["needs_review"] = True
+                    record.pop("deferred_reason", None)
 
             if core_bounds is not None:
                 core_y1, core_y2 = core_bounds
@@ -306,54 +385,7 @@ class PageProcessingMixin:
                 _fold_leftover(inpainted_records, box)
         auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
 
-        auto_clean_path = self._auto_clean_path(processed_dir, img_path)
-        manual_mask_path = self._manual_mask_path(processed_dir, img_path)
-        manual_lama_mask_path = self._manual_mask_path(
-            processed_dir, img_path, force_lama=True
-        )
-        tmp_auto_clean_path = None
-        if (
-            auto_clean_path.exists()
-            or manual_mask_path.exists()
-            or manual_lama_mask_path.exists()
-        ):
-            tmp_auto_clean_path = processed_dir / f"auto_clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
-            write_image(tmp_auto_clean_path, clean_image)
-
-        manual_mask_posix = None
-        manual_lama_mask_posix = None
-        manual_inpaint_ms = 0.0
-        manual_inpaint_metrics: dict[str, int] = {}
-        manual_passes = (
-            ("manual_mask", manual_mask_path, False),
-            ("manual_lama_mask", manual_lama_mask_path, True),
-        )
-        for mask_field, mask_path, force_lama in manual_passes:
-            manual_mask = self._read_manual_mask(mask_path, clean_image.shape[:2])
-            manual_mask = subtract_regions_from_mask(manual_mask, preserve_regions)
-            if manual_mask is None or not cv2.countNonZero(manual_mask):
-                continue
-            manual_inpaint_started_at = time.perf_counter()
-            clean_image = self.inpainter.inpaint_mask(
-                clean_image.copy(), manual_mask, force_lama=force_lama
-            )
-            manual_inpaint_ms += (
-                time.perf_counter() - manual_inpaint_started_at
-            ) * 1000.0
-            for metric_name, metric_value in self.inpainter.last_metrics().items():
-                manual_inpaint_metrics[metric_name] = (
-                    manual_inpaint_metrics.get(metric_name, 0) + int(metric_value)
-                )
-            if mask_field == "manual_mask":
-                manual_mask_posix = mask_path.as_posix()
-            else:
-                manual_lama_mask_posix = mask_path.as_posix()
-
-        self._apply_restore_mask(clean_image, image, processed_dir, img_path)
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
-        write_started_at = time.perf_counter()
-        write_image(tmp_clean_path, clean_image)
-        write_ms = (time.perf_counter() - write_started_at) * 1000.0
 
         decision_fields = (
             "x1", "y1", "x2", "y2", "confidence", "source_model",
@@ -400,8 +432,8 @@ class PageProcessingMixin:
                 "detect": round(detect_ms, 3),
                 "screen": round(screen_ms, 3),
                 "auto_inpaint": round(auto_inpaint_ms, 3),
-                "manual_inpaint": round(manual_inpaint_ms, 3),
-                "write": round(write_ms, 3),
+                "manual_inpaint": 0.0,
+                "write": 0.0,
                 "total": round((time.perf_counter() - started_at) * 1000.0, 3),
             },
             "detector": {
@@ -414,7 +446,7 @@ class PageProcessingMixin:
                 "screened_art": len(art),
             },
             "auto_inpaint": auto_inpaint_metrics,
-            "manual_inpaint": manual_inpaint_metrics,
+            "manual_inpaint": {},
             "model": {
                 "active": Path(inpaint_model_path).name if inpaint_model_path else None,
                 "dynamic": inpaint_dynamic,
@@ -446,14 +478,19 @@ class PageProcessingMixin:
             "needs_review": bool(detection_issues),
             "processing_metrics": processing_metrics,
         }
-        if tmp_auto_clean_path is not None:
-            res["tmp_auto_clean"] = tmp_auto_clean_path.as_posix()
-        if manual_mask_posix:
-            res["manual_mask"] = manual_mask_posix
-        if manual_lama_mask_posix:
-            res["manual_lama_mask"] = manual_lama_mask_posix
-        if deferred_ai_items:
-            res["_deferred_ai"] = deferred_ai_items
-            res["_img_path"] = img_path.as_posix()
-            res["_preserve_regions"] = preserve_regions or []
+        try:
+            if deferred_ai_items:
+                write_started = time.perf_counter()
+                write_image(tmp_clean_path, clean_image)
+                write_ms = round((time.perf_counter() - write_started) * 1000.0, 3)
+                processing_metrics["timing_ms"]["write"] = write_ms
+                processing_metrics["timing_ms"]["total"] += write_ms
+                res["_deferred_ai"] = deferred_ai_items
+                res["_img_path"] = img_path.as_posix()
+                res["_preserve_regions"] = preserve_regions or []
+            else:
+                self._write_page_cleanup(res, image, clean_image, img_path, processed_dir, preserve_regions)
+        except Exception:
+            self._discard_page_temporaries(res)
+            raise
         return res

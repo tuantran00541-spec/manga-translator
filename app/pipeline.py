@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from fastapi import HTTPException
 from app.downloader.registry import download_chapter as fetch_chapter_images
-from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
+from app.downloader.slicer import slice_image
 from app.detector.boxes import BubbleBox, apply_final_nms
 from app.detector.bubble_mask import shift_bubble_mask
 from app.detector.kiuyha_detector import KiuyhaTextDetector
@@ -27,6 +27,7 @@ from app.parameters import (
     DETECTOR_FINAL_NMS_IOU,
     PIPELINE_DEFAULT_WORKERS,
     PIPELINE_SLICE_WORKER_LIMIT,
+    SLICE_OVERLAP_CONTEXT,
 )
 from app.manifest_utils import (
     assign_stable_detector_box_ids,
@@ -444,8 +445,8 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 provider_source_y1 = int(provider_core["source_y1"])
                 provider_h = provider_image.shape[0]
                 seam_center = int(cut_y) - provider_source_y1
-                seam_local_y1 = max(0, seam_center - OVERLAP_CONTEXT)
-                seam_local_y2 = min(provider_h, seam_center + OVERLAP_CONTEXT)
+                seam_local_y1 = max(0, seam_center - SLICE_OVERLAP_CONTEXT)
+                seam_local_y2 = min(provider_h, seam_center + SLICE_OVERLAP_CONTEXT)
                 if seam_local_y2 <= seam_local_y1:
                     raise ValueError("empty seam detector strip")
                 seam_image = provider_image[seam_local_y1:seam_local_y2, :]
@@ -615,12 +616,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     self._sync_output_dir(chapter_id, manifest, [page_index])
                     return True
         finally:
-            for tmp_path in (tmp_clean_path, tmp_auto_clean_path):
-                if tmp_path and tmp_path.exists():
-                    try:
-                        tmp_path.unlink()
-                    except OSError:
-                        pass
+            self._discard_page_temporaries(page_data)
 
     def process_pages(
         self,
@@ -879,7 +875,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         errors: list[tuple[int, Exception]],
         progress_callback: Callable[[int], None] | None,
     ) -> None:
-        from app.image_io import write_image
         from app.inpaint.api_inpaint import composite_api_region, inpaint_regions_via_api
 
         # Pool complex clusters across EVERY pending page in the chapter and prioritize highest complexity.
@@ -957,32 +952,12 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                             hole=item.get("hole"),
                         )
 
-                img_path = Path(img_path_str) if img_path_str else None
-                if img_path is not None:
-                    restore_path = self._restore_mask_path(processed_dir, img_path)
-                    if preserve_regions or restore_path.exists():
-                        orig_image = read_image(img_path)
-                        if preserve_regions:
-                            h, w = clean_image.shape[:2]
-                            for region in preserve_regions:
-                                if not isinstance(region, dict):
-                                    continue
-                                try:
-                                    rx1, rx2 = sorted((int(region.get("x1", 0)), int(region.get("x2", 0))))
-                                    ry1, ry2 = sorted((int(region.get("y1", 0)), int(region.get("y2", 0))))
-                                except (TypeError, ValueError):
-                                    continue
-                                rx1, rx2 = max(0, rx1), min(w, rx2)
-                                ry1, ry2 = max(0, ry1), min(h, ry2)
-                                if rx2 > rx1 and ry2 > ry1:
-                                    clean_image[ry1:ry2, rx1:rx2] = orig_image[ry1:ry2, rx1:rx2]
-                        if restore_path.exists():
-                            self._apply_restore_mask(clean_image, orig_image, processed_dir, img_path)
-
-                write_image(tmp_clean_path, clean_image)
-                tmp_auto_val = page_data.get("tmp_auto_clean")
-                if tmp_auto_val and Path(tmp_auto_val).exists():
-                    write_image(Path(tmp_auto_val), clean_image)
+                if not img_path_str:
+                    raise RuntimeError("Missing original image path for deferred AI page")
+                img_path = Path(img_path_str)
+                self._write_page_cleanup(
+                    page_data, None, clean_image, img_path, processed_dir, preserve_regions,
+                )
 
                 auto_metrics = page_data.setdefault("processing_metrics", {}).setdefault("auto_inpaint", {})
                 auto_metrics["api_inpaint_regions"] = int(auto_metrics.get("api_inpaint_regions", 0)) + api_applied
@@ -1006,6 +981,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 )
                 errors.append((page_idx, exc))
             finally:
+                self._discard_page_temporaries(page_data)
                 if progress_callback is not None:
                     progress_callback(page_idx)
 

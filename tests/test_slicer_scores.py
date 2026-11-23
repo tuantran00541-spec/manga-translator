@@ -1,6 +1,9 @@
+import cv2
 import numpy as np
+import pytest
 
-from app.downloader.slicer import _row_std
+from app.downloader.slicer import _find_cut_rows, _row_std, slice_image
+from app.parameters import SLICE_MAX_HEIGHT
 
 
 def test_row_spread_matches_numpy_on_a_tall_page():
@@ -11,8 +14,6 @@ def test_row_spread_matches_numpy_on_a_tall_page():
 
 
 def test_an_undecodable_image_yields_no_slices(tmp_path):
-    from app.downloader.slicer import slice_image
-
     bad = tmp_path / "bad.png"
     bad.write_bytes(b"this is not an image")
     assert slice_image(bad, tmp_path, "p") == []
@@ -20,7 +21,7 @@ def test_an_undecodable_image_yields_no_slices(tmp_path):
 
 
 def test_flat_colored_gutter_is_safe_and_cut_centers_inside_gap():
-    from app.downloader.slicer import _find_safe_cut, _get_content_row_mask, _get_row_scores
+    from app.downloader.slicer import _find_safe_cut, _get_content_row_mask, _get_row_scores, _safe_cut_rows
 
     # Dark-slate flat gutter (gray=80) between two textured panels must be detected as safe,
     # and the cut must land near the center of the gutter rather than hugging the 12px edge.
@@ -33,13 +34,12 @@ def test_flat_colored_gutter_is_safe_and_cut_centers_inside_gap():
     assert not content_mask[1960:2240].any(), "flat colored gutter rows should be safe"
 
     scores = _get_row_scores(gray)
-    cut = _find_safe_cut(content_mask, scores, lo=1600, hi=2600, target=1920)
+    cut = _find_safe_cut(_safe_cut_rows(content_mask), scores, lo=1600, hi=2600, target=1920)
     assert cut is not None
     assert 2020 <= cut <= 2180, f"expected centered safe cut in gutter, got {cut}"
 
 
 def test_fallback_row_scores_penalize_text_stroke_rows():
-    import cv2
     from app.downloader.slicer import _get_row_scores
 
     gray = np.full((400, 600), 220, dtype=np.uint8)
@@ -53,3 +53,28 @@ def test_fallback_row_scores_penalize_text_stroke_rows():
     text_band_score = float(scores[90:130].max())
     smooth_band_score = float(scores[260:310].mean())
     assert text_band_score > smooth_band_score * 3.0
+
+
+def test_slicer_waits_for_a_gutter_beyond_the_target_maximum():
+    height = SLICE_MAX_HEIGHT + 1800
+    gray = np.full((height, 40), 255, dtype=np.uint8)
+    occupied = np.ones(height, dtype=bool)
+    occupied[SLICE_MAX_HEIGHT + 300:SLICE_MAX_HEIGHT + 400] = False
+
+    (cut,) = _find_cut_rows(gray, *gray.shape, unsafe_rows=occupied)
+
+    assert SLICE_MAX_HEIGHT + 300 < cut < SLICE_MAX_HEIGHT + 400
+
+
+@pytest.mark.parametrize("edge_color", [(0, 0, 0), (210, 255, 255)])
+def test_slicer_preserves_a_source_with_no_safe_cut(tmp_path, edge_color):
+    image = np.full((SLICE_MAX_HEIGHT + 1100, 120, 3), 255, dtype=np.uint8)
+    image[:, 65] = edge_color
+    source = tmp_path / "panel.png"
+    assert cv2.imwrite(str(source), image)
+
+    (part,) = slice_image(source, tmp_path, "p", return_metadata=True)
+
+    assert part["source_y1"] == 0 and part["source_y2"] == image.shape[0]
+    assert not part["unsafe_before"] and not part["unsafe_after"]
+    assert np.array_equal(cv2.imread(str(part["path"])), image)

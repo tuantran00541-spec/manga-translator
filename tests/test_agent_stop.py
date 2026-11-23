@@ -4,11 +4,20 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from app.ai_providers import PROVIDERS
 from app.agent import client
 from app.agent.sandbox import Policy
 from app.agent.session import AgentSessionManager
 from app.agent.tools import Workspace
+
+
+@pytest.fixture(autouse=True)
+def _offline_provider(monkeypatch):
+    monkeypatch.setattr(client, "validate_url", lambda url: url)
+    monkeypatch.setattr(client, "_COOLDOWN", {})
+    monkeypatch.setattr(client, "_PACE", {})
 
 
 def _wait_idle(session, timeout: float = 2.0) -> float:
@@ -37,7 +46,7 @@ def test_stop_aborts_blocking_http_post_immediately(tmp_path: Path, monkeypatch)
         release.wait(5.0)
         return SlowResp()
 
-    monkeypatch.setattr(client.requests, "post", slow_post)
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: slow_post(url, **kw))
 
     ws = Workspace(tmp_path, Policy("read-only", network=False))
     mgr = AgentSessionManager(tmp_path / "sessions", home=tmp_path)
@@ -87,7 +96,7 @@ def test_stop_aborts_blocked_stream_without_fallback_retry(tmp_path: Path, monke
         calls += 1
         return HangingStreamResp()
 
-    monkeypatch.setattr(client.requests, "post", fake_post)
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: fake_post(url, **kw))
 
     ws = Workspace(tmp_path, Policy("read-only", network=False))
     mgr = AgentSessionManager(tmp_path / "sessions", home=tmp_path)
@@ -124,10 +133,7 @@ def test_stop_interrupts_rate_limit_sleep_immediately(tmp_path: Path, monkeypatc
         entered.set()
         return RateLimitedResp()
 
-    monkeypatch.setattr(client.requests, "post", fake_post)
-    client._COOLDOWN.clear()
-    client._PACE.clear()
-
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: fake_post(url, **kw))
     ws = Workspace(tmp_path, Policy("read-only", network=False))
     mgr = AgentSessionManager(tmp_path / "sessions", home=tmp_path)
     session = mgr.create(PROVIDERS["openai"], "sk-test", "m", ws, "bypass", complete=client.complete)
@@ -143,6 +149,32 @@ def test_stop_interrupts_rate_limit_sleep_immediately(tmp_path: Path, monkeypatc
         assert elapsed < 0.8, f"429 sleep stop took too long: {elapsed:.2f}s"
         assert not any(ev.get("type") == "error" for ev in session.events), session.events
     finally:
-        client._COOLDOWN.clear()
-        client._PACE.clear()
+        session.close()
+
+
+def test_stop_interrupts_transient_network_retry(tmp_path: Path, monkeypatch):
+    entered = threading.Event()
+    attempts = []
+    sleep = client._sleep_interruptible
+
+    def fail(*args, **kwargs):
+        attempts.append(1)
+        raise client.TransientError("simulated transport timeout")
+
+    def wait(seconds):
+        entered.set()
+        sleep(seconds)
+
+    monkeypatch.setattr(client, "_complete_once", fail)
+    monkeypatch.setattr(client, "_sleep_interruptible", wait)
+    ws = Workspace(tmp_path, Policy("read-only", network=False))
+    mgr = AgentSessionManager(tmp_path / "sessions", home=tmp_path)
+    session = mgr.create(PROVIDERS["openai"], "sk-test", "m", ws, "bypass", complete=client.complete)
+    try:
+        session.send("Try a network retry")
+        assert entered.wait(2.0)
+        session.stop()
+        assert _wait_idle(session, timeout=1.5) < 0.8
+        assert session.status == "idle" and attempts == [1]
+    finally:
         session.close()

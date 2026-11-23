@@ -9,7 +9,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.detector.boxes import BubbleBox
+from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms
 from app.detector.bubble_mask import (
     GAP_MIN_CONTAINMENT,
     GAP_MIN_SIDE_SHARE,
@@ -18,7 +18,15 @@ from app.detector.bubble_mask import (
     find_waist,
     split_bubble_mask,
 )
-from app.detector.ctd_mask import letter_mask, probability, still_reads
+from app.detector.ctd_mask import chromatic_stroke_mask, letter_mask, probability, still_reads
+from app.detector.ink_mask import (
+    CONTRAST_ARTWORK_MASK,
+    LOCAL_INK_MASK,
+    PRECISE_INK_MASK_SOURCES,
+    expand_local_ink,
+    fills_rectangle,
+    flat_background_ink,
+)
 from app.knobs import knob
 from app.model_contracts import validate_kiuyha_session
 from app.ort_utils import make_session
@@ -466,15 +474,17 @@ def _join_grown(boxes: list[BubbleBox], cores: list[tuple[int, int, int, int]] |
     for (x1, y1, x2, y2, score), _geometry, core in groups:
         mask = np.zeros((y2 - y1, x2 - x1), np.uint8)
         letters = np.zeros((y2 - y1, x2 - x1), bool)
-        src_kind = "text_segmenter"
+        sources = set()
         for b in boxes:
             if b.x1 >= x1 and b.y1 >= y1 and b.x2 <= x2 and b.y2 <= y2:
                 view = mask[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1]
                 np.maximum(view, b.mask, out=view)
                 if getattr(b, "letters", None) is not None:
                     letters[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1] |= b.letters
-                if getattr(b, "mask_source", "") == "border_protected_display":
-                    src_kind = "border_protected_display"
+                sources.add(b.mask_source)
+        src_kind = next(iter(sources)) if len(sources) == 1 else "text_segmenter"
+        if "border_protected_display" in sources:
+            src_kind = "border_protected_display"
         joined.append(_text_box(x1, y1, x2, y2, score, mask, boxes[0].source_model,
                                 letters if letters.any() else None, core=core, mask_source=src_kind))
     return joined
@@ -858,7 +868,7 @@ def _word_blobs(binary: np.ndarray) -> list[tuple[tuple[int, int, int, int], np.
     for i in range(1, n):
         x, y, w, h, area = (int(v) for v in stats[i])
         if 10 <= h <= 45 and 15 <= w <= 220 and area >= 60:
-            out.append(((x, y, x + w, y + h), labels == i))
+            out.append(((x, y, x + w, y + h), binary[y:y + h, x:x + w] & (labels[y:y + h, x:x + w] == i)))
     return out
 
 
@@ -874,7 +884,7 @@ def _welded_words(image: np.ndarray, box: tuple[int, int, int, int]) -> list[tup
         x, y, w, h, area = (int(v) for v in stats[i])
         if (RESCUE_WORD_MAX_W >= w >= 20 and RESCUE_WORD_MAX_H >= h >= 12
                 and area >= RESCUE_WORD_MIN_AREA and area / max(1, w * h) >= RESCUE_WORD_MIN_FILL):
-            out.append(((x1 + x, y1 + y, x1 + x + w, y1 + y + h), (labels == i)[y:y + h, x:x + w]))
+            out.append(((x1 + x, y1 + y, x1 + x + w, y1 + y + h), labels[y:y + h, x:x + w] == i))
     return out
 
 
@@ -1254,7 +1264,7 @@ class KiuyhaTextDetector:
                         mapped = (min(w, bx1), by1 + y0, min(w, bx2), min(h, by2 + y0), score)
                         if score >= PAGE_CONFIDENCE:
                             found.append(mapped)
-                        elif low_out is not None and RESCUE_MIN_SCORE <= score < self.conf_threshold:
+                        elif low_out is not None and score >= RESCUE_MIN_SCORE:
                             low_out.append(mapped)
                 elif overview_col is not None:
                     ov_x, ov_y, ov_sw, ov_sh, ov_scale = overview_col
@@ -1290,20 +1300,28 @@ class KiuyhaTextDetector:
             low = _dedupe_raw_boxes(
                 [box for box in self.raw_boxes(image, RESCUE_MIN_SCORE) if box[4] < self.conf_threshold]
             )
-        found: list[list] = []
+        found: list[tuple[BubbleBox, bool]] = []
 
         def consider(rect, pixels, score, emit=None, welded=False):
             x1, y1, x2, y2 = rect
             if x2 - x1 < 15 or y2 - y1 < 10 or not pixels.any():
                 return
-            if float((pixels & dilated[y1:y2, x1:x2]).sum()) / float(pixels.sum()) >= 0.5:
+            if np.count_nonzero(pixels & dilated[y1:y2, x1:x2]) >= 0.5 * np.count_nonzero(pixels):
                 return
-            found.append([*(emit or rect), score, welded])
+            ex1, ey1, ex2, ey2 = emit or rect
+            letters = np.zeros((ey2 - ey1, ex2 - ex1), bool)
+            letters[y1 - ey1:y2 - ey1, x1 - ex1:x2 - ex1] = pixels
+            mask = expand_local_ink(letters)
+            if not fills_rectangle(mask):
+                found.append((_text_box(
+                    ex1, ey1, ex2, ey2, score, mask, self.source_model, letters, mask_source=LOCAL_INK_MASK,
+                ), welded))
 
         for x1, y1, x2, y2, score in sorted(low, key=lambda b: (b[1], b[0])):
             if float(dilated[y1:y2, x1:x2].mean()) >= 0.85:
                 continue
-            if _dark_pieces(image, (x1, y1, x2, y2)) < MASKLESS_MIN_PIECES:
+            dark_evidence = _dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
+            if score < self.conf_threshold and not dark_evidence:
                 continue
             pad = max(64, int(0.5 * max(x2 - x1, y2 - y1)))
             px1, py1 = max(0, x1 - pad), max(0, y1 - pad)
@@ -1317,35 +1335,27 @@ class KiuyhaTextDetector:
             sx1, sy1, sx2, sy2 = px1 + lsx1, py1 + lsy1, px1 + lsx2, py1 + lsy2
             if letters is not None and letters.any():
                 uncov = letters & ~cov[sy1:sy2, sx1:sx2]
-                for (wx1, wy1, wx2, wy2), blob in _word_blobs(uncov):
-                    consider((sx1 + wx1, sy1 + wy1, sx1 + wx2, sy1 + wy2),
-                             blob[wy1:wy2, wx1:wx2], score)
+                for (wx1, wy1, wx2, wy2), pixels in _word_blobs(uncov):
+                    consider((sx1 + wx1, sy1 + wy1, sx1 + wx2, sy1 + wy2), pixels, score)
+            if not dark_evidence:
+                continue
             for (wx1, wy1, wx2, wy2), pixels in _welded_words(image, (x1, y1, x2, y2)):
                 consider((wx1, wy1, wx2, wy2), pixels, score,
                          emit=(max(0, wx1 - RESCUE_WORD_PAD), max(0, wy1 - RESCUE_WORD_PAD),
                                min(w, wx2 + RESCUE_WORD_PAD), min(h, wy2 + RESCUE_WORD_PAD)),
                          welded=True)
-        merged: list[list] = []
-        for rect in sorted(found, key=lambda r: (r[1], r[0])):
-            for other in merged:
-                ix = max(0, min(rect[2], other[2]) - max(rect[0], other[0]))
-                iy = max(0, min(rect[3], other[3]) - max(rect[1], other[1]))
-                if ix * iy >= 0.5 * min((rect[2] - rect[0]) * (rect[3] - rect[1]),
-                                       (other[2] - other[0]) * (other[3] - other[1])):
-                    other[0], other[1] = min(other[0], rect[0]), min(other[1], rect[1])
-                    other[2], other[3] = max(other[2], rect[2]), max(other[3], rect[3])
-                    other[4] = max(other[4], rect[4])
-                    other[5] = other[5] or rect[5]
+        merged: list[tuple[BubbleBox, bool]] = []
+        for box, welded in sorted(found, key=lambda item: (item[0].y1, item[0].x1)):
+            for i, (other, other_welded) in enumerate(merged):
+                ix = max(0, min(box.x2, other.x2) - max(box.x1, other.x1))
+                iy = max(0, min(box.y2, other.y2) - max(box.y1, other.y1))
+                if ix * iy >= 0.5 * min(box.mask.size, other.mask.size):
+                    merged[i] = (_merge_mask_evidence([other, box]), welded or other_welded)
                     break
             else:
-                merged.append(list(rect))
-        boxes = []
-        for x1, y1, x2, y2, score, welded in merged:
-            if not _has_letter_piece(image, (x1, y1, x2, y2), allow_wide=welded):
-                continue
-            full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
-            boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None))
-        return boxes
+                merged.append((box, welded))
+        return [box for box, welded in merged if not fills_rectangle(box.mask)
+                and _has_letter_piece(image, (box.x1, box.y1, box.x2, box.y2), allow_wide=welded)]
 
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         self._low_cache.value = None
@@ -1355,6 +1365,7 @@ class KiuyhaTextDetector:
         self._medium_aux_cache.value = set()
         boxes = []
         cores = []
+        proposals = []
         for x1, y1, x2, y2, score in _dedupe_raw_boxes(raw_boxes):
             core = (x1, y1, x2, y2)
             is_medium_aux = core in medium_aux
@@ -1374,31 +1385,63 @@ class KiuyhaTextDetector:
                     cores.append(core)
                     continue
             (x1, y1, x2, y2), mask, letters = letter_mask(image, core, with_letters=True)
-            if mask.any() and float(mask.sum()) / max(1, mask.size) >= MASKLESS_MIN_COVERAGE:
+            if not mask.size:
+                continue
+            coverage = np.count_nonzero(mask) / mask.size
+            dense = fills_rectangle(mask)
+            if coverage >= MASKLESS_MIN_COVERAGE and not dense:
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
                 cores.append(core)
-            elif (not is_medium_aux
-                  and score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1
-                  and (_dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
-                       or _bright_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
-                       or (x2 - x1) * (y2 - y1) <= MASKLESS_SMALL_BOX_AREA)):
-                luminous = (
-                    _luminous_glow_mask(image, (x1, y1, x2, y2))
-                    if (x2 - x1) * (y2 - y1) > MASKLESS_SMALL_BOX_AREA
-                    else None
-                )
-                mask_arr = luminous if luminous is not None else np.full((y2 - y1, x2 - x1), 255, np.uint8)
-                boxes.append(_text_box(x1, y1, x2, y2, score, mask_arr, self.source_model, None, core=core))
+                continue
+            if is_medium_aux or score < MASKLESS_MIN_SCORE:
+                continue
+
+            crop = image[y1:y2, x1:x2]
+            if not dense or letters is None or not 8 <= np.count_nonzero(letters) <= 0.45 * mask.size:
+                letters = flat_background_ink(crop)
+            local_mask = expand_local_ink(letters) if letters is not None else None
+            if local_mask is not None and not fills_rectangle(local_mask):
+                boxes.append(_text_box(
+                    x1, y1, x2, y2, score, local_mask, self.source_model, letters, core=core, mask_source=LOCAL_INK_MASK,
+                ))
                 cores.append(core)
+                continue
+
+            rect = (x1, y1, x2, y2)
+            small = mask.size <= MASKLESS_SMALL_BOX_AREA
+            if not small and not (
+                _dark_pieces(image, rect) >= MASKLESS_MIN_PIECES
+                or _bright_pieces(image, rect) >= MASKLESS_MIN_PIECES
+            ):
+                continue
+            luminous = None if small else _luminous_glow_mask(image, rect)
+            if luminous is not None and not fills_rectangle(luminous):
+                boxes.append(_text_box(x1, y1, x2, y2, score, luminous, self.source_model, core=core))
+                cores.append(core)
+                continue
+            artwork = None if small else chromatic_stroke_mask(crop)
+            if artwork is not None:
+                artwork_mask, letters = artwork
+                boxes.append(_text_box(
+                    x1, y1, x2, y2, score, artwork_mask, self.source_model, letters,
+                    core=core, mask_source=CONTRAST_ARTWORK_MASK,
+                ))
+                cores.append(core)
+                continue
+            proposals.append(BubbleBox(
+                *core, score, source_model=self.source_model, class_name="text",
+                source_role="text_proposal", needs_review=True, deferred_reason="missing_glyph_mask",
+            ))
         kept = [part for box in _join_grown(boxes, cores) for piece in _split_blocks(box) for part in _split_sideways(piece)]
         final = kept + self._rescue_boxes(image, kept)
         _attach_bubble_masks(image, final)
-        return final
+        return final + apply_final_nms(proposals)
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         boxes = []
         for t in targets:
-            if getattr(t, "mask_source", "") == "border_protected_display":
+            source = getattr(t, "mask_source", "")
+            if source in PRECISE_INK_MASK_SOURCES or source == "border_protected_display":
                 continue
             if still_reads(clean, (t.x1, t.y1, t.x2, t.y2)):
                 (x1, y1, x2, y2), mask = letter_mask(clean, (t.x1, t.y1, t.x2, t.y2))

@@ -16,7 +16,7 @@ import numpy as np
 import requests
 
 from app.ai_providers import AIProvider, api_base_candidates
-from app.downloader.http import PUBLIC_ADAPTER
+from app.downloader.http import public_request
 from app.logging_config import logger
 from app.security import validate_url
 
@@ -25,7 +25,6 @@ MAX_RESCUES_PER_CALL = 5
 MAX_LEARNED_ENTRIES = 256
 TRANSIENT_STATUS_CODES = frozenset({408, 409, 500, 502, 503, 504})
 _ORIGINAL_REQUESTS_POST = requests.post
-_PUBLIC_SESSION_LOCAL = threading.local()
 _KEY_PARAM_RE = re.compile(r"([?&](?:api_key|key|access_token|token)=)[^&\s\"']+", re.I)
 _BEARER_RE = re.compile(r"(\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}", re.I)
 
@@ -142,13 +141,7 @@ def _bound_dict(mapping: dict, key: Any, limit: int = MAX_LEARNED_ENTRIES) -> No
 
 
 def _public_post(url: str, **kwargs) -> requests.Response:
-    sess = getattr(_PUBLIC_SESSION_LOCAL, "session", None)
-    if sess is None:
-        sess = requests.Session()
-        sess.mount("http://", PUBLIC_ADAPTER)
-        sess.mount("https://", PUBLIC_ADAPTER)
-        _PUBLIC_SESSION_LOCAL.session = sess
-    return sess.post(url, **kwargs)
+    return public_request("POST", url, **kwargs)
 
 
 def _mask_secret(api_key: str) -> str:

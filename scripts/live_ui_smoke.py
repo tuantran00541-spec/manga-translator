@@ -196,6 +196,7 @@ def _exercise_desktop(page: Page) -> None:
           const bar = document.querySelector('.review-document-toolbar-compact');
           if (!bar) return [{ missing: true }];
           const frame = bar.getBoundingClientRect();
+          const pageWidth = document.documentElement.clientWidth;
           return [...bar.querySelectorAll('button,select,input')]
             .map((el) => {
               const r = el.getBoundingClientRect();
@@ -217,7 +218,7 @@ def _exercise_desktop(page: Page) -> None:
             })
             .filter((r) => r.width > 0 && r.height > 0)
             .filter((r) => r.left < r.frameLeft - 1
-              || r.right > r.frameRight + 1
+              || r.right > Math.min(r.frameRight, pageWidth) + 1
               || r.top < r.frameTop - 1
               || r.bottom > r.frameBottom + 1);
         }"""

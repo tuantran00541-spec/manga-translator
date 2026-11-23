@@ -671,7 +671,8 @@ class Inpainter:
         )
         for entry, ai_crop in zip(entries, api_outputs):
             if ai_crop is None:
-                raise RuntimeError("AI không trả về kết quả cho vùng đã chọn.")
+                result = self._smart_paint_region(result, entry["mask"], entry["crop_box"], feather=True)
+                continue
             result = composite_api_region(
                 result,
                 ai_crop,

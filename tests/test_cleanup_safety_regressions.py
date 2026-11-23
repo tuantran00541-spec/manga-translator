@@ -32,6 +32,27 @@ def test_padded_free_text_mask_is_not_a_rectangle_fallback():
     assert page_mask[0:10, :].sum() == 0
 
 
+def test_a_saved_automatic_rectangle_requires_local_ink_evidence():
+    image = np.full((70, 170, 3), (216, 218, 240), np.uint8)
+    cv2.putText(image, "TEXT", (23, 41), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (30, 35, 40), 2)
+    box = BubbleBox(
+        5, 7, 120, 60, 0.8, np.full((53, 115), 255, np.uint8),
+        source_role="text_segmenter", mask_source="text_segmenter", safe_to_inpaint=True,
+    )
+    ink = image[:, :, 0] == 30
+    restored = build_mask(image.shape[:2], [box], image, force_max_dilation=True)
+    assert np.all(restored[ink] == 255)
+    assert np.count_nonzero(restored) < box.mask.size // 4
+
+    art = image.copy()
+    art[:, :60] = (35, 72, 165)
+    assert not build_mask(art.shape[:2], [box], art).any()
+
+    box.allow_rectangle_fallback = True
+    manual = build_mask(art.shape[:2], [box], art)
+    assert np.all(manual[7:60, 5:120] == 255)
+
+
 def test_validation_max_dilation_covers_both_runtime_dilation_branches():
     local_mask = np.zeros((21, 29), dtype=np.uint8)
     local_mask[10, 14] = 255

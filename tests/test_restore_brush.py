@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from app.image_io import read_image, write_image
+from app.manifest_utils import capture_processing_state
 from app.optimized_pipeline import OptimizedChapterPipeline
 
 
@@ -79,6 +80,24 @@ def test_the_restore_brush_puts_the_original_back_only_where_painted(chapter):
     assert (clean[10:20, 10:30] == 10).all(), "painted pixels are the original again"
     assert (clean[25:35, 40:55] == 100).all(), "the rest keeps the automatic clean"
     assert manifest["pages"][0]["restore_mask"] and manifest["pages"][0]["clean_revision"] == 2
+
+
+def test_a_restore_brush_edit_invalidates_pending_auto_clean(chapter, tmp_path, monkeypatch):
+    import app.pipeline as pipeline_module
+
+    pipe, manifest = chapter
+    processed = tmp_path / "processed" / "abcd1234"
+    snapshot = capture_processing_state(manifest, 0, processed)
+    pipe.restore_mask("abcd1234", 0, _mask(10, 20, 10, 30))
+    for name in ("get_page_lock", "get_manifest_lock"):
+        monkeypatch.setattr(pipeline_module, name, lambda *_a: nullcontext())
+    monkeypatch.setattr(pipeline_module, "load_manifest_raw", lambda _cid: manifest)
+    temporary = processed / "pending-clean.tmp.png"
+    write_image(temporary, np.full((40, 60, 3), 50, np.uint8))
+
+    assert not pipe._commit_processed_page("abcd1234", processed, 0, {"tmp_clean": str(temporary)}, snapshot)
+    assert not temporary.exists()
+    assert (_clean(manifest)[10:20, 10:30] == 10).all()
 
 
 def test_a_later_repaint_over_a_restored_area_wins(chapter):

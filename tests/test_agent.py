@@ -188,7 +188,7 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     sent = []
     reply = {"choices": [{"message": {"content": "", "tool_calls": [
         {"id": "c1", "function": {"name": "list_dir", "arguments": "{\"path\": \".\"}"}}]}}], "usage": {"prompt_tokens": 5}}
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: sent.append((url, kw["json"])) or FakeResponse(200, reply))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: sent.append((url, kw["json"])) or FakeResponse(200, reply))
     spec = [{"name": "list_dir", "description": "", "parameters": {}}]
     turn = client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert turn["calls"] == [{"id": "c1", "name": "list_dir", "args": {"path": "."}}] and "tools" in sent[0][1]
@@ -198,13 +198,13 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     monkeypatch.setattr(client, "RATE_LIMITS", {})
     waits = []
     monkeypatch.setattr(client.time, "sleep", waits.append)
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: replies.pop(0))
     assert client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)["calls"][0]["name"] == "list_dir"
     assert waits == [6.0], "a rate-limited request waits and is sent again"
     assert client.RATE_LIMITS["openai"]["count"] == 1 and client.RATE_LIMITS["openai"]["waited_s"] == 6.0, "every 429 is counted"
     client._COOLDOWN[client.slot(PROVIDERS["openai"], "k")] = time.time() + 5
     waits.clear()
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(200, reply))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: FakeResponse(200, reply))
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert len(waits) == 1 and 3 < waits[0] <= 5, "another session waits out the cooldown a 429 set"
     client._COOLDOWN.clear()
@@ -212,21 +212,21 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     agnes = {"error": {"message": f"You have used up today's text quota and are now limited to 1 request every 1 minutes. Try again after {later.tm_hour:02d}:18:33."}}
     replies = [FakeResponse(429, agnes), FakeResponse(200, reply), FakeResponse(200, reply)]
     waits.clear()
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: replies.pop(0))
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert waits and waits[0] == 60.0 and client.RATE_LIMITS["openai"]["pace_s"] == 60.0, waits
     waits.clear()
     client._COOLDOWN.clear()
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert len(waits) == 1 and waits[0] > 55, "the next request keeps the named pace"
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(429, agnes))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: FakeResponse(429, agnes))
     with pytest.raises(client.TransientError):
         client.complete(PROVIDERS["openai"], "k", "m", [], tools=None)
     client._PACE.clear()
     client._COOLDOWN.clear()
     assert client._hinted_wait("Rate limited, try again in 20s") == 20 and client._pace_hint("10 requests per minute") == 6.0
     assert client._hinted_wait("quota spent") == 0 and client._pace_hint("slow down") == 0
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(400, {"error": {"message": "tools are not supported"}}))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: FakeResponse(400, {"error": {"message": "tools are not supported"}}))
     with pytest.raises(client.ToolsUnsupported):
         client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
 
@@ -274,7 +274,7 @@ def test_a_limited_key_asks_before_moving_to_the_next_stored_key(ws, home, monke
         used.append(kw["headers"]["Authorization"])
         return FakeResponse(429, {"error": {"message": "Rate limit exceeded"}}) if kw["headers"]["Authorization"] == "Bearer k1" else FakeResponse(200, reply)
 
-    monkeypatch.setattr(client.requests, "post", post)
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: post(url, **kw))
     session = manager(home).create(PROVIDERS["openai"], ["k1", "k2"], "m", ws, "bypass", complete=client.complete)
     session.send("chào")
     end = time.time() + 10
@@ -319,7 +319,7 @@ def test_a_named_wait_is_kept_even_with_spare_keys(monkeypatch):
     monkeypatch.setattr(client.time, "sleep", waits.append)
     replies = [FakeResponse(429, {"error": {"message": "Rate limited, try again in 3s"}}),
                FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})]
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: replies.pop(0))
     token = client.ASK_ON_LIMIT.set(True)
     try:
         assert client.complete(PROVIDERS["openai"], "k", "m", [], tools=None)["text"] == "ok"
@@ -725,6 +725,58 @@ def run_to_idle(session, text="go"):
 
 def tool_outputs(session):
     return [(e["name"], e["ok"], e["output"]) for e in session.events if e["type"] == "tool"]
+
+
+def test_tool_exception_keeps_the_batch_valid_for_the_next_turn(ws, home, monkeypatch):
+    calls = [
+        {"id": "chain-broken", "name": "read_file", "args": {"path": "broken.txt"}},
+        {"id": "chain-ok", "name": "read_file", "args": {"path": "pkg/a.py"}},
+    ]
+    complete = scripted(turn(calls=calls), turn("continued"))
+    key = "sk-test-session-only"
+    session = manager(home).create(PROVIDERS["openai"], key, "m", ws, "bypass", complete=complete)
+    run = session._run_call
+
+    def read(call):
+        if call["id"] == "chain-broken":
+            raise ValueError(f"failed to read ({key})")
+        return run(call)
+
+    monkeypatch.setattr(session, "_run_call", read)
+    try:
+        run_to_idle(session)
+        results = [message for message in session.history if message["role"] == "tool"]
+        assert [message["id"] for message in results] == ["chain-broken", "chain-ok"]
+        assert results[0]["failed"] and "ValueError" in results[0]["content"]
+        assert key not in results[0]["content"]
+        assert not results[1].get("failed")
+        assert session.history[-1]["content"] == "continued"
+        assert len(complete.seen) == 2
+    finally:
+        session.close()
+
+
+def test_loading_a_session_repairs_missing_tool_results(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "key", "m", ws, "bypass", complete=scripted(turn("resumed")))
+    calls = [
+        {"id": "missing", "name": "read_file", "args": {"path": "a.txt"}},
+        {"id": "saved", "name": "read_file", "args": {"path": "b.txt"}},
+    ]
+    saved = {"role": "tool", "id": "saved", "name": "read_file", "content": "already completed"}
+    session.restore({"history": [
+        {"role": "user", "content": "Read two files"},
+        {"role": "assistant", "content": "", "calls": calls},
+        saved,
+        {"role": "user", "content": "Follow-up"},
+    ]})
+    try:
+        assert session.history[2] == saved
+        assert session.history[3]["id"] == "missing" and session.history[3]["failed"]
+        assert session.history[4]["role"] == "user"
+        run_to_idle(session)
+        assert session.history[-1]["content"] == "resumed"
+    finally:
+        session.close()
 
 
 def test_edits_report_syntax_errors_at_once(ws):
@@ -1192,7 +1244,7 @@ def test_a_custom_provider_whose_chat_path_gives_404_is_tried_at_the_usual_other
     def post(url, **kw):
         tried.append(url)
         return FakeResponse(200, ok) if url == "https://llm.example.com/api/v1/chat/completions" else FakeResponse(404, {"error": "no"})
-    monkeypatch.setattr(client.requests, "post", post)
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: post(url, **kw))
     provider = resolve_provider("mine", protocol="openai", api_base="https://llm.example.com")
     assert client.complete(provider, "k", "m", [], tools=None)["text"] == "hi"
     assert tried[0] == "https://llm.example.com/chat/completions" and tried[-1] == "https://llm.example.com/api/v1/chat/completions"
@@ -1200,7 +1252,7 @@ def test_a_custom_provider_whose_chat_path_gives_404_is_tried_at_the_usual_other
     client.complete(provider, "k", "m", [], tools=None)
     assert tried == ["https://llm.example.com/api/v1/chat/completions"], "the path that answered is remembered"
     tried.clear()
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: tried.append(url) or FakeResponse(404, {}))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: tried.append(url) or FakeResponse(404, {}))
     with pytest.raises(RuntimeError):
         client.complete(PROVIDERS["openai"], "k", "m", [], tools=None)
     assert len(tried) == 1, "a built-in provider's path is never guessed"
@@ -1560,7 +1612,7 @@ def test_a_streamed_turn_is_assembled_live_and_can_be_stopped(monkeypatch):
                  {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "th\": \".\"}"}}]}}]},
                  {"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 7, "prompt_tokens_details": {"cached_tokens": 80}}})
     seen = []
-    monkeypatch.setattr(client.requests, "post", lambda url, **kw: seen.append(kw["json"]) or FakeResponse(200, chunks))
+    monkeypatch.setattr(client, "public_request", lambda _method, url, **kw: seen.append(kw["json"]) or FakeResponse(200, chunks))
     lives = []
     turn = client.complete(PROVIDERS["openai"], "k", "m", [], tools=[{"name": "list_dir", "description": "", "parameters": {}}], on_delta=lambda live: lives.append(dict(live)) and False)
     assert turn["text"] == "Hello" and turn["reasoning"] == "think" and turn["calls"] == [{"id": "c1", "name": "list_dir", "args": {"path": "."}}]

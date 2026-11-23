@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import os
+import threading
 import zipfile
 from pathlib import Path
 
@@ -15,7 +16,24 @@ from app.agent import mcp, rules, sandbox, skill_install
 from app.agent.session import AgentSessionManager
 from app.agent.tools import Workspace
 from app.ai_providers import PROVIDERS
+from app.downloader import http
 from app.main import CSRFAndSecurityHeadersMiddleware
+
+
+def test_public_provider_requests_use_the_pinned_transport(monkeypatch):
+    monkeypatch.setattr(http, "_PUBLIC_SESSION_LOCAL", threading.local())
+    fake = object()
+
+    def request(session, method, url, **kwargs):
+        assert method == "POST" and url == "https://provider.example.test/v1/chat/completions"
+        assert not session.trust_env
+        assert session.get_adapter("http://") is http.PUBLIC_ADAPTER
+        assert session.get_adapter("https://") is http.PUBLIC_ADAPTER
+        assert kwargs["allow_redirects"] is False
+        return fake
+
+    monkeypatch.setattr(http.requests.Session, "request", request)
+    assert http.public_request("POST", "https://provider.example.test/v1/chat/completions", allow_redirects=False) is fake
 
 
 def _run_csrf(method: str, path: str, headers: list[tuple[bytes, bytes]]) -> tuple[int, dict[bytes, bytes]]:

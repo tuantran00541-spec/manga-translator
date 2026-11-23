@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+from pathlib import Path
 from types import SimpleNamespace
 
 import cv2
@@ -10,8 +11,10 @@ from PIL import Image
 import pytest
 
 from app.detector.boxes import BubbleBox
+from app.image_io import read_image, write_image
 from app.inpaint import api_inpaint
 from app.inpaint.lama_inpainter import Inpainter
+from app.pipeline import ChapterPipeline
 
 
 def _encode_png_b64(pil_img: Image.Image) -> str:
@@ -177,7 +180,7 @@ def test_inpaint_regions_via_api_packs_4_into_1_call_and_respects_budget(monkeyp
         sent_img = Image.open(io.BytesIO(sent_bytes)).convert("RGB")
         return FakeResp(sent_img)
 
-    monkeypatch.setattr(api_inpaint.requests, "post", fake_post)
+    monkeypatch.setattr(api_inpaint, "public_request", lambda _method, url, **kw: fake_post(url, **kw))
 
     regions = [
         {"crop": np.full((120, 140, 3), 100 + i * 10, dtype=np.uint8), "mask": np.full((120, 140), 255, dtype=np.uint8)}
@@ -191,6 +194,99 @@ def test_inpaint_regions_via_api_packs_4_into_1_call_and_respects_budget(monkeyp
     assert "3x3 grid" in calls[0]["data"]["prompt"]
     assert all(out is not None for out in outputs[:9])
     assert outputs[9] is None and outputs[10] is None
+
+
+def test_atlas_failure_keeps_results_in_slots_from_other_batches(monkeypatch):
+    monkeypatch.setattr(api_inpaint, "resolve_api_inpaint_target", lambda **kw: (object(), "key", "model", "low"))
+
+    def edit(provider, key, model, quality, atlas, *, grid_dim):
+        if grid_dim == 2:
+            raise RuntimeError("simulated image API failure")
+        return atlas
+
+    monkeypatch.setattr(api_inpaint, "_call_images_edit_endpoint", edit)
+    crops = [np.full((440, 460, 3) if i in (0, 3) else (140, 150, 3), 30 + i, np.uint8)
+             for i in range(7)]
+    outputs = api_inpaint.inpaint_regions_via_api([{"crop": crop} for crop in crops], max_calls=2)
+
+    for i, (crop, output) in enumerate(zip(crops, outputs, strict=True)):
+        if i in (0, 3):
+            assert output is None
+        else:
+            assert np.array_equal(output, crop)
+
+    with pytest.raises(RuntimeError, match="simulated image API failure"):
+        api_inpaint.inpaint_regions_via_api([{"crop": crops[0]}, {"crop": crops[3]}], max_calls=1)
+
+
+def test_hybrid_chapter_preserves_brush_and_restore_layers(tmp_path, monkeypatch):
+    pipe = ChapterPipeline()
+    image = np.full((48, 48, 3), 220, np.uint8)
+    raw_path = tmp_path / "original.png"
+    write_image(raw_path, image)
+    mask = np.zeros(image.shape[:2], np.uint8)
+    mask[18:30, 18:34] = 255
+    brush = np.zeros_like(mask)
+    brush[22:35, 23:40] = 255
+    restore = np.zeros_like(mask)
+    restore[19:21, 19:21] = 255
+    write_image(pipe._manual_mask_path(tmp_path, raw_path), brush)
+    write_image(pipe._restore_mask_path(tmp_path, raw_path), restore)
+
+    def defer(image, boxes, *, protected_regions, deferred_ai_items):
+        deferred_ai_items.append({
+            "crop": image, "local_mask": mask, "crop_box": (0, 0, 48, 48), "score": 0.9,
+        })
+        return image.copy()
+
+    def brush_paint(image, local_mask, *, force_lama):
+        image[local_mask > 0] = 44
+        return image
+
+    def composite(image, painted, local_mask, crop_box, *, feather):
+        image[local_mask > 0] = painted[local_mask > 0]
+        return image
+
+    pipe._detector = SimpleNamespace(detect=lambda image: [], last_metrics=lambda: {})
+    pipe._inpainter = SimpleNamespace(inpaint=defer, inpaint_mask=brush_paint, last_metrics=lambda: {})
+    monkeypatch.setattr(api_inpaint, "composite_api_region", composite)
+    monkeypatch.setattr(api_inpaint, "inpaint_regions_via_api", lambda *a, **kw: [np.full_like(image, 90)])
+    page = pipe._process_page(raw_path, tmp_path, defer_chapter_ai=True)
+    assert np.array_equal(read_image(Path(page["tmp_clean"])), image)
+
+    observed = {}
+
+    def commit(chapter_id, directory, page_index, page_data, snapshot):
+        observed["auto"] = read_image(Path(page_data["tmp_auto_clean"]))
+        observed["clean"] = read_image(Path(page_data["tmp_clean"]))
+        return True
+
+    monkeypatch.setattr(pipe, "_commit_processed_page", commit)
+    committed, stale, errors = [], [], []
+    pipe._finalize_chapter_ai_batch("chapter", tmp_path, [(0, page, None)], {}, committed, stale, errors, None)
+
+    assert committed == [0] and not stale and not errors
+    assert np.all(observed["auto"][mask > 0] == 90)
+    assert np.all(observed["auto"][(brush > 0) & (mask == 0)] == 220)
+    assert np.all(observed["clean"][brush > 0] == 44)
+    assert np.all(observed["clean"][restore > 0] == 220)
+    assert page["processing_metrics"]["auto_inpaint"]["api_inpaint_regions"] == 1
+    assert not list(tmp_path.glob("*.tmp.png"))
+
+
+def test_hybrid_finalize_discards_temporary_files_on_failure(tmp_path):
+    pipe = ChapterPipeline()
+    intermediate = tmp_path / "interrupted-clean.tmp.png"
+    auto = tmp_path / "interrupted-auto.tmp.png"
+    intermediate.write_bytes(b"invalid image")
+    auto.touch()
+    page = {"tmp_clean": str(intermediate), "tmp_auto_clean": str(auto)}
+    errors = []
+
+    pipe._finalize_chapter_ai_batch("chapter", tmp_path, [(0, page, None)], {}, [], [], errors, None)
+
+    assert len(errors) == 1 and errors[0][0] == 0
+    assert not intermediate.exists() and not auto.exists()
 
 
 def test_hybrid_inpainter_routes_complex_to_api_and_falls_back_on_error(monkeypatch):
@@ -432,7 +528,7 @@ def test_cross_page_chapter_batching_pools_6_pages_into_1_3x3_api_call(tmp_path,
         sent_img = Image.open(io.BytesIO(files["image"][1])).convert("RGB")
         return FakeResp(sent_img)
 
-    monkeypatch.setattr(api_inpaint.requests, "post", fake_post)
+    monkeypatch.setattr(api_inpaint, "public_request", lambda _method, url, **kw: fake_post(url, **kw))
 
     class StubDetector:
         def detect(self, _img):

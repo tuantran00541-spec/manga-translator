@@ -36,6 +36,28 @@ def _ses(name: str):
     return getattr(sys.modules["app.agent.session"], name)
 
 
+def _repair_interrupted_calls(history: list[dict]) -> list[dict]:
+    boundaries = [i for i, message in enumerate(history) if message.get("role") == "assistant"]
+    boundaries.append(len(history))
+    repaired = history[:boundaries[0]]
+    for start, end in zip(boundaries, boundaries[1:]):
+        assistant, *following = history[start:end]
+        calls = {call["id"]: call["name"] for call in (assistant.get("calls") or [])}
+        paired = [message for message in following if message.get("role") == "tool" and message.get("id") in calls]
+        resolved = {message["id"] for message in paired}
+        if calls.keys() <= resolved:
+            repaired.extend(history[start:end])
+            continue
+        repaired.append(assistant)
+        repaired.extend(paired)
+        repaired.extend({"role": "tool", "id": call_id, "name": name, "failed": True,
+                         "content": "Error: the previous session ended before this tool result was recorded."}
+                        for call_id, name in calls.items() if call_id not in resolved)
+        repaired.extend(message for message in following
+                        if not (message.get("role") == "tool" and message.get("id") in calls))
+    return repaired
+
+
 class AgentCommandsMixin:
     """Command, plugin, MCP, hook, and skill handlers for AgentSession."""
 
@@ -247,7 +269,8 @@ class AgentCommandsMixin:
                 tmp.unlink(missing_ok=True)
 
     def restore(self, data: dict) -> None:
-        self.history, self.events = list(data.get("history") or []), list(data.get("events") or [])
+        self.history = _repair_interrupted_calls(list(data.get("history") or []))
+        self.events = list(data.get("events") or [])
         self.todos, self.title = list(data.get("todos") or []), str(data.get("title") or "")
         self.notes = str(data.get("notes") or "")
         self.effort = data.get("effort") if data.get("effort") in EFFORTS else ""

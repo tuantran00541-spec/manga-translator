@@ -359,7 +359,7 @@ def test_update_text_object_schema_accepts_and_normalizes_color_profile():
 
 def test_kiuyha_process_page_automatically_captures_color_profile_without_ocr(tmp_path):
     from app.detector.boxes import BubbleBox
-    from app.page_processing import PageProcessingMixin
+    from app.pipeline import ChapterPipeline
 
     # Build a synthetic manga page with a gold->crimson vertical gradient title on a dark panel.
     h, w = 140, 260
@@ -406,19 +406,10 @@ def test_kiuyha_process_page_automatically_captures_color_profile_without_ocr(tm
         def last_metrics(self):
             return {}
 
-    class _Harness(PageProcessingMixin):
-        detector = _DummyDetector()
-        inpainter = _DummyInpainter()
-        def _auto_clean_path(self, pdir, ipath):
-            return pdir / f"auto_clean_{ipath.name}"
-        def _manual_mask_path(self, pdir, ipath, force_lama=False):
-            return pdir / f"manual_{'lama_' if force_lama else ''}{ipath.name}"
-        def _read_manual_mask(self, _path, _shape):
-            return None
-        def _apply_restore_mask(self, _clean, _orig, _pdir, _ipath):
-            return None
-
-    res = _Harness()._process_page(raw_path, processed_dir)
+    pipe = ChapterPipeline()
+    pipe._detector = _DummyDetector()
+    pipe._inpainter = _DummyInpainter()
+    res = pipe._process_page(raw_path, processed_dir)
     assert len(res["boxes"]) == 1
     saved_box = res["boxes"][0]
     assert saved_box.get("ocr_text_color")

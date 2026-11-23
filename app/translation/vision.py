@@ -853,7 +853,6 @@ class VisionPageTranslator:
                     stream=False,
                     is_gemini=False,
                     allow_image_strip=False,
-                    post_fn=requests.post,
                     allow_local=self.provider.builtin,
                 )
             except (requests.RequestException, HTTPException) as exc:
@@ -915,7 +914,6 @@ class VisionPageTranslator:
                     stream=False,
                     is_gemini=True,
                     allow_image_strip=False,
-                    post_fn=requests.post,
                     allow_local=True,
                 )
             except (requests.RequestException, HTTPException) as exc:

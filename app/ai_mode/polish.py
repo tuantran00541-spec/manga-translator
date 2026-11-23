@@ -4,7 +4,6 @@ import json
 import re
 from dataclasses import dataclass, field
 
-import requests
 from fastapi import HTTPException
 
 from app import api_proxy
@@ -197,7 +196,6 @@ def _cloud_judge(provider, api_key: str, state: str, asked: dict) -> dict[str, f
                 timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
                 stream=False,
                 is_gemini=False,
-                post_fn=requests.post,
                 allow_local=provider.builtin,
             )
         except HTTPException as exc:

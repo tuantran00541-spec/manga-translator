@@ -20,7 +20,6 @@ from app.parameters import (
     SLICE_FALLBACK_TOLERANCE_RATIO,
     SLICE_MAX_HEIGHT,
     SLICE_MIN_HEIGHT,
-    SLICE_OVERLAP_CONTEXT as OVERLAP_CONTEXT,
     SLICE_SAFE_CUT_BAND as SAFE_CUT_BAND,
     SLICE_SEARCH_WINDOW,
     SLICE_TARGET_HEIGHT,
@@ -72,34 +71,23 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
         }]
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    unsafe_rows = _get_content_row_mask(gray, h, w)
-    cut_rows = _find_cut_rows(gray, h, w, unsafe_rows=unsafe_rows)
-
-    def boundary_unsafe(y: int) -> bool:
-        lo = max(0, int(y) - SAFE_CUT_BAND)
-        hi = min(h, int(y) + SAFE_CUT_BAND + 1)
-        return bool(np.any(unsafe_rows[lo:hi]))
-
+    occupied = _get_content_row_mask(gray, h, w, color=image)
+    cut_rows = _find_cut_rows(gray, h, w, unsafe_rows=occupied)
     boundaries = [0] + cut_rows + [h]
-    flags = {int(y): boundary_unsafe(int(y)) for y in cut_rows}
     paths = []
     meta = []
     for i in range(len(boundaries) - 1):
         core_start, core_end = int(boundaries[i]), int(boundaries[i + 1])
-        unsafe_before = bool(flags.get(core_start, False))
-        unsafe_after = bool(flags.get(core_end, False))
-        context_start = max(0, core_start - (OVERLAP_CONTEXT if unsafe_before else 0))
-        context_end = min(h, core_end + (OVERLAP_CONTEXT if unsafe_after else 0))
-        segment = image[context_start:context_end, :]
+        segment = image[core_start:core_end, :]
         out_path = out_dir / f"{prefix}_{i:02d}{ext}"
         save_segment(out_path, segment)
         paths.append(out_path)
         meta.append({
-            "path": out_path, "width": w, "height": context_end - context_start,
-            "source_y1": context_start, "source_y2": context_end,
-            "core_y1": core_start - context_start, "core_y2": core_end - context_start,
+            "path": out_path, "width": w, "height": core_end - core_start,
+            "source_y1": core_start, "source_y2": core_end,
+            "core_y1": 0, "core_y2": core_end - core_start,
             "core_source_y1": core_start, "core_source_y2": core_end,
-            "unsafe_before": unsafe_before, "unsafe_after": unsafe_after,
+            "unsafe_before": False, "unsafe_after": False,
             "source_height": h,
         })
     return meta if return_metadata else paths
@@ -113,6 +101,9 @@ def _find_cut_rows(
 
     if unsafe_rows is None:
         unsafe_rows = _get_content_row_mask(gray, h, w)
+    safe_rows = _safe_cut_rows(unsafe_rows)
+    if not safe_rows.size:
+        return []
     scores = _get_row_scores(gray)
 
     cuts: list[int] = []
@@ -127,22 +118,21 @@ def _find_cut_rows(
 
         lo = max(allowed_lo, target - SLICE_SEARCH_WINDOW)
         hi = min(allowed_hi, target + SLICE_SEARCH_WINDOW)
-        cut = _find_safe_cut(unsafe_rows, scores, lo, hi, target)
+        cut = _find_safe_cut(safe_rows, scores, lo, hi, target)
 
         if cut is None:
             cut = _find_safe_cut(
-                unsafe_rows, scores, allowed_lo, allowed_hi, target
+                safe_rows, scores, allowed_lo, allowed_hi, target
             )
 
         if cut is None:
-            cut = _find_low_content_cut(
-                scores, allowed_lo, allowed_hi, target, unsafe_rows
+            # Keep the panel together when the next safe gutter is farther away.
+            cut = _find_safe_cut(
+                safe_rows, scores, allowed_hi + 1, h - min_height, target
             )
 
-        if cut is None or cut <= y or cut >= h:
-            cut = min(h - 1, y + SLICE_MAX_HEIGHT)
-            if cut <= y:
-                break
+        if cut is None:
+            break
 
         cuts.append(int(cut))
         y = int(cut)
@@ -188,8 +178,14 @@ def _get_row_scores(gray: np.ndarray) -> np.ndarray:
     return row_std + content_count_per_row * SLICE_CONTENT_SCORE_WEIGHT + text_transitions * 3.0
 
 
+def _safe_cut_rows(unsafe_rows: np.ndarray) -> np.ndarray:
+    window = 2 * SAFE_CUT_BAND + 1
+    integral = np.r_[0, np.cumsum(unsafe_rows, dtype=np.int32)]
+    return np.flatnonzero(integral[window:] == integral[:-window]) + SAFE_CUT_BAND
+
+
 def _find_safe_cut(
-    unsafe_rows: np.ndarray,
+    safe_rows: np.ndarray,
     scores: np.ndarray,
     lo: int,
     hi: int,
@@ -198,18 +194,8 @@ def _find_safe_cut(
     if lo > hi:
         return None
 
-    start = max(SAFE_CUT_BAND, lo)
-    end = min(len(unsafe_rows) - SAFE_CUT_BAND, hi + 1)
-    if start >= end:
-        return None
-
-    safe = ~unsafe_rows
-    kernel = np.ones(2 * SAFE_CUT_BAND + 1, dtype=np.int32)
-    safe_band = np.convolve(safe.astype(np.int32), kernel, mode="same")
-    required = 2 * SAFE_CUT_BAND + 1
-
-    candidates = np.arange(start, end)
-    candidates = candidates[safe_band[candidates] == required]
+    start, end = np.searchsorted(safe_rows, (lo, hi + 1))
+    candidates = safe_rows[start:end]
     if candidates.size == 0:
         return None
 
@@ -283,8 +269,11 @@ def _find_low_content_cut(
     return int(nearest[int(np.argmin(band_score[idx]))])
 
 
-def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
-    mask = np.zeros(h, dtype=bool)
+def _get_content_row_mask(
+    gray: np.ndarray, h: int, w: int, *, color: np.ndarray | None = None
+) -> np.ndarray:
+    full_edges = cv2.Canny(gray, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH)
+    mask = np.any(full_edges, axis=1)
 
     # Downsample tall webtoon strips by 2x for morphological contour analysis (~5x faster, same row bounds).
     scale = 2 if (w >= 400 and h >= 1600) else 1
@@ -295,9 +284,8 @@ def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
         sh, sw = h, w
         work = gray
 
-    edges = cv2.Canny(
-        work, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH
-    )
+    edges = (cv2.Canny(work, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH)
+             if scale == 2 else full_edges)
 
     combined = cv2.bitwise_or(edges, _content(work))
 
@@ -320,5 +308,11 @@ def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
             y_start = max(0, y_box * scale - SLICE_CONTOUR_PAD_Y)
             y_end = min(h, (y_box + h_box) * scale + SLICE_CONTOUR_PAD_Y)
             mask[y_start:y_end] = True
+
+    if color is not None:
+        channel_min = cv2.reduce(color, 1, cv2.REDUCE_MIN)
+        channel_max = cv2.reduce(color, 1, cv2.REDUCE_MAX)
+        spans = cv2.subtract(channel_max, channel_min)
+        mask |= np.any(spans[:, 0] >= SLICE_BACKGROUND_DISTANCE, axis=1)
 
     return mask
