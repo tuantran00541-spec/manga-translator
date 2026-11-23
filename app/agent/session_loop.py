@@ -127,21 +127,31 @@ class AgentLoopMixin:
                           f"đã chờ {now['waited_s'] - limited['waited_s']:.0f} giây: {now.get('detail', '')[:160]}")
 
     def _call_model_once(self, messages: list[dict], tools: list[dict] | None, streams: bool, started: float) -> dict:
+        ev_token = client.CANCEL_EVENT.set(self._stop_event)
+        hooks_token = client.CANCEL_HOOKS.set(self._cancel_hooks)
         try:
             extra = {"on_delta": self._on_delta} if streams else {}
             if self._base_complete is client.complete:
                 extra["max_tokens"] = self._max_out
             chain = [self.profile["prewalk_model"] if self._prewalk else self.model] + self.profile["fallback_models"]
             while True:
+                if self._stop:
+                    raise client.CancelledError("Đã dừng.")
                 try:
                     request = {"model": chain[self._fallback_at], "messages": messages, "tools": tools}
                     return self.complete(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+                except client.CancelledError:
+                    raise
                 except client.TransientError as exc:
+                    if self._stop:
+                        raise client.CancelledError("Đã dừng.") from exc
                     if self._fallback_at + 1 >= len(chain):
                         raise
                     self._fallback_at += 1
                     self.emit("notice", text=f"{chain[self._fallback_at - 1]} không phản hồi ({exc}), chuyển sang {chain[self._fallback_at]}.")
         finally:
+            client.CANCEL_HOOKS.reset(hooks_token)
+            client.CANCEL_EVENT.reset(ev_token)
             self.stats["model_s"] += time.time() - started
 
     def _turn(self) -> dict:
@@ -630,8 +640,16 @@ class AgentLoopMixin:
                 self._wrap_up()
                 break
             size_before = self._make_room()
-            turn = self._turn()
+            try:
+                turn = self._turn()
+            except client.CancelledError:
+                self.live = None
+                self.emit("notice", text="Đã dừng.")
+                break
             self.live = None
+            if self._stop:
+                self.emit("notice", text="Đã dừng.")
+                break
             self._last_prompt = (int(turn["usage"].get("prompt_tokens") or 0), size_before)
             for key in self.usage:
                 self.usage[key] += int(turn["usage"].get(key) or 0)
@@ -738,6 +756,9 @@ class AgentLoopMixin:
             (custom or _ses("AgentSession")._steps)(self, max_steps)
             last = next((m for m in reversed(self.history[start:]) if m.get("role") == "assistant"), {})
             self._fire("turn_end", str(last.get("content") or ""))
+        except client.CancelledError:
+            self.live = None
+            self.emit("notice", text="Đã dừng.")
         except Exception as exc:
             logger.opt(exception=True).warning("Agent session {} failed", self.id)
             self.emit("error", text=str(exc)[:1000])

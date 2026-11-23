@@ -332,6 +332,7 @@ class AgentCommandsMixin:
                 self.queue.append(text + extra)
             else:
                 self.status, self._stop = "running", False
+                self._stop_event.clear()
         self.title = self.title or (text.strip().splitlines() or [""])[0][:80]
         self.emit("user", text=text, refs=names, queued=queued)
         if queued:
@@ -657,9 +658,16 @@ class AgentCommandsMixin:
     def stop(self) -> None:
         with self._lock:
             self._stop = True
+            self._stop_event.set()
             self.queue.clear()
             self.goal = None
+            hooks = list(self._cancel_hooks)
             self._lock.notify_all()
+        for hook in hooks:
+            try:
+                hook()
+            except Exception:
+                pass
         for child in list(self.children.values()):
             child.held = None
             child.stop()

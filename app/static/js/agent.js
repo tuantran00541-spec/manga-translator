@@ -9,6 +9,7 @@
   } = UI;
   let session = null;
   let sessionEpoch = 0;
+  let stopRequested = false;
   let hydratePromise = null;
   let lastSeq = 0;
   let pollTimer = null;
@@ -345,10 +346,15 @@
 
   function showStatus(snap) {
     const busy = snap.status === "running" || snap.status === "waiting";
-    $("agent-stop").hidden = !busy;
+    const stopBtn = $("agent-stop");
+    stopBtn.hidden = !busy;
+    if (!busy) {
+      stopBtn.disabled = false;
+      stopRequested = false;
+    }
     $("agent-send").hidden = false;
     const usage = snap.usage || {};
-    const state = { running: "Đang chạy", waiting: "Chờ duyệt" }[snap.status];
+    const state = { running: stopRequested ? "Đang dừng…" : "Đang chạy", waiting: "Chờ duyệt" }[snap.status];
     const statsData = snap.stats || {};
     const bar = el("div", "agent-telemetry");
 
@@ -1008,6 +1014,8 @@
     $("agent-log").replaceChildren(emptyState());
     $("agent-tools-info")?.replaceChildren();
     $("agent-stop").hidden = true;
+    $("agent-stop").disabled = false;
+    stopRequested = false;
     $("agent-send").hidden = false;
     $("agent-status").textContent = "";
     showTodos([]);
@@ -1191,7 +1199,23 @@
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) send(event);
     });
     $("agent-input").addEventListener("input", () => { autosize(); showHints(); });
-    $("agent-stop").addEventListener("click", () => session && post(`/api/agent/sessions/${session.id}/stop`).then(poll).catch(() => {}));
+    const requestStop = async () => {
+      const stopBtn = $("agent-stop");
+      stopRequested = true;
+      stopBtn.disabled = true;
+      const activeBadge = document.querySelector("#agent-status .agent-badge-active span:last-child");
+      if (activeBadge) activeBadge.textContent = "Đang dừng…";
+      if (!session?.id) return;
+      try {
+        await post(`/api/agent/sessions/${encodeURIComponent(session.id)}/stop`);
+        await poll();
+      } catch (err) {
+        stopRequested = false;
+        stopBtn.disabled = false;
+        window.showToast?.("Không thể dừng phiên: " + (err?.message || err), "error");
+      }
+    };
+    $("agent-stop").addEventListener("click", () => { void requestStop(); });
     const startNewSession = () => {
       if (narrow()) showSide(false);
       showHub(false);

@@ -67,9 +67,79 @@ class KeyLimited(RuntimeError):
     pass
 
 
+class CancelledError(RuntimeError):
+    pass
+
+
 ASK_ON_LIMIT: ContextVar[bool] = ContextVar("ask_on_limit", default=False)
 REQUEST_EXTRA: ContextVar[dict] = ContextVar("request_extra", default={})
+CANCEL_EVENT: ContextVar[threading.Event | None] = ContextVar("cancel_event", default=None)
+CANCEL_HOOKS: ContextVar[list | None] = ContextVar("cancel_hooks", default=None)
 _REFUSED_EXTRA: set[tuple[str, str]] = set()
+
+
+def _is_cancelled() -> bool:
+    ev = CANCEL_EVENT.get()
+    return ev is not None and ev.is_set()
+
+
+def _check_cancelled() -> None:
+    if _is_cancelled():
+        raise CancelledError("Đã dừng.")
+
+
+def _sleep_interruptible(seconds: float) -> None:
+    if seconds <= 0:
+        return
+    ev = CANCEL_EVENT.get()
+    if ev is None:
+        time.sleep(seconds)
+        return
+    if ev.wait(seconds):
+        raise CancelledError("Đã dừng.")
+
+
+def _force_close_response(resp: requests.Response | None) -> None:
+    if resp is None:
+        return
+    try:
+        raw = getattr(resp, "raw", None)
+        fp = getattr(raw, "_fp", None)
+        raw_sock = getattr(fp, "raw", None)
+        sock = getattr(raw_sock, "_sock", None) or getattr(fp, "fp", None)
+        for obj in (sock, raw_sock, fp, raw):
+            if obj is None:
+                continue
+            try:
+                if hasattr(obj, "shutdown"):
+                    obj.shutdown(2)
+            except Exception:
+                pass
+            try:
+                obj.close()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        resp.close()
+    except Exception:
+        pass
+
+
+def _register_cancel_hook(fn) -> None:
+    hooks = CANCEL_HOOKS.get()
+    if hooks is not None:
+        hooks.append(fn)
+
+
+def _unregister_cancel_hook(fn) -> None:
+    hooks = CANCEL_HOOKS.get()
+    if hooks is not None:
+        try:
+            hooks.remove(fn)
+        except ValueError:
+            pass
 
 
 class ToolsUnsupported(RuntimeError):
@@ -316,7 +386,7 @@ def _wait_for_pace(name: str) -> None:
         gap = max(0.0, last + interval - now)
         pace[2] = now + gap
     if gap > 0:
-        time.sleep(gap)
+        _sleep_interruptible(gap)
 
 
 RATE_LIMITS: dict[str, dict] = {}
@@ -367,20 +437,63 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
     return response
 
 
+def _cancellable_post(url: str, *, headers: dict, payload: dict, timeout: tuple[float, float], stream: bool) -> requests.Response:
+    ev = CANCEL_EVENT.get()
+    if ev is None:
+        return requests.post(url, headers=headers, json=payload, timeout=timeout, allow_redirects=False, stream=stream)
+    _check_cancelled()
+    done = threading.Event()
+    result: list[requests.Response | None] = [None]
+    error: list[BaseException | None] = [None]
+
+    def _run() -> None:
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=timeout, allow_redirects=False, stream=stream)
+            if ev.is_set():
+                _force_close_response(resp)
+                return
+            result[0] = resp
+        except BaseException as exc:  # noqa: BLE001
+            error[0] = exc
+        finally:
+            done.set()
+
+    threading.Thread(target=_run, name="agent-http-post", daemon=True).start()
+    while not done.wait(0.05):
+        if ev.is_set():
+            raise CancelledError("Đã dừng.")
+    if ev.is_set():
+        _force_close_response(result[0])
+        raise CancelledError("Đã dừng.")
+    if error[0] is not None:
+        raise error[0]
+    assert result[0] is not None
+    return result[0]
+
+
 def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
     validate_url(url)
     key = slot(provider, api_key)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
+        _check_cancelled()
         with _CLIENT_LOCK:
             pause = _COOLDOWN.get(key, 0.0) - time.time() if attempt == 0 else 0
         if pause > 0:
-            time.sleep(min(pause, 60.0))
+            _sleep_interruptible(min(pause, 60.0))
         _wait_for_pace(key)
+        _check_cancelled()
         try:
-            response = requests.post(url, headers={**auth_headers(provider, api_key), "Content-Type": "application/json"},
-                                     json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, STREAM_IDLE_TIMEOUT if stream else READ_TIMEOUT),
-                                     allow_redirects=False, stream=stream)
+            response = _cancellable_post(
+                url,
+                headers={**auth_headers(provider, api_key), "Content-Type": "application/json"},
+                payload=payload,
+                timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, STREAM_IDLE_TIMEOUT if stream else READ_TIMEOUT),
+                stream=stream,
+            )
+        except CancelledError:
+            raise
         except requests.RequestException as exc:
+            _check_cancelled()
             raise TransientError(f"{provider.label} request failed: {type(exc).__name__}") from exc
         if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
             return response
@@ -404,7 +517,7 @@ def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream
             _bound_client_map(_COOLDOWN, key)
             _COOLDOWN[key] = max(_COOLDOWN.get(key, 0.0), time.time() + wait)
         response.close()
-        time.sleep(wait)
+        _sleep_interruptible(wait)
     return response
 
 
@@ -412,36 +525,44 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
     text, reasoning, usage, calls, stopped = "", "", {}, {}, False
     finish, other = "", {}
     response.encoding = "utf-8"
-    for raw in response.iter_lines(decode_unicode=True):
-        if not raw or not raw.startswith("data:"):
-            continue
-        data = raw[5:].strip()
-        if data == "[DONE]":
-            break
-        try:
-            chunk = json.loads(data)
-        except ValueError:
-            continue
-        usage = chunk.get("usage") or usage
-        for choice in chunk.get("choices") or []:
-            delta = choice.get("delta") or {}
-            finish = choice.get("finish_reason") or finish
-            for key, value in delta.items():
-                if key not in ("content", "reasoning_content", "reasoning", "tool_calls", "role") and isinstance(value, str) and value:
-                    other[key] = other.get(key, "") + value
-            text += delta.get("content") or ""
-            reasoning += delta.get("reasoning_content") or delta.get("reasoning") or ""
-            for part in delta.get("tool_calls") or []:
-                slot = calls.setdefault(part.get("index", len(calls)), {"id": "", "name": "", "arguments": ""})
-                slot["id"] = part.get("id") or slot["id"]
-                function = part.get("function") or {}
-                slot["name"] += function.get("name") or ""
-                slot["arguments"] += function.get("arguments") or ""
-        arg_text = "".join(c["arguments"] for c in calls.values())
-        if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]],
-                     "args": arg_text[-4000:], "arg_chars": len(arg_text)}):
-            stopped = True
-            break
+    cancel_hook = lambda: _force_close_response(response)
+    _register_cancel_hook(cancel_hook)
+    try:
+        for raw in response.iter_lines(decode_unicode=True):
+            if _is_cancelled():
+                stopped = True
+                break
+            if not raw or not raw.startswith("data:"):
+                continue
+            data = raw[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except ValueError:
+                continue
+            usage = chunk.get("usage") or usage
+            for choice in chunk.get("choices") or []:
+                delta = choice.get("delta") or {}
+                finish = choice.get("finish_reason") or finish
+                for key, value in delta.items():
+                    if key not in ("content", "reasoning_content", "reasoning", "tool_calls", "role") and isinstance(value, str) and value:
+                        other[key] = other.get(key, "") + value
+                text += delta.get("content") or ""
+                reasoning += delta.get("reasoning_content") or delta.get("reasoning") or ""
+                for part in delta.get("tool_calls") or []:
+                    slot = calls.setdefault(part.get("index", len(calls)), {"id": "", "name": "", "arguments": ""})
+                    slot["id"] = part.get("id") or slot["id"]
+                    function = part.get("function") or {}
+                    slot["name"] += function.get("name") or ""
+                    slot["arguments"] += function.get("arguments") or ""
+            arg_text = "".join(c["arguments"] for c in calls.values())
+            if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]],
+                         "args": arg_text[-4000:], "arg_chars": len(arg_text)}):
+                stopped = True
+                break
+    finally:
+        _unregister_cancel_hook(cancel_hook)
     if other and not (text or reasoning or calls):
         reasoning = "".join(other.values())
     message = {"content": text, "reasoning_content": reasoning, "_debug": {"finish": finish, "fields": sorted(other)},
@@ -577,6 +698,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
     downsize_attempts = 0
 
     for attempt in range(1, 7):
+        _check_cancelled()
         response = _post(provider, api_key, payload, stream_active)
         if extra and attempt < 6 and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
             logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
@@ -729,7 +851,10 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         if stream_active:
             try:
                 message, usage, _ = _read_stream(response, on_delta)
-            except requests.RequestException as exc:
+            except Exception as exc:
+                _check_cancelled()
+                if not isinstance(exc, requests.RequestException):
+                    raise
                 errors_seen.append({"attempt": attempt, "status": 200, "category": "stream_broke", "detail": type(exc).__name__})
                 if attempt < 6:
                     stream_active = False
@@ -741,6 +866,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                 raise TransientError(f"{provider.label} stream broke: {type(exc).__name__}") from exc
             finally:
                 response.close()
+            _check_cancelled()
             api_proxy.record_event(
                 caller="chaos_agent", provider=provider.label, model=model,
                 status="rescued" if rescues_applied else "ok", attempts=attempt,
@@ -749,10 +875,15 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
             )
             return _build(message, usage, tools)
 
+        cancel_hook = lambda: _force_close_response(response)
+        _register_cancel_hook(cancel_hook)
         try:
             body = response.json()
             message = {**body["choices"][0]["message"], "_debug": {"finish": body["choices"][0].get("finish_reason") or "", "fields": sorted(body["choices"][0]["message"])}}
-        except (ValueError, KeyError, IndexError, TypeError) as exc:
+        except Exception as exc:
+            _check_cancelled()
+            if not isinstance(exc, (ValueError, KeyError, IndexError, TypeError)):
+                raise
             api_proxy.record_event(
                 caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
                 latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen, rescues_applied=rescues_applied,
@@ -760,6 +891,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
             )
             raise RuntimeError(f"{provider.label} returned no message") from exc
         finally:
+            _unregister_cancel_hook(cancel_hook)
             response.close()
         api_proxy.record_event(
             caller="chaos_agent", provider=provider.label, model=model,

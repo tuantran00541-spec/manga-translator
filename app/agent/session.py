@@ -85,6 +85,8 @@ class AgentSession(
         self.pending: dict | None = None
         self._decisions: dict[str, dict | None] = {}
         self._stop = False
+        self._stop_event = threading.Event()
+        self._cancel_hooks: list = []
         self._lock = threading.Condition()
         self.queue: list[str] = []
         self.tainted = False
