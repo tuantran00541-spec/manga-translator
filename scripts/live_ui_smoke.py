@@ -174,31 +174,12 @@ def _exercise_desktop(page: Page) -> None:
     peek = page.get_by_role("button", name="Giữ để xem ảnh gốc", exact=False)
     peek.hover()
     page.mouse.down()
-    print(
-        "peek-debug:",
-        page.evaluate(
-            """() => {
-              const shells = [...document.querySelectorAll('.review-workspace-shell')];
-              const btn = document.querySelector('.review-peek-btn');
-              const r = btn?.getBoundingClientRect();
-              return JSON.stringify({
-                shells: shells.map((s) => ({
-                  cls: [...s.classList].join(' '),
-                  peek: s.classList.contains('review-peek-active'),
-                  hasBtn: !!s.querySelector('.review-peek-btn'),
-                })),
-                btn: btn ? { disabled: btn.disabled, pressed: btn.getAttribute('aria-pressed'), x: Math.round(r?.x ?? -1), y: Math.round(r?.y ?? -1), w: Math.round(r?.width ?? -1), h: Math.round(r?.height ?? -1) } : null,
-                peekActiveAnywhere: document.querySelectorAll('.review-peek-active').length,
-              });
-            }"""
-        ),
-    )
     page.wait_for_function(
-        "() => document.querySelector('.review-workspace-shell')?.classList.contains('review-peek-active')"
+        "() => document.querySelector('.review-document-shell')?.classList.contains('review-peek-active')"
     )
     page.mouse.up()
     page.wait_for_function(
-        "() => !document.querySelector('.review-workspace-shell')?.classList.contains('review-peek-active')"
+        "() => !document.querySelector('.review-document-shell')?.classList.contains('review-peek-active')"
     )
     _wait_for_text_overlay(page)
 
