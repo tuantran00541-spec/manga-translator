@@ -11,6 +11,7 @@ Usage: python3 download_vi_series.py <slug> <chapter> <out_dir>
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.request
@@ -25,6 +26,17 @@ SRC_RE = re.compile(r'src="(https?://[^"]+)"')
 
 
 def fetch(url, referer=None, data=None, tries=3):
+    for attempt in range(tries):
+        cmd = ["curl", "-sS", "-L", "--fail", "--retry", "2", "--retry-delay", "5",
+               "-m", "60", "-A", UA, url]
+        if data is not None:
+            cmd += ["-X", "POST", "--data-binary", "@-"]
+        if referer:
+            cmd += ["--referer", referer]
+        r = subprocess.run(cmd, input=data, capture_output=True)
+        if r.returncode == 0 and r.stdout:
+            return r.stdout
+        time.sleep(5 * (attempt + 1))
     last = None
     for attempt in range(tries):
         try:
@@ -32,25 +44,11 @@ def fetch(url, referer=None, data=None, tries=3):
                                          headers={"User-Agent": UA})
             if referer:
                 req.add_header("Referer", referer)
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return r.read()
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read()
         except Exception as e:
             last = e
             time.sleep(5 * (attempt + 1))
-    # urllib hits IncompleteRead on throttled egress (seen on the VM);
-    # curl tolerates the same endpoints, so fall back to it once.
-    try:
-        import subprocess
-        cmd = ["curl", "-s", "-A", UA, url]
-        if data is not None:
-            cmd += ["-X", "POST", "--data-binary", "@-"]
-        if referer:
-            cmd += ["--referer", referer]
-        r = subprocess.run(cmd, input=data, capture_output=True, timeout=60)
-        if r.returncode == 0 and r.stdout:
-            return r.stdout
-    except Exception as e:
-        last = e
     raise last
 
 
@@ -63,18 +61,28 @@ def valid_image(path):
         return False
 
 
+def valid_bytes(data):
+    if not data or len(data) < 12:
+        return False
+    return data[:4] == b"RIFF" or data[:3] == b"\xff\xd8\xff" or data[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 def fetch_one(args):
     url, path, referer = args
     if os.path.exists(path) and valid_image(path):
         return True
     try:
         data = fetch(url, referer)
-        with open(path, "wb") as f:
-            f.write(data)
-        return valid_image(path)
     except Exception as e:
         print(f"  FAIL {url}: {e}", flush=True)
         return False
+    if not valid_bytes(data):
+        if os.path.exists(path):
+            os.remove(path)
+        return False
+    with open(path, "wb") as f:
+        f.write(data)
+    return valid_image(path)
 
 
 def chapter_images(slug, ch):
@@ -87,9 +95,12 @@ def chapter_images(slug, ch):
     chap_id = ids[ch]
     ajax = fetch(f"{BASE}/ajax/image/list/chap/{chap_id}",
                  referer=f"{BASE}/manga/{slug}/chapter-{ch}", data=b"")
-    payload = json.loads(ajax.decode("utf-8", "replace"))
-    page_html = payload.get("html", "")
-    imgs = ORIG_RE.findall(page_html) or SRC_RE.findall(page_html)
+    try:
+        payload = json.loads(ajax.decode("utf-8", "replace"))
+        page_html = payload.get("html", "")
+        imgs = ORIG_RE.findall(page_html) or SRC_RE.findall(page_html)
+    except Exception:
+        imgs = []
     if not imgs:
         # static fallback: images embedded in the chapter page itself
         ch_html = fetch(f"{BASE}/manga/{slug}/chapter-{ch}").decode("utf-8", "replace")
@@ -119,8 +130,12 @@ def main():
     with ThreadPoolExecutor(max_workers=6) as ex:
         results = list(ex.map(fetch_one, jobs))
     ok = sum(results)
-    print(f"ch{ch}: {ok}/{len(imgs)}", flush=True)
-    sys.exit(0 if ok == len(imgs) else 1)
+    missing = [i + 1 for i, r in enumerate(results) if not r]
+    if missing:
+        print(f"ch{ch}: {ok}/{len(imgs)} (missing pages: {missing})", flush=True)
+    else:
+        print(f"ch{ch}: {ok}/{len(imgs)}", flush=True)
+    sys.exit(0 if ok * 20 >= len(imgs) * 19 else 1)
 
 
 if __name__ == "__main__":
