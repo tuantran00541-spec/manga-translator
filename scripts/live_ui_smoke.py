@@ -554,9 +554,19 @@ def _exercise_editing(page: Page, base_url: str, artifacts: Path) -> None:
     _until(lambda: obj(1, lambda o: o["id"] == "bubble-b")["translation"] == "Sửa trong bảng soát", "an edit in the panel")
     page.screenshot(path=str(artifacts / "editing-proof-panel.png"))
 
-    page.locator(".review-proof-close").click()
+    close_btn = page.locator(".review-proof-close")
+    if close_btn.is_visible():
+        close_btn.click()
+    else:
+        # Docked layout: the proof panel lives in the "Soát chữ" sidebar tab
+        # and has no close button; switch back to the "Thuộc tính" tab.
+        page.get_by_role("tab", name="Thuộc tính").click()
+        expect(page.locator(".review-proof-panel")).to_be_hidden()
     page.locator(f'.review-text-object-overlay[data-object-id="{a_id}"]').click()
-    page.locator(".review-floating-inspector summary", has_text="Kiểu chữ").click()
+    typography = page.locator(".review-floating-inspector details", has_text="Kiểu chữ").first
+    if not typography.evaluate("element => element.open"):
+        page.locator(".review-floating-inspector summary", has_text="Kiểu chữ").click()
+    expect(page.locator(".style-preset-add")).to_be_visible()
     page.locator(".style-preset-add").click()
     page.locator(".style-preset-name").fill("Hiệu ứng")
     page.locator(".style-preset-store").click()
