@@ -60,7 +60,7 @@
   .review-single-document .review-stitched-warning { padding: 5px 8px; border-bottom: 1px solid var(--border-strong); background: var(--warning-soft); color: var(--text-secondary); font-size: 10px; }
   .review-single-document .review-document-viewport { position: relative; min-width: 0; min-height: 0; overflow: auto; padding: 24px; background: var(--surface-app); text-align: left; cursor: default; }
   .review-single-document .review-document-viewport.is-panning { cursor: grabbing; user-select: none; }
-  .review-single-document .review-stitched-zoom-stage { position: relative; margin: 0 auto; }
+  .review-single-document .review-stitched-zoom-stage { position: relative; margin: 0 auto; overflow: hidden; }
   .review-single-document .review-stitched-image { position: absolute; top: 0; left: 0; line-height: 0; transform-origin: top left; background: var(--surface-panel); box-shadow: none; }
   .review-single-document .review-card-compat { display: none; }
   @media (max-width: 1000px) {
