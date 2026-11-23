@@ -4,19 +4,19 @@ from pydantic import BaseModel, field_validator
 
 from app.parameters import OCR_JOB_CONCURRENCY_LIMIT
 
-_ALLOWED_OCR_LANGS = {"ja", "japan", "ch", "zh", "korean", "ko", "en"}
+_ALLOWED_OCR_LANGS = {"auto", "ja", "japan", "ch", "zh", "korean", "ko", "en"}
 
 
 class ChapterOCRRequest(BaseModel):
     chapter_id: str
-    lang: str = "ja"
+    lang: str = "auto"
     concurrency: int = 1
     force: bool = False
 
     @field_validator("lang")
     @classmethod
     def _valid_lang(cls, value: str) -> str:
-        normalized = (value or "").strip().lower()
+        normalized = (value or "auto").strip().lower()
         if normalized not in _ALLOWED_OCR_LANGS:
             raise ValueError("Unsupported OCR language")
         return normalized

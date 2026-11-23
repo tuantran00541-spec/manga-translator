@@ -31,6 +31,7 @@ class ChapterOCRJob:
     cached: int = 0
     stale: int = 0
     failed: int = 0
+    fatal_error: str | None = None
     errors: list[dict] = field(default_factory=list)
     retry_items: list[tuple[int, str]] = field(default_factory=list)
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
@@ -125,8 +126,19 @@ class ChapterOCRJobManager:
                 "cached": job.cached,
                 "stale": job.stale,
                 "failed": job.failed,
+                "fatal_error": job.fatal_error,
                 "errors": list(job.errors),
             }
+
+    def active_for_chapter(self, chapter_id: str) -> dict | None:
+        with self._lock:
+            for job in reversed(list(self._jobs.values())):
+                if job.chapter_id == chapter_id and job.status in _ACTIVE_STATUSES:
+                    job_id = job.job_id
+                    break
+            else:
+                return None
+        return self.snapshot(job_id)
 
     def cancel(self, job_id: str) -> dict:
         with self._lock:
@@ -187,6 +199,13 @@ class ChapterOCRJobManager:
 
     async def _process_item(self, job: ChapterOCRJob, item: tuple[int, str]) -> None:
         page_index, box_id = item
+        with self._lock:
+            fatal = job.fatal_error
+        if fatal:
+            with self._lock:
+                job.failed += 1
+                job.retry_items.append(item)
+            return
         try:
             result = await asyncio.to_thread(
                 self.service.inspect_box_id,
@@ -218,14 +237,25 @@ class ChapterOCRJobManager:
         self, job: ChapterOCRJob, item: tuple[int, str], exc: Exception
     ) -> None:
         page_index, box_id = item
-        logger.opt(exception=True).error(
-            "Chapter {} page {} box {} OCR job failed: {}",
-            job.chapter_id,
-            page_index,
-            box_id,
-            exc,
-        )
+        is_missing_runtime = isinstance(exc, ModuleNotFoundError)
+        if is_missing_runtime:
+            logger.error(
+                "Chapter {} OCR runtime unavailable ({}): {}",
+                job.chapter_id,
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            logger.opt(exception=True).error(
+                "Chapter {} page {} box {} OCR job failed: {}",
+                job.chapter_id,
+                page_index,
+                box_id,
+                exc,
+            )
         with self._lock:
+            if is_missing_runtime and not job.fatal_error:
+                job.fatal_error = str(exc)
             job.failed += 1
             job.retry_items.append(item)
             if len(job.errors) < MAX_JOB_ERRORS:
@@ -234,6 +264,7 @@ class ChapterOCRJobManager:
                         "page_index": page_index,
                         "box_id": box_id,
                         "error_type": type(exc).__name__,
+                        "detail": str(exc)[:240],
                     }
                 )
 

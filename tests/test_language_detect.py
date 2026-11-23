@@ -199,3 +199,21 @@ def test_detect_endpoint_leaves_language_unset_when_uncertain(saved_chapter, mon
 def test_set_language_rejects_unknown_codes():
     with pytest.raises(ValueError):
         ChapterLanguageRequest(source_lang="fr")
+
+
+def test_chapter_ocr_auto_language_resolves_and_starts_job(saved_chapter, monkeypatch):
+    from app.ocr.schemas import ChapterOCRRequest
+
+    reader = _fake_reader("", "무슨 일이야")
+    monkeypatch.setattr(ocr_router, "ocr", SimpleNamespace(read_probe=reader))
+    started = {}
+
+    def fake_start(chapter_id, *, lang, concurrency, force):
+        started.update({"chapter_id": chapter_id, "lang": lang, "concurrency": concurrency, "force": force})
+        return {"job_id": "job1", "chapter_id": chapter_id, "lang": lang, "status": "completed", "total": 0}
+
+    monkeypatch.setattr(ocr_router.chapter_ocr_jobs, "start", fake_start)
+    result = asyncio.run(ocr_router.start_chapter_ocr(ChapterOCRRequest(chapter_id=saved_chapter)))
+    assert result["lang"] == "korean"
+    assert started == {"chapter_id": saved_chapter, "lang": "korean", "concurrency": 1, "force": False}
+    assert manifests.load_manifest_raw(saved_chapter)["source_lang"] == "korean"

@@ -16,8 +16,8 @@ from app.security import validate_managed_path
 SOURCE_LANGS = ("ja", "ch", "korean", "en")
 _ALIASES = {"japan": "ja", "zh": "ch", "ko": "korean", "english": "en"}
 
-MAX_SAMPLES = 8
-MAX_SAMPLE_PAGES = 6
+MAX_SAMPLES = 12
+MAX_SAMPLE_PAGES = 10
 MIN_LETTERS = 8
 MIN_SHARE = 0.6
 CROP_PADDING = 6
@@ -26,6 +26,22 @@ SITE_LANGUAGE_HINTS = {
     "asuracomic.net": "en",
     "asurascans.com": "en",
     "asuratoon.com": "en",
+    "flamecomics.xyz": "en",
+    "reaperscans.com": "en",
+    "luminousscans.com": "en",
+    "comic.naver.com": "korean",
+    "page.kakao.com": "korean",
+    "ridibooks.com": "korean",
+    "lezhin.com": "korean",
+    "newtoki.com": "korean",
+    "rawkuma.com": "ja",
+    "klmanga.com": "ja",
+    "weloma.art": "ja",
+    "manga1000.top": "ja",
+    "ac.qq.com": "ch",
+    "kuaikanmanhua.com": "ch",
+    "manhuagui.com": "ch",
+    "colamanga.com": "ch",
 }
 
 

@@ -80,16 +80,30 @@ async def text_object_ocr(req: OcrTextObjectRequest) -> dict:
         raise HTTPException(500, "Text object OCR failed") from exc
 
 
+async def _resolve_chapter_ocr_lang(chapter_id: str, requested_lang: str) -> str:
+    if requested_lang != "auto":
+        return requested_lang
+    detected = await detect_chapter_language(chapter_id)
+    resolved = normalize_source_lang(detected.get("source_lang"))
+    if not resolved:
+        raise HTTPException(
+            400,
+            "Không thể tự nhận diện ngôn ngữ gốc của chương. Vui lòng chọn ngôn ngữ gốc trong trình đơn (⋯).",
+        )
+    return resolved
+
+
 @router.post(
     "/ocr/chapter",
     responses={400: {"description": "Invalid OCR request"}, 409: {"description": "OCR already running"}, 429: {"description": "Too many OCR jobs"}},
 )
 async def start_chapter_ocr(req: ChapterOCRRequest) -> dict:
     validate_chapter_id(req.chapter_id)
+    effective_lang = await _resolve_chapter_ocr_lang(req.chapter_id, req.lang)
     try:
         return chapter_ocr_jobs.start(
             req.chapter_id,
-            lang=req.lang,
+            lang=effective_lang,
             concurrency=req.concurrency,
             force=req.force,
         )
@@ -99,6 +113,13 @@ async def start_chapter_ocr(req: ChapterOCRRequest) -> dict:
         detail = str(exc)
         status = 429 if detail == "Too many active OCR jobs" else 409
         raise HTTPException(status, detail) from exc
+
+
+@router.get("/ocr/chapter/active/{chapter_id}")
+def active_chapter_ocr(chapter_id: str) -> dict:
+    validate_chapter_id(chapter_id)
+    snap = chapter_ocr_jobs.active_for_chapter(chapter_id)
+    return {"active": snap is not None, "job": snap}
 
 
 def _snapshot_or_404(job_id: str) -> dict:

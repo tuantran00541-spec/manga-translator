@@ -185,11 +185,13 @@ export function mount(workspace) {
     if (!langSelect.value) return syncLang();
     try {
       const lang = await window.setSourceLang(langSelect.value);
-      window.showToast?.(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[lang] || lang}. Chạy lại OCR toàn chương nếu cần đọc lại chữ.`, "success");
+      window.showToast?.(`Đã đổi ngôn ngữ gốc sang ${window.SOURCE_LANG_LABELS?.[lang] || lang}. Đang tự động chạy lại OCR toàn chương…`, "success");
+      syncLang();
+      void window.startChapterOCR?.({ auto: true, force: true });
     } catch (err) {
       window.showToast?.("Không thể đổi ngôn ngữ gốc: " + err.message, "error");
+      syncLang();
     }
-    syncLang();
   }, { signal });
   document.addEventListener("source-lang-changed", syncLang, { signal });
   document.addEventListener("source-lang-needed", () => { more.open = true; langSelect.focus(); }, { signal });
@@ -355,7 +357,11 @@ export function mount(workspace) {
   syncLang();
   window.detectSourceLang?.()
     .catch((err) => console.warn("Source language detection failed", err))
-    .finally(() => { detectingLang = false; syncLang(); });
+    .finally(() => {
+      detectingLang = false;
+      syncLang();
+      window.maybeAutoChapterOCR?.();
+    });
 
   let painting = false, radius = state.brushRadius || 24, last = null, panning = false, pan = null, space = false, removeForceLama = false, busyFlag = false;
 
