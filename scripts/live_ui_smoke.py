@@ -429,15 +429,21 @@ def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) 
     viewport = page.locator('.review-document-viewport')
 
     def has_band(color: str, output: Path) -> None:
-        shot = viewport.screenshot(path=str(output))
-        with Image.open(BytesIO(shot)) as screenshot:
-            pixels = screenshot.convert("RGB")
-            x = pixels.width // 2
-            visible = [pixels.getpixel((x, y)) for y in range(pixels.height)]
-        if color == "red":
-            found = any(r > 170 and g < 90 and b < 90 for r, g, b in visible)
-        else:
-            found = any(b > 170 and r < 90 and g < 110 for r, g, b in visible)
+        deadline = time.monotonic() + 10.0
+        found = False
+        while True:
+            shot = viewport.screenshot(path=str(output))
+            with Image.open(BytesIO(shot)) as screenshot:
+                pixels = screenshot.convert("RGB")
+                x = pixels.width // 2
+                visible = [pixels.getpixel((x, y)) for y in range(pixels.height)]
+            if color == "red":
+                found = any(r > 170 and g < 90 and b < 90 for r, g, b in visible)
+            else:
+                found = any(b > 170 and r < 90 and g < 110 for r, g, b in visible)
+            if found or time.monotonic() > deadline:
+                break
+            time.sleep(0.5)
         if not found:
             raise AssertionError(f"{name}: long image {color} band is absent from visible canvas")
 
@@ -445,24 +451,6 @@ def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) 
     viewport.evaluate("element => element.scrollTop = element.scrollHeight")
     page.wait_for_function(
         "() => { const v = document.querySelector('.review-document-viewport'); return v.scrollTop > 1000 && v.scrollTop + v.clientHeight >= v.scrollHeight - 2; }"
-    )
-    print(
-        "long-bottom-debug:",
-        page.evaluate(
-            """() => {
-              const v = document.querySelector('.review-document-viewport');
-              const stage = document.querySelector('.review-stitched-zoom-stage');
-              const image = document.querySelector('.review-stitched-image');
-              const img = document.querySelector('.review-strip-slice[data-page-index="0"] img');
-              const r = (el) => { const b = el?.getBoundingClientRect(); return b ? {x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height)} : null; };
-              return JSON.stringify({
-                viewport: {scrollHeight: v.scrollHeight, clientHeight: v.clientHeight, scrollTop: v.scrollTop},
-                stage: r(stage), image: r(image), img: r(img),
-                stageOverflow: stage ? getComputedStyle(stage).overflow : null,
-                centerEl: document.elementFromPoint(Math.round(v.clientWidth / 2), Math.round(v.clientHeight - 10))?.className || null,
-              });
-            }"""
-        ),
     )
     has_band("blue", artifacts / f"{name}-long-bottom.png")
 
