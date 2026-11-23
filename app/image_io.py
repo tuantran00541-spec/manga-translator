@@ -34,14 +34,15 @@ def read_image(path: Path) -> np.ndarray:
 
 def write_image(path: Path, image: np.ndarray) -> None:
     extension = path.suffix or ".png"
-    success, buffer = cv2.imencode(extension, image)
+    params = [cv2.IMWRITE_PNG_COMPRESSION, 1] if extension.lower() == ".png" else []
+    success, buffer = cv2.imencode(extension, image, params)
     if success:
         with path.open("wb") as output_file:
             buffer.tofile(output_file)
             output_file.flush()
             _advise_file_cache_drop(output_file)
         return
-    if not cv2.imwrite(str(path), image):
+    if not cv2.imwrite(str(path), image, params):
         raise ValueError(f"Could not write image at {path}")
     try:
         with path.open("rb") as output_file:

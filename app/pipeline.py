@@ -375,7 +375,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                        bubble_mask=shift_bubble_mask(getattr(box, "bubble_mask", None), 0, offset_y))
 
     def _shared_seam_detections(
-        self, chapter_id: str, work_items: list[tuple]
+        self, chapter_id: str, work_items: list[tuple], *, max_workers: int = 1
     ) -> tuple[dict[int, list[BubbleBox]], set[int], dict[str, float | int]]:
         consumers: dict[tuple[int, int], list[tuple[int, Path, dict]]] = {}
         unavailable_pages: set[int] = set()
@@ -432,8 +432,11 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             return {}, unavailable_pages, shared_metrics
 
         by_page: dict[int, list[BubbleBox]] = {}
-        for (source_page, cut_y), seam_consumers in sorted(consumers.items()):
-            provider_idx, provider_path, provider_core = seam_consumers[0]
+        seam_jobs = sorted(consumers.items())
+
+        def _detect_one_seam(entry):
+            (source_page, cut_y), seam_consumers = entry
+            _provider_idx, provider_path, provider_core = seam_consumers[0]
             seam_started_at = time.perf_counter()
             detector_metrics: dict[str, float | int] = {}
             try:
@@ -449,7 +452,33 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 seam_source_y1 = provider_source_y1 + seam_local_y1
                 seam_boxes = self.detector.detect(seam_image)
                 detector_metrics = self.detector.last_metrics()
+                return (
+                    source_page, cut_y, seam_consumers, seam_source_y1, seam_boxes,
+                    None, (time.perf_counter() - seam_started_at) * 1000.0,
+                    float(detector_metrics.get("text_model_ms") or 0.0),
+                )
             except Exception as exc:
+                return (
+                    source_page, cut_y, seam_consumers, 0, [],
+                    exc, (time.perf_counter() - seam_started_at) * 1000.0,
+                    float(detector_metrics.get("text_model_ms") or 0.0),
+                )
+
+        seam_workers = max(1, min(int(max_workers or 1), len(seam_jobs)))
+        if seam_workers > 1:
+            with ThreadPoolExecutor(max_workers=seam_workers, thread_name_prefix="seam-detect") as pool:
+                seam_results = list(pool.map(_detect_one_seam, seam_jobs))
+        else:
+            seam_results = [_detect_one_seam(entry) for entry in seam_jobs]
+
+        for (
+            source_page, cut_y, seam_consumers, seam_source_y1, seam_boxes,
+            exc, wall_ms, text_ms,
+        ) in seam_results:
+            shared_metrics["attempts"] = int(shared_metrics["attempts"]) + 1
+            shared_metrics["wall_ms"] = float(shared_metrics["wall_ms"]) + wall_ms
+            shared_metrics["text_model_ms"] = float(shared_metrics["text_model_ms"]) + text_ms
+            if exc is not None:
                 shared_metrics["failures"] = int(shared_metrics["failures"]) + 1
                 logger.warning(
                     "Chapter {} source page {} seam {}: shared context detection failed: {}",
@@ -457,16 +486,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 )
                 unavailable_pages.update(idx for idx, _path, _core in seam_consumers)
                 continue
-            finally:
-                shared_metrics["attempts"] = int(shared_metrics["attempts"]) + 1
-                shared_metrics["wall_ms"] = float(shared_metrics["wall_ms"]) + (
-                    (time.perf_counter() - seam_started_at) * 1000.0
-                )
-                shared_metrics["text_model_ms"] = float(shared_metrics["text_model_ms"]) + float(
-                    detector_metrics.get("text_model_ms") or 0.0
-                )
-                if "provider_image" in locals():
-                    del provider_image
 
             for idx, _target_path, target_core in seam_consumers:
                 try:
@@ -658,7 +677,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             ),
         )
         shared_seam_detections, seam_context_unavailable, shared_seam_metrics = (
-            self._shared_seam_detections(chapter_id, work_items)
+            self._shared_seam_detections(chapter_id, work_items, max_workers=max_workers)
         )
         committed_indices: list[int] = []
         discarded_stale_indices: list[int] = []

@@ -32,13 +32,16 @@ HALVES_MIN_OVERLAP = 256
 PAGE_WIDTH = 400
 PAGE_OVERLAP = 0.15
 PAGE_CONFIDENCE = 0.45
-OVERVIEW_WIDTHS = (315, 225)
-OVERVIEW_GAP = 32
+OVERVIEW_WIDTHS = (440, 315, 225)
+OVERVIEW_GAP = 24
 OVERVIEW_PAD_Y = 64
 OVERVIEW_CONFIDENCE = 0.55
+OVERVIEW_MEDIUM_CONFIDENCE = 0.65
 OVERVIEW_WHITE_BUBBLE_CONFIDENCE = 0.30
 OVERVIEW_MIN_LONG = 350
 OVERVIEW_MIN_SHORT = 160
+OVERVIEW_MEDIUM_MIN_LONG = 64
+OVERVIEW_MEDIUM_MIN_SHORT = 20
 OVERVIEW_WHITE_BUBBLE_MIN_WIDTH_SHARE = 0.60
 OVERVIEW_WHITE_BUBBLE_BRIGHT_L = 215
 OVERVIEW_WHITE_BUBBLE_MIN_SHARE = 0.35
@@ -46,6 +49,7 @@ OVERVIEW_WHITE_BUBBLE_DARK_L = 50
 OVERVIEW_WHITE_BUBBLE_DARK_SHARE = 0.15
 OVERVIEW_EXISTING_OVERLAP = 0.35
 OVERVIEW_SELF_OVERLAP = 0.40
+PRE_CTD_DEDUPE_IOU = 0.72
 AUX_MODEL_NAME = "kiuyha-tuned-transient-1024.onnx"
 AUX_MODEL_ENV = "MANGA_KIUYHA_AUX_MODEL"
 MASKLESS_MIN_SCORE = 0.5
@@ -329,6 +333,31 @@ def _overlaps(a: list, b: list) -> bool:
 
 
 SAME_DETECTION_IOU = 0.85
+
+
+def _box_iou(a, b) -> float:
+    ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    if inter <= 0:
+        return 0.0
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return float(inter) / float(max(1, union))
+
+
+def _dedupe_raw_boxes(
+    boxes: list[tuple[int, int, int, int, float]],
+    iou_threshold: float = PRE_CTD_DEDUPE_IOU,
+) -> list[tuple[int, int, int, int, float]]:
+    if len(boxes) <= 1:
+        return list(boxes)
+    ordered = sorted(boxes, key=lambda b: b[4], reverse=True)
+    kept: list[tuple[int, int, int, int, float]] = []
+    for box in ordered:
+        if any(_box_iou(box, prev) >= iou_threshold for prev in kept):
+            continue
+        kept.append(box)
+    return kept
 
 
 def _same_detection(a, b) -> bool:
@@ -897,6 +926,8 @@ class KiuyhaTextDetector:
         self.fixed = (int(height), int(width)) if isinstance(height, int) and isinstance(width, int) else None
         self.conf_threshold = float(conf_threshold)
         self._metrics = threading.local()
+        self._low_cache = threading.local()
+        self._medium_aux_cache = threading.local()
         self.source_model = Path(str(model_path)).name
         self._aux_session = None
         self._aux_input_name = None
@@ -966,6 +997,15 @@ class KiuyhaTextDetector:
             self.conf_threshold if conf_threshold is None else conf_threshold,
         )
 
+    def _call_raw_boxes(
+        self,
+        image: np.ndarray,
+        conf_threshold: float | None = None,
+    ) -> list[tuple[int, int, int, int, float]]:
+        if conf_threshold is None or "raw_boxes" in self.__dict__:
+            return self.raw_boxes(image)
+        return self.raw_boxes(image, conf_threshold)
+
     def halves_plan(self, height: int, width: int) -> tuple[float, list[tuple[int, int]]] | None:
         if self.fixed is None or self.fixed[0] != self.fixed[1]:
             return None
@@ -984,11 +1024,12 @@ class KiuyhaTextDetector:
         self,
         image: np.ndarray,
         existing: list[tuple[int, int, int, int, float]],
+        medium_out: set[tuple[int, int, int, int]] | None = None,
     ) -> list[tuple[int, int, int, int, float]]:
         if self._aux_session is None or self._aux_fixed is None:
             return []
         h, w = image.shape[:2]
-        if max(h, w) < OVERVIEW_MIN_LONG or min(h, w) < OVERVIEW_MIN_SHORT:
+        if max(h, w) < OVERVIEW_MEDIUM_MIN_LONG or min(h, w) < OVERVIEW_MEDIUM_MIN_SHORT:
             return []
         size_h, size_w = self._aux_fixed
         canvas = np.full((size_h, size_w, 3), LETTERBOX_VALUE, np.uint8)
@@ -1018,7 +1059,7 @@ class KiuyhaTextDetector:
             canvas,
             OVERVIEW_WHITE_BUBBLE_CONFIDENCE,
         )
-        candidates: list[tuple[int, int, int, int, float]] = []
+        candidates: list[tuple[int, int, int, int, float, bool]] = []
         for cx1, cy1, cx2, cy2, score in raw:
             centre = (cx1 + cx2) / 2
             col = next((c for c in columns if c[0] <= centre < c[0] + c[2]), None)
@@ -1030,35 +1071,57 @@ class KiuyhaTextDetector:
             by1 = int(max(0, cy1 - oy) / scale)
             by2 = int(min(h, math.ceil(min(sh, cy2 - oy) / scale)))
             bw, bh = bx2 - bx1, by2 - by1
-            if max(bw, bh) < OVERVIEW_MIN_LONG or min(bw, bh) < OVERVIEW_MIN_SHORT:
+            if bw <= 0 or bh <= 0:
                 continue
-            if score < OVERVIEW_CONFIDENCE and not _is_white_bubble_display(image, (bx1, by1, bx2, by2)):
-                continue
-            candidates.append((bx1, by1, bx2, by2, float(score)))
+            rect = (bx1, by1, bx2, by2)
+            is_large = max(bw, bh) >= OVERVIEW_MIN_LONG and min(bw, bh) >= OVERVIEW_MIN_SHORT
+            if is_large:
+                if score < OVERVIEW_CONFIDENCE and not _is_white_bubble_display(image, rect):
+                    continue
+                candidates.append((bx1, by1, bx2, by2, float(score), False))
+            elif (
+                score >= OVERVIEW_MEDIUM_CONFIDENCE
+                and max(bw, bh) >= OVERVIEW_MEDIUM_MIN_LONG
+                and min(bw, bh) >= OVERVIEW_MEDIUM_MIN_SHORT
+                and (
+                    _dark_pieces(image, rect) >= MASKLESS_MIN_PIECES
+                    or _bright_pieces(image, rect) >= MASKLESS_MIN_PIECES
+                )
+            ):
+                candidates.append((bx1, by1, bx2, by2, float(score), True))
         candidates.sort(key=lambda b: b[4], reverse=True)
         kept: list[tuple[int, int, int, int, float]] = []
-        for box in candidates:
-            area = max(1, (box[2] - box[0]) * (box[3] - box[1]))
+        for bx1, by1, bx2, by2, score, is_medium in candidates:
+            box = (bx1, by1, bx2, by2, score)
+            area = max(1, (bx2 - bx1) * (by2 - by1))
             if any(
-                max(0, min(box[2], k[2]) - max(box[0], k[0])) * max(0, min(box[3], k[3]) - max(box[1], k[1]))
+                max(0, min(bx2, k[2]) - max(bx1, k[0])) * max(0, min(by2, k[3]) - max(by1, k[1]))
                 >= OVERVIEW_SELF_OVERLAP * min(area, max(1, (k[2] - k[0]) * (k[3] - k[1])))
                 for k in kept
             ):
                 continue
             if any(
-                max(0, min(box[2], ex[2]) - max(box[0], ex[0])) * max(0, min(box[3], ex[3]) - max(box[1], ex[1]))
+                max(0, min(bx2, ex[2]) - max(bx1, ex[0])) * max(0, min(by2, ex[3]) - max(by1, ex[1]))
                 >= OVERVIEW_EXISTING_OVERLAP * area
                 for ex in existing
             ):
                 continue
             kept.append(box)
+            if is_medium and medium_out is not None:
+                medium_out.add((bx1, by1, bx2, by2))
         return kept
 
     def _raw_slice_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        found = self._coarse_boxes(image) + self.page_boxes(image)
-        found = found + self._overview_boxes(image, found)
+        low: list[tuple[int, int, int, int, float]] = []
+        medium_aux: set[tuple[int, int, int, int]] = set()
+        found = self._coarse_boxes(image, low_out=low)
+        if self.fixed is not None:
+            found = found + self.page_boxes(image, low_out=low)
+        found = found + self._overview_boxes(image, found, medium_out=medium_aux)
         if not found:
             found = self._rotated_boxes(image)
+        self._low_cache.value = low
+        self._medium_aux_cache.value = medium_aux
         return found
 
     def detect_slice(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
@@ -1084,35 +1147,65 @@ class KiuyhaTextDetector:
                     found.append((bx1, by1, bx2, by2, score))
         return found
 
-    def _coarse_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+    def _coarse_boxes(
+        self,
+        image: np.ndarray,
+        low_out: list[tuple[int, int, int, int, float]] | None = None,
+    ) -> list[tuple[int, int, int, int, float]]:
         h, w = image.shape[:2]
         plan = self.halves_plan(h, w)
+        min_conf = min(self.conf_threshold, RESCUE_MIN_SCORE) if low_out is not None else None
         if plan is None:
-            found = self.raw_boxes(image)
-        else:
-            scale, halves = plan
-            size = self.fixed[0]
-            canvas = np.full((size, size, 3), LETTERBOX_VALUE, np.uint8)
-            columns, x = [], 0
-            for y0, y1 in halves:
-                rw, rh = min(size - x, int(w * scale)), min(size, int((y1 - y0) * scale))
-                canvas[:rh, x:x + rw] = cv2.resize(image[y0:y1], (rw, rh), interpolation=cv2.INTER_LINEAR)
-                columns.append((x, rw, rh, y0, y1))
-                x += rw + COLUMN_GAP
+            raw = self._call_raw_boxes(image, min_conf)
+            if low_out is None:
+                return raw
             found = []
-            for cx1, cy1, cx2, cy2, score in self.raw_boxes(canvas):
-                px, rw, rh, y0, y1 = columns[0] if (cx1 + cx2) / 2 < columns[1][0] else columns[1]
-                sx, sy = rw / w, rh / (y1 - y0)
-                bx1, bx2 = int((max(cx1, px) - px) / sx), int(math.ceil((min(cx2, px + rw) - px) / sx))
-                by1, by2 = int(min(cy1, rh) / sy) + y0, int(math.ceil(min(cy2, rh) / sy)) + y0
-                if bx2 - bx1 > 4 and by2 - by1 > 4:
+            for box in raw:
+                if box[4] >= self.conf_threshold:
+                    found.append(box)
+                elif box[4] >= RESCUE_MIN_SCORE:
+                    low_out.append(box)
+            return found
+        scale, halves = plan
+        size = self.fixed[0]
+        canvas = np.full((size, size, 3), LETTERBOX_VALUE, np.uint8)
+        columns, x = [], 0
+        for y0, y1 in halves:
+            rw, rh = min(size - x, int(w * scale)), min(size, int((y1 - y0) * scale))
+            canvas[:rh, x:x + rw] = cv2.resize(image[y0:y1], (rw, rh), interpolation=cv2.INTER_LINEAR)
+            columns.append((x, rw, rh, y0, y1))
+            x += rw + COLUMN_GAP
+        found = []
+        for cx1, cy1, cx2, cy2, score in self._call_raw_boxes(canvas, min_conf):
+            px, rw, rh, y0, y1 = columns[0] if (cx1 + cx2) / 2 < columns[1][0] else columns[1]
+            sx, sy = rw / w, rh / (y1 - y0)
+            bx1, bx2 = int((max(cx1, px) - px) / sx), int(math.ceil((min(cx2, px + rw) - px) / sx))
+            by1, by2 = int(min(cy1, rh) / sy) + y0, int(math.ceil(min(cy2, rh) / sy)) + y0
+            if bx2 - bx1 > 4 and by2 - by1 > 4:
+                if score >= self.conf_threshold:
                     found.append((bx1, by1, bx2, by2, score))
+                elif low_out is not None and score >= RESCUE_MIN_SCORE:
+                    low_out.append((bx1, by1, bx2, by2, score))
         return found
 
-    def page_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+    def page_boxes(
+        self,
+        image: np.ndarray,
+        low_out: list[tuple[int, int, int, int, float]] | None = None,
+    ) -> list[tuple[int, int, int, int, float]]:
         h, w = image.shape[:2]
+        min_conf = min(self.conf_threshold, RESCUE_MIN_SCORE) if low_out is not None else None
         if self.fixed is None:
-            return self.raw_boxes(image)
+            raw = self._call_raw_boxes(image, min_conf)
+            if low_out is None:
+                return raw
+            found = []
+            for box in raw:
+                if box[4] >= self.conf_threshold:
+                    found.append(box)
+                elif box[4] >= RESCUE_MIN_SCORE:
+                    low_out.append(box)
+            return found
         size_h, size_w = self.fixed
         scale = min(1.0, PAGE_WIDTH / w)
         sw = max(1, int(round(w * scale)))
@@ -1123,34 +1216,80 @@ class KiuyhaTextDetector:
         found = []
         for first in range(0, len(starts), per_canvas):
             canvas = np.full((size_h, size_w, 3), LETTERBOX_VALUE, np.uint8)
+            batch = starts[first:first + per_canvas]
             columns = []
-            for k, y0 in enumerate(starts[first:first + per_canvas]):
+            for k, y0 in enumerate(batch):
                 part = image[y0:y0 + window]
                 rh = min(size_h, int(round(part.shape[0] * scale)))
                 x = k * (sw + COLUMN_GAP)
                 canvas[:rh, x:x + sw] = cv2.resize(part, (sw, rh), interpolation=cv2.INTER_AREA)
                 columns.append((x, rh, y0, part.shape[0]))
-            for cx1, cy1, cx2, cy2, score in self.raw_boxes(canvas):
-                if score < PAGE_CONFIDENCE:
-                    continue
+            overview_col = None
+            if (
+                first + per_canvas >= len(starts)
+                and self._aux_session is None
+                and h > size_h
+                and max(h, w) >= OVERVIEW_MIN_LONG
+                and min(h, w) >= OVERVIEW_MIN_SHORT
+            ):
+                used_w = len(batch) * sw + max(0, len(batch) - 1) * COLUMN_GAP
+                ov_scale = min(1.0, 225 / w, max(32, size_h - OVERVIEW_PAD_Y) / h)
+                ov_sw = max(1, int(round(w * ov_scale)))
+                ov_sh = max(1, int(round(h * ov_scale)))
+                if used_w + COLUMN_GAP + ov_sw <= size_w:
+                    ov_x = used_w + COLUMN_GAP
+                    ov_y = (size_h - ov_sh) // 2
+                    canvas[ov_y:ov_y + ov_sh, ov_x:ov_x + ov_sw] = cv2.resize(
+                        image, (ov_sw, ov_sh), interpolation=cv2.INTER_AREA
+                    )
+                    overview_col = (ov_x, ov_y, ov_sw, ov_sh, ov_scale)
+            for cx1, cy1, cx2, cy2, score in self._call_raw_boxes(canvas, min_conf):
                 centre = (cx1 + cx2) / 2
                 column = next((c for c in columns if c[0] <= centre < c[0] + sw), None)
-                if column is None:
-                    continue
-                x, rh, y0, part_h = column
-                bx1, bx2 = int(max(0, cx1 - x) / scale), int(math.ceil(min(sw, cx2 - x) / scale))
-                by1, by2 = int(max(0, cy1) / scale), int(math.ceil(min(rh, cy2) / scale))
-                if bx2 - bx1 > 4 and by2 - by1 > 4:
-                    found.append((min(w, bx1), by1 + y0, min(w, bx2), min(h, by2 + y0), score))
+                if column is not None:
+                    x, rh, y0, part_h = column
+                    bx1, bx2 = int(max(0, cx1 - x) / scale), int(math.ceil(min(sw, cx2 - x) / scale))
+                    by1, by2 = int(max(0, cy1) / scale), int(math.ceil(min(rh, cy2) / scale))
+                    if bx2 - bx1 > 4 and by2 - by1 > 4:
+                        mapped = (min(w, bx1), by1 + y0, min(w, bx2), min(h, by2 + y0), score)
+                        if score >= PAGE_CONFIDENCE:
+                            found.append(mapped)
+                        elif low_out is not None and RESCUE_MIN_SCORE <= score < self.conf_threshold:
+                            low_out.append(mapped)
+                elif overview_col is not None:
+                    ov_x, ov_y, ov_sw, ov_sh, ov_scale = overview_col
+                    if ov_x <= centre < ov_x + ov_sw:
+                        bx1 = int(max(0, cx1 - ov_x) / ov_scale)
+                        bx2 = int(min(w, math.ceil(min(ov_sw, cx2 - ov_x) / ov_scale)))
+                        by1 = int(max(0, cy1 - ov_y) / ov_scale)
+                        by2 = int(min(h, math.ceil(min(ov_sh, cy2 - ov_y) / ov_scale)))
+                        bw, bh = bx2 - bx1, by2 - by1
+                        if (
+                            max(bw, bh) >= OVERVIEW_MIN_LONG
+                            and min(bw, bh) >= OVERVIEW_MIN_SHORT
+                            and (
+                                score >= PAGE_CONFIDENCE
+                                or (
+                                    score >= OVERVIEW_WHITE_BUBBLE_CONFIDENCE
+                                    and _is_white_bubble_display(image, (bx1, by1, bx2, by2))
+                                )
+                            )
+                        ):
+                            found.append((bx1, by1, bx2, by2, float(score)))
         return found
 
     def _rescue_boxes(self, image: np.ndarray, kept: list[BubbleBox]) -> list[BubbleBox]:
         h, w = image.shape[:2]
         cov = _mask_coverage(image.shape[:2], kept)
         dilated = cv2.dilate(cov.astype(np.uint8), np.ones((17, 17), np.uint8)) > 0
-        low = [box for box in self.raw_boxes(image, RESCUE_MIN_SCORE)
-               if box[4] < self.conf_threshold]
-        stretched = None
+        cached_low = getattr(self._low_cache, "value", None)
+        self._low_cache.value = None
+        if cached_low is not None:
+            low = _dedupe_raw_boxes(cached_low)
+        else:
+            low = _dedupe_raw_boxes(
+                [box for box in self.raw_boxes(image, RESCUE_MIN_SCORE) if box[4] < self.conf_threshold]
+            )
         found: list[list] = []
 
         def consider(rect, pixels, score, emit=None, welded=False):
@@ -1162,11 +1301,20 @@ class KiuyhaTextDetector:
             found.append([*(emit or rect), score, welded])
 
         for x1, y1, x2, y2, score in sorted(low, key=lambda b: (b[1], b[0])):
+            if float(dilated[y1:y2, x1:x2].mean()) >= 0.85:
+                continue
             if _dark_pieces(image, (x1, y1, x2, y2)) < MASKLESS_MIN_PIECES:
                 continue
-            if stretched is None:
-                stretched = _stretch(image)
-            (sx1, sy1, sx2, sy2), _, letters = letter_mask(stretched, (x1, y1, x2, y2), with_letters=True)
+            pad = max(64, int(0.5 * max(x2 - x1, y2 - y1)))
+            px1, py1 = max(0, x1 - pad), max(0, y1 - pad)
+            px2, py2 = min(w, x2 + pad), min(h, y2 + pad)
+            stretched_crop = _stretch(image[py1:py2, px1:px2])
+            (lsx1, lsy1, lsx2, lsy2), _, letters = letter_mask(
+                stretched_crop,
+                (x1 - px1, y1 - py1, x2 - px1, y2 - py1),
+                with_letters=True,
+            )
+            sx1, sy1, sx2, sy2 = px1 + lsx1, py1 + lsy1, px1 + lsx2, py1 + lsy2
             if letters is not None and letters.any():
                 uncov = letters & ~cov[sy1:sy2, sx1:sx2]
                 for (wx1, wy1, wx2, wy2), blob in _word_blobs(uncov):
@@ -1200,10 +1348,16 @@ class KiuyhaTextDetector:
         return boxes
 
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
+        self._low_cache.value = None
+        self._medium_aux_cache.value = set()
+        raw_boxes = self._raw_slice_boxes(image)
+        medium_aux = getattr(self._medium_aux_cache, "value", None) or set()
+        self._medium_aux_cache.value = set()
         boxes = []
         cores = []
-        for x1, y1, x2, y2, score in self._raw_slice_boxes(image):
+        for x1, y1, x2, y2, score in _dedupe_raw_boxes(raw_boxes):
             core = (x1, y1, x2, y2)
+            is_medium_aux = core in medium_aux
             bw, bh = x2 - x1, y2 - y1
             if (
                 max(bw, bh) >= OVERVIEW_MIN_LONG
@@ -1223,7 +1377,8 @@ class KiuyhaTextDetector:
             if mask.any() and float(mask.sum()) / max(1, mask.size) >= MASKLESS_MIN_COVERAGE:
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
                 cores.append(core)
-            elif (score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1
+            elif (not is_medium_aux
+                  and score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1
                   and (_dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
                        or _bright_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
                        or (x2 - x1) * (y2 - y1) <= MASKLESS_SMALL_BOX_AREA)):

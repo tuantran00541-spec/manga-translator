@@ -43,7 +43,10 @@ MAX_WORKERS = 8
 
 
 def recommended_workers(cpu_count: int | None = None) -> int:
-    return min(MAX_WORKERS, max(1, int(cpu_count or visible_cpu_count())))
+    cpu = max(1, int(cpu_count or visible_cpu_count()))
+    if cpu >= 4:
+        return min(MAX_WORKERS, max(2, cpu // 2))
+    return min(MAX_WORKERS, cpu)
 
 
 def recommended_ort_intra_threads(cpu_count: int | None = None) -> int:

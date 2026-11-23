@@ -412,7 +412,7 @@ class Inpainter:
                       and b.x1 < cx2 and b.x2 > cx1 and b.y1 < cy2 and b.y2 > cy1]
             hole = None
             if others:
-                hole = build_mask((cy2 - cy1, cx2 - cx1), others, crop_img)
+                hole = build_mask((cy2 - cy1, cx2 - cx1), others, crop_img, repair_ink=False)
                 hole = np.maximum(self._subtract_protected_regions(hole, crop_box, protected_regions), local_mask)
 
             if cluster and all(getattr(b, "mask_source", "") == "border_protected_display" for b in cluster):
@@ -566,18 +566,32 @@ class Inpainter:
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (41, 41)),
             ) > 0
             art_overlap = mask_bool & near_art
-            if int(np.count_nonzero(art_overlap)) >= 100:
-                ys, xs = np.nonzero(art_overlap)
-                ay1 = max(0, int(ys.min()) - 64)
-                ay2 = min(crop.shape[0], int(ys.max()) + 64)
-                ax1 = max(0, int(xs.min()) - 64)
-                ax2 = min(crop.shape[1], int(xs.max()) + 64)
-                sub_img = filled[ay1:ay2, ax1:ax2].copy()
-                sub_mask = (art_overlap[ay1:ay2, ax1:ax2].astype(np.uint8) * 255)
+            did_lama = False
+            if int(np.count_nonzero(art_overlap)) >= 80:
+                grouped = cv2.dilate(
+                    art_overlap.astype(np.uint8),
+                    cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)),
+                )
+                n_comp, comp_labels, comp_stats, _ = cv2.connectedComponentsWithStats(
+                    grouped, connectivity=8
+                )
+                for cid in range(1, n_comp):
+                    comp_mask = art_overlap & (comp_labels == cid)
+                    if int(np.count_nonzero(comp_mask)) < 80:
+                        continue
+                    bx, by, bw, bh, _ = (int(v) for v in comp_stats[cid])
+                    ay1 = max(0, by - 48)
+                    ay2 = min(crop.shape[0], by + bh + 48)
+                    ax1 = max(0, bx - 48)
+                    ax2 = min(crop.shape[1], bx + bw + 48)
+                    sub_img = filled[ay1:ay2, ax1:ax2].copy()
+                    sub_mask = comp_mask[ay1:ay2, ax1:ax2].astype(np.uint8) * 255
+                    painted_sub = self._lama_fill_single(sub_img, sub_mask)
+                    sub_img[sub_mask > 127] = painted_sub[sub_mask > 127]
+                    filled[ay1:ay2, ax1:ax2] = sub_img
+                    did_lama = True
+            if did_lama:
                 self._metric_add("lama_regions")
-                painted_sub = self._lama_fill_single(sub_img, sub_mask)
-                sub_img[sub_mask > 127] = painted_sub[sub_mask > 127]
-                filled[ay1:ay2, ax1:ax2] = sub_img
             else:
                 self._metric_add("smart_fill_regions")
         else:
@@ -642,9 +656,33 @@ class Inpainter:
         self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
+        fill_mask = model_mask if hole is None else hole
 
-        max_dim = max(crop_h, crop_w)
-        min_dim = max(1, min(crop_h, crop_w))
+        # Trim dead margin outside the actual mask extent when it meaningfully shrinks LaMa pixels.
+        tx1, ty1, tx2, ty2 = 0, 0, crop_w, crop_h
+        my, mx = np.where(model_mask > 127)
+        if len(my):
+            mh = int(my.max()) - int(my.min()) + 1
+            mw = int(mx.max()) - int(mx.min()) + 1
+            pad = min(48, max(24, int(round(0.35 * max(mh, mw)))))
+            cand_x1 = max(0, int(mx.min()) - pad)
+            cand_y1 = max(0, int(my.min()) - pad)
+            cand_x2 = min(crop_w, int(mx.max()) + 1 + pad)
+            cand_y2 = min(crop_h, int(my.max()) + 1 + pad)
+            if (
+                cand_x2 - cand_x1 >= 16
+                and cand_y2 - cand_y1 >= 16
+                and (cand_x2 - cand_x1) * (cand_y2 - cand_y1) <= 0.80 * crop_h * crop_w
+            ):
+                tx1, ty1, tx2, ty2 = cand_x1, cand_y1, cand_x2, cand_y2
+
+        work_crop = crop[ty1:ty2, tx1:tx2]
+        work_write = write_mask[ty1:ty2, tx1:tx2]
+        work_fill = fill_mask[ty1:ty2, tx1:tx2]
+        work_h, work_w = work_crop.shape[:2]
+
+        max_dim = max(work_h, work_w)
+        min_dim = max(1, min(work_h, work_w))
         aspect = max_dim / min_dim
         long_crop = (
             not self.dynamic_lama
@@ -655,30 +693,35 @@ class Inpainter:
         if (
             INPAINT_NATIVE_TILE_ENABLED
             and max_dim > DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
-            and int(np.count_nonzero(write_mask > 127)) >= INPAINT_NATIVE_TILE_MASK_AREA_MIN
+            and int(np.count_nonzero(work_write > 127)) >= INPAINT_NATIVE_TILE_MASK_AREA_MIN
         ):
-            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+            gray = cv2.cvtColor(work_crop, cv2.COLOR_BGR2GRAY) if work_crop.ndim == 3 else work_crop
             edges = cv2.Canny(gray, SMART_FILL_CANNY_LOW, SMART_FILL_CANNY_HIGH)
-            context = write_mask <= 127
+            context = work_write <= 127
             edge_density = float(np.mean(edges[context] > 0)) if np.any(context) else 0.0
             texture_tiling = edge_density >= INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN
 
-        crop_pixels = int(crop_h * crop_w)
+        crop_pixels = int(work_h * work_w)
         dynamic_native_ok = bool(
             self.dynamic_lama
             and not feather
             and max_dim <= DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
             and crop_pixels <= DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS
         )
-        fill_mask = model_mask if hole is None else hole
         if dynamic_native_ok:
             self._metric_add("lama_native_single_regions")
-            painted = self._lama_fill_single(crop, fill_mask)
+            work_painted = self._lama_fill_single(work_crop, work_fill)
         elif long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
             self._metric_add("lama_tiled_regions")
-            painted = self._lama_fill_tiled(crop, fill_mask, own=write_mask)
+            work_painted = self._lama_fill_tiled(work_crop, work_fill, own=work_write)
         else:
-            painted = self._lama_fill_single(crop, fill_mask)
+            work_painted = self._lama_fill_single(work_crop, work_fill)
+
+        if (tx1, ty1, tx2, ty2) == (0, 0, crop_w, crop_h):
+            painted = work_painted
+        else:
+            painted = crop.copy()
+            painted[ty1:ty2, tx1:tx2] = work_painted
 
         painted = match_boundary_tone(crop, painted, write_mask, hole=fill_mask)
         painted = restore_ambient_grain(crop, painted, write_mask, crop_box, hole=fill_mask)
@@ -747,12 +790,27 @@ class Inpainter:
             return self._lama_fill_single_dynamic(crop, local_mask)
         return self._lama_fill_single_fixed(crop, local_mask)
 
+    @staticmethod
+    def _dynamic_lama_max_dim(crop: np.ndarray, local_mask: np.ndarray) -> int:
+        max_dim = DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
+        if max(crop.shape[:2]) <= 384 or max_dim <= 384:
+            return max_dim
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+        edges = cv2.Canny(gray, SMART_FILL_CANNY_LOW, SMART_FILL_CANNY_HIGH)
+        context = local_mask <= 127
+        if np.any(context):
+            edge_density = float(np.mean(edges[context] > 0))
+            if edge_density < 0.025:
+                return min(max_dim, 384)
+        return max_dim
+
     def _lama_fill_single_dynamic(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         crop_h, crop_w = crop.shape[:2]
+        max_side = self._dynamic_lama_max_dim(crop, local_mask)
 
         scale = min(
             1.0,
-            DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM / max(crop_h, crop_w),
+            max_side / max(crop_h, crop_w),
         )
         new_h = max(1, int(round(crop_h * scale)))
         new_w = max(1, int(round(crop_w * scale)))

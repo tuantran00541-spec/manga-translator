@@ -42,7 +42,11 @@ def _get_session():
         if _session is None:
             import onnxruntime as ort
             opts = ort.SessionOptions()
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            opts.enable_cpu_mem_arena = True
+            opts.enable_mem_pattern = True
             opts.intra_op_num_threads = _configured_intra_op_threads()
+            opts.inter_op_num_threads = 1
             _session = ort.InferenceSession(str(CTD_MODEL), opts, providers=["CPUExecutionProvider"])
     return _session
 

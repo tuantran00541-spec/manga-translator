@@ -137,6 +137,7 @@ def build_mask(
     crop_img: np.ndarray | None = None,
     *,
     force_max_dilation: bool = False,
+    repair_ink: bool = True,
 ) -> np.ndarray:
     h, w = image_shape
     mask = np.zeros((h, w), dtype=np.uint8)
@@ -215,7 +216,8 @@ def build_mask(
     if boxes and all(getattr(b, "mask_source", "") == "border_protected_display" for b in boxes):
         return mask
 
-    mask = _repair_mask_from_ink(mask, crop_img, box_rects)
+    if repair_ink:
+        mask = _repair_mask_from_ink(mask, crop_img, box_rects)
 
     return adaptive_dilate_mask(
         mask,

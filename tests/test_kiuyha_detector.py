@@ -89,7 +89,7 @@ def test_tall_slice_runs_coarse_and_page_scale_passes_and_masks_letters_with_out
     session = _BlobSession()
     detector = KiuyhaTextDetector("unused", session=session)
     boxes = detector.text_boxes(image)
-    assert len(session.blobs) == 1 + 1 + 1, "the whole slice coarse, once at page scale, once low for the rescue"
+    assert len(session.blobs) == 1 + 1, "coarse and page-scale passes feed rescue without a redundant third run"
     assert len(boxes) == 3, "a line seen by several passes is one box"
     for baseline in (300, 1250, 2150):
         assert any(b.y1 < baseline - 20 and b.y2 > baseline for b in boxes), baseline
@@ -866,3 +866,69 @@ def test_leftover_pass_stays_inside_original_text_mask_support(monkeypatch):
     assert leftover.x1 >= target.x1 and leftover.y1 >= target.y1
     assert leftover.x2 <= target.x2 and leftover.y2 <= target.y2
     assert (leftover.x1, leftover.y1, leftover.x2, leftover.y2) == (81, 86, 119, 114)
+
+
+def test_dedupe_raw_boxes_drops_cross_pass_duplicates_before_ctd():
+    from app.detector.kiuyha_detector import _dedupe_raw_boxes
+
+    raw = [
+        (100, 200, 300, 340, 0.92),
+        (102, 201, 298, 339, 0.78),  # duplicate from page pass (IoU ~ 0.96)
+        (110, 210, 240, 245, 0.70),  # nested line inside block (IoU ~ 0.16) -> kept
+        (400, 200, 600, 340, 0.85),  # distinct neighbor -> kept
+    ]
+    deduped = _dedupe_raw_boxes(raw)
+    assert len(deduped) == 3
+    assert (100, 200, 300, 340, 0.92) in deduped
+    assert (102, 201, 298, 339, 0.78) not in deduped
+
+
+def test_overview_pass_catches_medium_stylized_text_and_requires_ctd_confirmation(monkeypatch):
+    from app.detector.kiuyha_detector import OVERVIEW_GAP, OVERVIEW_PAD_Y, OVERVIEW_WIDTHS
+
+    image = np.full((2400, 900, 3), 255, np.uint8)
+    cv2.putText(image, "WHOA!", (160, 1280), cv2.FONT_HERSHEY_DUPLEX, 1.5, (10, 10, 10), 4)
+
+    size_h, size_w = 1280, 1280
+    scaled = []
+    for tw in OVERVIEW_WIDTHS:
+        sc = min(1.0, tw / 900, (size_h - OVERVIEW_PAD_Y) / 2400)
+        scaled.append((max(1, int(round(900 * sc))), max(1, int(round(2400 * sc))), sc))
+    total_w = sum(d[0] for d in scaled) + OVERVIEW_GAP * (len(scaled) - 1)
+    ox = max(OVERVIEW_GAP, (size_w - total_w) // 2)
+    _sw, sh, sc = scaled[0]
+    oy = (size_h - sh) // 2
+    med_in_canvas = (ox + 140 * sc, oy + 1210 * sc, ox + 380 * sc, oy + 1310 * sc, 0.78)
+
+    detector = KiuyhaTextDetector("unused", session=_FixedSession([]), aux_session=_FixedSession([med_in_canvas]))
+    medium_set: set[tuple[int, int, int, int]] = set()
+    ov = detector._overview_boxes(image, [], medium_out=medium_set)
+    assert len(ov) == 1 and len(medium_set) == 1
+
+    # With working CTD (autouse ink_model), medium aux text IS kept
+    kept = detector.text_boxes(image)
+    assert len(kept) == 1
+
+    # With blind CTD, medium aux text does NOT fall back to a blind maskless rectangle
+    _blind_ctd(monkeypatch)
+    assert detector.text_boxes(image) == []
+
+
+def test_rescue_skips_already_covered_low_boxes_without_running_ctd(monkeypatch):
+    from app.detector import kiuyha_detector as kd
+
+    image = _two_words()
+    ctd_calls = []
+    orig_letter_mask = kd.letter_mask
+
+    def spy_letter_mask(*args, **kwargs):
+        ctd_calls.append(args[1])
+        return orig_letter_mask(*args, **kwargs)
+
+    monkeypatch.setattr(kd, "letter_mask", spy_letter_mask)
+    session = _GivenSession([(80, 100, 400, 180, 0.90), (115, 125, 255, 155, 0.15)])
+    detector = KiuyhaTextDetector("unused", session=session)
+    boxes = detector.text_boxes(image)
+    assert len(boxes) == 1
+    assert len(session.blobs) == 1, "dynamic session runs once; rescue reuses cached low boxes"
+    assert len(ctd_calls) == 1, "covered low box is skipped before running CTD"
