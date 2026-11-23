@@ -1,0 +1,1156 @@
+run	Set up job	﻿2026-11-22T16:22:52.5573025Z Current runner version: '2.338.2'
+run	Set up job	2026-11-22T16:22:52.5591067Z ##[group]Runner Image Provisioner
+run	Set up job	2026-11-22T16:22:52.5591611Z Hosted Compute Agent
+run	Set up job	2026-11-22T16:22:52.5592033Z Version: 20261111.635
+run	Set up job	2026-11-22T16:22:52.5592411Z Commit: b8a594ea514ff44cadb5342986c68b1eac6e22ed
+run	Set up job	2026-11-22T16:22:52.5592895Z Build Date: 2026-11-11T01:49:01Z
+run	Set up job	2026-11-22T16:22:52.5593303Z Worker ID: {b8491b28-08c2-44d4-adf7-8c83830c17b4}
+run	Set up job	2026-11-22T16:22:52.5593710Z Region: westus2
+run	Set up job	2026-11-22T16:22:52.5594086Z Cloud: Azure
+run	Set up job	2026-11-22T16:22:52.5594435Z ##[endgroup]
+run	Set up job	2026-11-22T16:22:52.5595226Z ##[group]Operating System
+run	Set up job	2026-11-22T16:22:52.5595610Z Ubuntu
+run	Set up job	2026-11-22T16:22:52.5595945Z 22.04.5
+run	Set up job	2026-11-22T16:22:52.5596257Z LTS
+run	Set up job	2026-11-22T16:22:52.5596784Z ##[endgroup]
+run	Set up job	2026-11-22T16:22:52.5597157Z ##[group]Runner Image
+run	Set up job	2026-11-22T16:22:52.5597521Z Image: ubuntu-22.04
+run	Set up job	2026-11-22T16:22:52.5597883Z Version: 20261116.365.1
+run	Set up job	2026-11-22T16:22:52.5598541Z Included Software: https://github.com/actions/runner-images/blob/ubuntu22/20261116.365/images/ubuntu/Ubuntu2204-Readme.md
+run	Set up job	2026-11-22T16:22:52.5599554Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu22%2F20261116.365
+run	Set up job	2026-11-22T16:22:52.5600149Z ##[endgroup]
+run	Set up job	2026-11-22T16:22:52.5600833Z ##[group]GITHUB_TOKEN Permissions
+run	Set up job	2026-11-22T16:22:52.5602149Z Contents: read
+run	Set up job	2026-11-22T16:22:52.5602555Z Metadata: read
+run	Set up job	2026-11-22T16:22:52.5602947Z ##[endgroup]
+run	Set up job	2026-11-22T16:22:52.5604346Z Secret source: Actions
+run	Set up job	2026-11-22T16:22:52.5604932Z Cache mode: write
+run	Set up job	2026-11-22T16:22:52.5605358Z Prepare workflow directory
+run	Set up job	2026-11-22T16:22:52.5848126Z Prepare all required actions
+run	Set up job	2026-11-22T16:22:52.5879895Z Getting action download info
+run	Set up job	2026-11-22T16:22:52.9427854Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+run	Set up job	2026-11-22T16:22:53.5459004Z Download action repository 'actions/setup-python@v5' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+run	Set up job	2026-11-22T16:22:53.6560224Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+run	Set up job	2026-11-22T16:22:53.8034513Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+run	Set up job	2026-11-22T16:22:54.0717309Z Complete job name: run
+run	Run actions/checkout@v4	﻿2026-11-22T16:22:54.1210237Z ##[group]Run actions/checkout@v4
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1210729Z with:
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1211033Z   repository: tuantran00541-spec/manga-translator
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1213454Z   token: ***
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1213708Z   ssh-strict: true
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1213975Z   ssh-user: git
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1214241Z   persist-credentials: true
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1214538Z   clean: true
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1214812Z   sparse-checkout-cone-mode: true
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1215135Z   fetch-depth: 1
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1215394Z   fetch-tags: false
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1215682Z   show-progress: true
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1215953Z   lfs: false
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1216200Z   submodules: false
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1216580Z   set-safe-directory: true
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1216888Z   allow-unsafe-pr-checkout: false
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1217318Z env:
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1217566Z   PYTHONUNBUFFERED: 1
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1217840Z   PYTHONPATH: .
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1218114Z   MANGA_PROCESSING_PIPELINE: fast
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1218433Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1218766Z   MANGA_ORT_PROVIDER: openvino
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1219078Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1219394Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1219729Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1220049Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1220434Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1220840Z   OPENBLAS_NUM_THREADS: 1
+run	Run actions/checkout@v4	2026-11-22T16:22:54.1221126Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:55.1593478Z Syncing repository: tuantran00541-spec/manga-translator
+run	Run actions/checkout@v4	2026-11-22T16:22:55.1594729Z ##[group]Getting Git version info
+run	Run actions/checkout@v4	2026-11-22T16:22:55.1595026Z Working directory is '/home/runner/work/manga-translator/manga-translator'
+run	Run actions/checkout@v4	2026-11-22T16:22:55.1595431Z [command]/usr/bin/git version
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2350452Z git version 2.56.1
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2362917Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2372348Z Temporarily overriding HOME='/home/runner/work/_temp/c1a6fd18-15c4-4e20-9f21-f6dd532aa91b' before making global git config changes
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2373097Z Adding repository directory to the temporary git global config as a safe directory
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2376605Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/manga-translator/manga-translator
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2398507Z Deleting the contents of '/home/runner/work/manga-translator/manga-translator'
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2400519Z ##[group]Initializing the repository
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2402952Z [command]/usr/bin/git init /home/runner/work/manga-translator/manga-translator
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2607677Z hint: Using 'master' as the name for the initial branch. This default branch name
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2608292Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2608850Z hint: to use in all of your new repositories, which will suppress this warning,
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2609294Z hint: call:
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2609531Z hint:
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2609836Z hint: 	git config --global init.defaultBranch <name>
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2610186Z hint:
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2668674Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2669229Z hint: 'development'. The just-created branch can be renamed via this command:
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2669676Z hint:
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2669968Z hint: 	git branch -m <name>
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2670305Z hint:
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2670638Z hint: Disable this message with "git config set advice.defaultBranchName false"
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2671216Z Initialized empty Git repository in /home/runner/work/manga-translator/manga-translator/.git/
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2672276Z [command]/usr/bin/git remote add origin https://github.com/tuantran00541-spec/manga-translator
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2673054Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2673349Z ##[group]Disabling automatic garbage collection
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2674616Z [command]/usr/bin/git config --local gc.auto 0
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2691017Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2691465Z ##[group]Setting up auth
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2694968Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+run	Run actions/checkout@v4	2026-11-22T16:22:55.2710594Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3595191Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3611789Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3711571Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3728678Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3824538Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3845315Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3845668Z ##[group]Fetching the repository
+run	Run actions/checkout@v4	2026-11-22T16:22:55.3850581Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +a4e53f8df87d060f6d11bb8790c08e0c53a58c4e:refs/remotes/origin/main
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9476491Z From https://github.com/tuantran00541-spec/manga-translator
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9476907Z  * [new ref]         a4e53f8df87d060f6d11bb8790c08e0c53a58c4e -> origin/main
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9480256Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9480563Z ##[group]Determining the checkout info
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9482212Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9486230Z [command]/usr/bin/git sparse-checkout disable
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9510654Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9527442Z ##[group]Checking out the ref
+run	Run actions/checkout@v4	2026-11-22T16:22:57.9530031Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+run	Run actions/checkout@v4	2026-11-22T16:22:58.2532579Z Switched to a new branch 'main'
+run	Run actions/checkout@v4	2026-11-22T16:22:58.2533018Z branch 'main' set up to track 'origin/main'.
+run	Run actions/checkout@v4	2026-11-22T16:22:58.2546007Z ##[endgroup]
+run	Run actions/checkout@v4	2026-11-22T16:22:58.2573206Z [command]/usr/bin/git log -1 --format=%H
+run	Run actions/checkout@v4	2026-11-22T16:22:58.2586636Z a4e53f8df87d060f6d11bb8790c08e0c53a58c4e
+run	Run actions/setup-python@v5	﻿2026-11-22T16:22:58.2751254Z ##[group]Run actions/setup-python@v5
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2751439Z with:
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2751566Z   python-version: 3.12
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2751699Z   check-latest: false
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2752993Z   token: ***
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2753120Z   update-environment: true
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2753268Z   allow-prereleases: false
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2753419Z   freethreaded: false
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2753546Z env:
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2753658Z   PYTHONUNBUFFERED: 1
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2753785Z   PYTHONPATH: .
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2753915Z   MANGA_PROCESSING_PIPELINE: fast
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2754066Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2754211Z   MANGA_ORT_PROVIDER: openvino
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2754356Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2754509Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2754667Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2754810Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2754989Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2755207Z   OPENBLAS_NUM_THREADS: 1
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.2755338Z ##[endgroup]
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.3594343Z ##[group]Installed versions
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.4137510Z (node:2503) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.4137964Z (Use `node --trace-deprecation ...` to show where the warning was created)
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.4138437Z Successfully set up CPython (3.12.16)
+run	Run actions/setup-python@v5	2026-11-22T16:22:58.4138835Z ##[endgroup]
+run	Install runtime	﻿2026-11-22T16:22:58.4243291Z ##[group]Run python -m pip install --only-binary :all: -r requirements.txt
+run	Install runtime	2026-11-22T16:22:58.4243885Z ^[[36;1mpython -m pip install --only-binary :all: -r requirements.txt^[[0m
+run	Install runtime	2026-11-22T16:22:58.4244332Z ^[[36;1mpython -m playwright install --with-deps chromium^[[0m
+run	Install runtime	2026-11-22T16:22:58.4440741Z shell: /usr/bin/bash -e {0}
+run	Install runtime	2026-11-22T16:22:58.4440972Z env:
+run	Install runtime	2026-11-22T16:22:58.4441120Z   PYTHONUNBUFFERED: 1
+run	Install runtime	2026-11-22T16:22:58.4441257Z   PYTHONPATH: .
+run	Install runtime	2026-11-22T16:22:58.4441393Z   MANGA_PROCESSING_PIPELINE: fast
+run	Install runtime	2026-11-22T16:22:58.4441553Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Install runtime	2026-11-22T16:22:58.4441700Z   MANGA_ORT_PROVIDER: openvino
+run	Install runtime	2026-11-22T16:22:58.4441851Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Install runtime	2026-11-22T16:22:58.4442008Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Install runtime	2026-11-22T16:22:58.4442177Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Install runtime	2026-11-22T16:22:58.4442342Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Install runtime	2026-11-22T16:22:58.4442524Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Install runtime	2026-11-22T16:22:58.4442769Z   OPENBLAS_NUM_THREADS: 1
+run	Install runtime	2026-11-22T16:22:58.4443075Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Install runtime	2026-11-22T16:22:58.4443431Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Install runtime	2026-11-22T16:22:58.4443854Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Install runtime	2026-11-22T16:22:58.4444160Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Install runtime	2026-11-22T16:22:58.4444451Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Install runtime	2026-11-22T16:22:58.4444707Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Install runtime	2026-11-22T16:22:58.4444902Z ##[endgroup]
+run	Install runtime	2026-11-22T16:23:00.8064152Z Ignoring onnxruntime-openvino: markers 'platform_system == "Windows" and platform_machine == "AMD64"' don't match your environment
+run	Install runtime	2026-11-22T16:23:00.8065110Z Ignoring onnxruntime: markers 'platform_system == "Darwin" or (platform_system == "Linux" and platform_machine != "x86_64") or (platform_system == "Windows" and platform_machine != "AMD64")' don't match your environment
+run	Install runtime	2026-11-22T16:23:00.8066923Z Ignoring pywebview: markers 'platform_system == "Windows" or platform_system == "Darwin"' don't match your environment
+run	Install runtime	2026-11-22T16:23:00.8893806Z Collecting fastapi==0.115.0 (from -r requirements.txt (line 1))
+run	Install runtime	2026-11-22T16:23:00.9373673Z   Downloading fastapi-0.115.0-py3-none-any.whl.metadata (27 kB)
+run	Install runtime	2026-11-22T16:23:00.9644574Z Collecting uvicorn==0.30.6 (from uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:00.9706917Z   Downloading uvicorn-0.30.6-py3-none-any.whl.metadata (6.6 kB)
+run	Install runtime	2026-11-22T16:23:00.9892397Z Collecting requests==2.32.3 (from -r requirements.txt (line 3))
+run	Install runtime	2026-11-22T16:23:00.9956030Z   Downloading requests-2.32.3-py3-none-any.whl.metadata (4.6 kB)
+run	Install runtime	2026-11-22T16:23:01.0238681Z Collecting chardet==5.2.0 (from -r requirements.txt (line 5))
+run	Install runtime	2026-11-22T16:23:01.0338168Z   Downloading chardet-5.2.0-py3-none-any.whl.metadata (3.4 kB)
+run	Install runtime	2026-11-22T16:23:01.0489979Z Collecting beautifulsoup4==4.12.3 (from -r requirements.txt (line 6))
+run	Install runtime	2026-11-22T16:23:01.0552677Z   Downloading beautifulsoup4-4.12.3-py3-none-any.whl.metadata (3.8 kB)
+run	Install runtime	2026-11-22T16:23:01.2521023Z Collecting lxml==5.3.0 (from -r requirements.txt (line 7))
+run	Install runtime	2026-11-22T16:23:01.2595878Z   Downloading lxml-5.3.0-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (3.8 kB)
+run	Install runtime	2026-11-22T16:23:01.2902966Z Collecting playwright==1.47.0 (from -r requirements.txt (line 8))
+run	Install runtime	2026-11-22T16:23:01.2969301Z   Downloading playwright-1.47.0-py3-none-manylinux1_x86_64.whl.metadata (3.5 kB)
+run	Install runtime	2026-11-22T16:23:01.3101019Z Collecting playwright-stealth==2.0.3 (from -r requirements.txt (line 9))
+run	Install runtime	2026-11-22T16:23:01.3192617Z   Downloading playwright_stealth-2.0.3-py3-none-any.whl.metadata (4.5 kB)
+run	Install runtime	2026-11-22T16:23:01.4490401Z Collecting Pillow==10.4.0 (from -r requirements.txt (line 10))
+run	Install runtime	2026-11-22T16:23:01.4584939Z   Downloading pillow-10.4.0-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (9.2 kB)
+run	Install runtime	2026-11-22T16:23:01.6073249Z Collecting numpy==1.26.4 (from -r requirements.txt (line 11))
+run	Install runtime	2026-11-22T16:23:01.6142570Z   Downloading numpy-1.26.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (61 kB)
+run	Install runtime	2026-11-22T16:23:01.6674167Z Collecting opencv-contrib-python==4.10.0.84 (from -r requirements.txt (line 12))
+run	Install runtime	2026-11-22T16:23:01.6740989Z   Downloading opencv_contrib_python-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (20 kB)
+run	Install runtime	2026-11-22T16:23:01.7577134Z Collecting onnxruntime-openvino==1.24.1 (from -r requirements.txt (line 15))
+run	Install runtime	2026-11-22T16:23:01.7700030Z   Downloading onnxruntime_openvino-1.24.1-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (4.9 kB)
+run	Install runtime	2026-11-22T16:23:01.8014874Z Collecting paddleocr==3.7.0 (from -r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:01.8097765Z   Downloading paddleocr-3.7.0-py3-none-any.whl.metadata (28 kB)
+run	Install runtime	2026-11-22T16:23:01.8347101Z Collecting paddlepaddle==3.2.2 (from -r requirements.txt (line 18))
+run	Install runtime	2026-11-22T16:23:01.8462697Z   Downloading paddlepaddle-3.2.2-cp312-cp312-manylinux1_x86_64.whl.metadata (8.8 kB)
+run	Install runtime	2026-11-22T16:23:01.8728065Z Collecting pyclipper==1.3.0.post5 (from -r requirements.txt (line 19))
+run	Install runtime	2026-11-22T16:23:01.8821948Z   Downloading pyclipper-1.3.0.post5-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (9.0 kB)
+run	Install runtime	2026-11-22T16:23:01.9458057Z Collecting shapely==2.0.6 (from -r requirements.txt (line 20))
+run	Install runtime	2026-11-22T16:23:01.9525916Z   Downloading shapely-2.0.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (7.0 kB)
+run	Install runtime	2026-11-22T16:23:01.9669509Z Collecting python-multipart==0.0.20 (from -r requirements.txt (line 21))
+run	Install runtime	2026-11-22T16:23:01.9732401Z   Downloading python_multipart-0.0.20-py3-none-any.whl.metadata (1.8 kB)
+run	Install runtime	2026-11-22T16:23:02.0481320Z Collecting pydantic==2.9.2 (from -r requirements.txt (line 22))
+run	Install runtime	2026-11-22T16:23:02.0550681Z   Downloading pydantic-2.9.2-py3-none-any.whl.metadata (149 kB)
+run	Install runtime	2026-11-22T16:23:02.0836796Z Collecting filelock==3.16.1 (from -r requirements.txt (line 23))
+run	Install runtime	2026-11-22T16:23:02.0899819Z   Downloading filelock-3.16.1-py3-none-any.whl.metadata (2.9 kB)
+run	Install runtime	2026-11-22T16:23:02.1035661Z Collecting loguru==0.7.2 (from -r requirements.txt (line 24))
+run	Install runtime	2026-11-22T16:23:02.1109190Z   Downloading loguru-0.7.2-py3-none-any.whl.metadata (23 kB)
+run	Install runtime	2026-11-22T16:23:02.1614702Z Collecting psutil==6.1.1 (from -r requirements.txt (line 25))
+run	Install runtime	2026-11-22T16:23:02.1696909Z   Downloading psutil-6.1.1-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (22 kB)
+run	Install runtime	2026-11-22T16:23:02.1934090Z Collecting keyring==25.6.0 (from -r requirements.txt (line 27))
+run	Install runtime	2026-11-22T16:23:02.2007945Z   Downloading keyring-25.6.0-py3-none-any.whl.metadata (20 kB)
+run	Install runtime	2026-11-22T16:23:02.2212672Z Collecting starlette<0.39.0,>=0.37.2 (from fastapi==0.115.0->-r requirements.txt (line 1))
+run	Install runtime	2026-11-22T16:23:02.2275830Z   Downloading starlette-0.38.6-py3-none-any.whl.metadata (6.0 kB)
+run	Install runtime	2026-11-22T16:23:02.2427542Z Collecting typing-extensions>=4.8.0 (from fastapi==0.115.0->-r requirements.txt (line 1))
+run	Install runtime	2026-11-22T16:23:02.2492397Z   Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+run	Install runtime	2026-11-22T16:23:02.2614642Z Collecting annotated-types>=0.6.0 (from pydantic==2.9.2->-r requirements.txt (line 22))
+run	Install runtime	2026-11-22T16:23:02.2680913Z   Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+run	Install runtime	2026-11-22T16:23:02.7745403Z Collecting pydantic-core==2.23.4 (from pydantic==2.9.2->-r requirements.txt (line 22))
+run	Install runtime	2026-11-22T16:23:02.7814240Z   Downloading pydantic_core-2.23.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.6 kB)
+run	Install runtime	2026-11-22T16:23:02.7990912Z Collecting click>=7.0 (from uvicorn==0.30.6->uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:02.8054304Z   Downloading click-8.5.1-py3-none-any.whl.metadata (2.6 kB)
+run	Install runtime	2026-11-22T16:23:02.8179435Z Collecting h11>=0.8 (from uvicorn==0.30.6->uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:02.8247111Z   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+run	Install runtime	2026-11-22T16:23:02.9139402Z Collecting charset-normalizer<4,>=2 (from requests==2.32.3->-r requirements.txt (line 3))
+run	Install runtime	2026-11-22T16:23:02.9209211Z   Downloading charset_normalizer-3.5.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (46 kB)
+run	Install runtime	2026-11-22T16:23:02.9375631Z Collecting idna<4,>=2.5 (from requests==2.32.3->-r requirements.txt (line 3))
+run	Install runtime	2026-11-22T16:23:02.9445186Z   Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+run	Install runtime	2026-11-22T16:23:02.9639107Z Collecting urllib3<3,>=1.21.1 (from requests==2.32.3->-r requirements.txt (line 3))
+run	Install runtime	2026-11-22T16:23:02.9705278Z   Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+run	Install runtime	2026-11-22T16:23:02.9876244Z Collecting certifi>=2017.4.17 (from requests==2.32.3->-r requirements.txt (line 3))
+run	Install runtime	2026-11-22T16:23:02.9939225Z   Downloading certifi-2026.11.20-py3-none-any.whl.metadata (2.5 kB)
+run	Install runtime	2026-11-22T16:23:03.0103702Z Collecting soupsieve>1.2 (from beautifulsoup4==4.12.3->-r requirements.txt (line 6))
+run	Install runtime	2026-11-22T16:23:03.0165974Z   Downloading soupsieve-4.1.3-py3-none-any.whl.metadata (4.4 kB)
+run	Install runtime	2026-11-22T16:23:03.1212127Z Collecting greenlet==3.0.3 (from playwright==1.47.0->-r requirements.txt (line 8))
+run	Install runtime	2026-11-22T16:23:03.1292204Z   Downloading greenlet-3.0.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (3.8 kB)
+run	Install runtime	2026-11-22T16:23:03.1440791Z Collecting pyee==12.0.0 (from playwright==1.47.0->-r requirements.txt (line 8))
+run	Install runtime	2026-11-22T16:23:03.1506208Z   Downloading pyee-12.0.0-py3-none-any.whl.metadata (2.8 kB)
+run	Install runtime	2026-11-22T16:23:03.1696536Z Collecting flatbuffers (from onnxruntime-openvino==1.24.1->-r requirements.txt (line 15))
+run	Install runtime	2026-11-22T16:23:03.1763399Z   Downloading flatbuffers-25.12.19-py2.py3-none-any.whl.metadata (1.0 kB)
+run	Install runtime	2026-11-22T16:23:03.1917022Z Collecting packaging (from onnxruntime-openvino==1.24.1->-r requirements.txt (line 15))
+run	Install runtime	2026-11-22T16:23:03.1979402Z   Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+run	Install runtime	2026-11-22T16:23:03.3330501Z Collecting protobuf (from onnxruntime-openvino==1.24.1->-r requirements.txt (line 15))
+run	Install runtime	2026-11-22T16:23:03.3399069Z   Downloading protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl.metadata (595 bytes)
+run	Install runtime	2026-11-22T16:23:03.3567366Z Collecting sympy (from onnxruntime-openvino==1.24.1->-r requirements.txt (line 15))
+run	Install runtime	2026-11-22T16:23:03.3633127Z   Downloading sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+run	Install runtime	2026-11-22T16:23:03.3826624Z Collecting paddlex<3.8.0,>=3.7.0 (from paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:03.3901569Z   Downloading paddlex-3.7.2-py3-none-any.whl.metadata (80 kB)
+run	Install runtime	2026-11-22T16:23:03.4318410Z Collecting PyYAML>=6 (from paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:03.4383605Z   Downloading pyyaml-6.0.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.3 kB)
+run	Install runtime	2026-11-22T16:23:03.7798435Z Collecting aiohttp>=3.8.0 (from paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:03.7878998Z   Downloading aiohttp-3.14.5-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (8.3 kB)
+run	Install runtime	2026-11-22T16:23:03.8473565Z Collecting httpx (from paddlepaddle==3.2.2->-r requirements.txt (line 18))
+run	Install runtime	2026-11-22T16:23:03.8539871Z   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+run	Install runtime	2026-11-22T16:23:03.8718059Z Collecting opt_einsum==3.3.0 (from paddlepaddle==3.2.2->-r requirements.txt (line 18))
+run	Install runtime	2026-11-22T16:23:03.8810790Z   Downloading opt_einsum-3.3.0-py3-none-any.whl.metadata (6.5 kB)
+run	Install runtime	2026-11-22T16:23:03.8990174Z Collecting networkx (from paddlepaddle==3.2.2->-r requirements.txt (line 18))
+run	Install runtime	2026-11-22T16:23:03.9054614Z   Downloading networkx-3.7-py3-none-any.whl.metadata (6.7 kB)
+run	Install runtime	2026-11-22T16:23:03.9914435Z Collecting safetensors>=0.6.0 (from paddlepaddle==3.2.2->-r requirements.txt (line 18))
+run	Install runtime	2026-11-22T16:23:03.9989875Z   Downloading safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.2 kB)
+run	Install runtime	2026-11-22T16:23:04.0174667Z Collecting SecretStorage>=3.2 (from keyring==25.6.0->-r requirements.txt (line 27))
+run	Install runtime	2026-11-22T16:23:04.0239326Z   Downloading secretstorage-3.5.0-py3-none-any.whl.metadata (4.0 kB)
+run	Install runtime	2026-11-22T16:23:04.0360186Z Collecting jeepney>=0.4.2 (from keyring==25.6.0->-r requirements.txt (line 27))
+run	Install runtime	2026-11-22T16:23:04.0422390Z   Downloading jeepney-0.9.0-py3-none-any.whl.metadata (1.2 kB)
+run	Install runtime	2026-11-22T16:23:04.0546109Z Collecting jaraco.classes (from keyring==25.6.0->-r requirements.txt (line 27))
+run	Install runtime	2026-11-22T16:23:04.0607928Z   Downloading jaraco.classes-3.4.0-py3-none-any.whl.metadata (2.6 kB)
+run	Install runtime	2026-11-22T16:23:04.0758694Z Collecting jaraco.functools (from keyring==25.6.0->-r requirements.txt (line 27))
+run	Install runtime	2026-11-22T16:23:04.0821445Z   Downloading jaraco_functools-4.6.0-py3-none-any.whl.metadata (2.9 kB)
+run	Install runtime	2026-11-22T16:23:04.0954445Z Collecting jaraco.context (from keyring==25.6.0->-r requirements.txt (line 27))
+run	Install runtime	2026-11-22T16:23:04.1022196Z   Downloading jaraco_context-6.1.2-py3-none-any.whl.metadata (4.2 kB)
+run	Install runtime	2026-11-22T16:23:04.1350976Z Collecting httptools>=0.5.0 (from uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:04.1413870Z   Downloading httptools-0.9.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+run	Install runtime	2026-11-22T16:23:04.1561216Z Collecting python-dotenv>=0.13 (from uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:04.1625961Z   Downloading python_dotenv-1.2.4-py3-none-any.whl.metadata (29 kB)
+run	Install runtime	2026-11-22T16:23:04.1931848Z Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0 (from uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:04.1995018Z   Downloading uvloop-0.23.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.1 kB)
+run	Install runtime	2026-11-22T16:23:04.2531306Z Collecting watchfiles>=0.13 (from uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:04.2598297Z   Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+run	Install runtime	2026-11-22T16:23:04.3522629Z Collecting websockets>=10.4 (from uvicorn[standard]==0.30.6->-r requirements.txt (line 2))
+run	Install runtime	2026-11-22T16:23:04.3594874Z   Downloading websockets-17.4-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.3 kB)
+run	Install runtime	2026-11-22T16:23:04.3752795Z Collecting aistudio-sdk>=0.3.5 (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.3835177Z   Downloading aistudio_sdk-0.3.9-py3-none-any.whl.metadata (1.2 kB)
+run	Install runtime	2026-11-22T16:23:04.4014801Z Collecting colorlog (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.4081095Z   Downloading colorlog-6.12.0-py3-none-any.whl.metadata (11 kB)
+run	Install runtime	2026-11-22T16:23:04.4447883Z Collecting huggingface-hub (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.4514536Z   Downloading huggingface_hub-2.4.0-py3-none-any.whl.metadata (16 kB)
+run	Install runtime	2026-11-22T16:23:04.4767785Z Collecting modelscope>=1.28.0 (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.4887077Z   Downloading modelscope-1.40.3-py3-none-any.whl.metadata (43 kB)
+run	Install runtime	2026-11-22T16:23:04.6096183Z Collecting pandas>=1.3 (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.6165254Z   Downloading pandas-3.1.1-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (16 kB)
+run	Install runtime	2026-11-22T16:23:04.6777039Z Collecting prettytable (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.6842621Z   Downloading prettytable-3.19.0-py3-none-any.whl.metadata (37 kB)
+run	Install runtime	2026-11-22T16:23:04.6977960Z Collecting py-cpuinfo (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.7051987Z   Downloading py_cpuinfo-9.0.0-py3-none-any.whl.metadata (794 bytes)
+run	Install runtime	2026-11-22T16:23:04.7086898Z Collecting PyYAML>=6 (from paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.7154368Z   Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+run	Install runtime	2026-11-22T16:23:04.7994428Z Collecting ruamel.yaml (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.8069374Z   Downloading ruamel_yaml-0.19.1-py3-none-any.whl.metadata (16 kB)
+run	Install runtime	2026-11-22T16:23:04.8688213Z Collecting ujson (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.8803184Z   Downloading ujson-6.1.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (10.0 kB)
+run	Install runtime	2026-11-22T16:23:04.8980537Z Collecting imagesize (from paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.9044203Z   Downloading imagesize-2.0.1-py3-none-any.whl.metadata (7.0 kB)
+run	Install runtime	2026-11-22T16:23:04.9729957Z Collecting pypdfium2>=4 (from paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:04.9798569Z   Downloading pypdfium2-5.15.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (64 kB)
+run	Install runtime	2026-11-22T16:23:05.0433673Z Collecting python-bidi (from paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.0512196Z   Downloading python_bidi-0.6.12-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.3 kB)
+run	Install runtime	2026-11-22T16:23:05.0693138Z Collecting anyio<5,>=3.4.0 (from starlette<0.39.0,>=0.37.2->fastapi==0.115.0->-r requirements.txt (line 1))
+run	Install runtime	2026-11-22T16:23:05.0759409Z   Downloading anyio-4.16.0-py3-none-any.whl.metadata (4.7 kB)
+run	Install runtime	2026-11-22T16:23:05.0933706Z Collecting aiohappyeyeballs>=2.5.0 (from aiohttp>=3.8.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.0997435Z   Downloading aiohappyeyeballs-2.7.1-py3-none-any.whl.metadata (5.9 kB)
+run	Install runtime	2026-11-22T16:23:05.1114840Z Collecting aiosignal>=1.4.0 (from aiohttp>=3.8.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.1182295Z   Downloading aiosignal-1.4.0-py3-none-any.whl.metadata (3.7 kB)
+run	Install runtime	2026-11-22T16:23:05.1320508Z Collecting attrs>=17.3.0 (from aiohttp>=3.8.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.1386845Z   Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
+run	Install runtime	2026-11-22T16:23:05.1916268Z Collecting frozenlist>=1.1.1 (from aiohttp>=3.8.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.2009531Z   Downloading frozenlist-1.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (20 kB)
+run	Install runtime	2026-11-22T16:23:05.5209900Z Collecting multidict<8.0,>=4.5 (from aiohttp>=3.8.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.5282896Z   Downloading multidict-7.2.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (6.1 kB)
+run	Install runtime	2026-11-22T16:23:05.5871126Z Collecting propcache>=0.2.0 (from aiohttp>=3.8.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.5938995Z   Downloading propcache-0.5.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (25 kB)
+run	Install runtime	2026-11-22T16:23:05.7769529Z Collecting yarl<2.0,>=1.25.1 (from aiohttp>=3.8.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.7841516Z   Downloading yarl-1.25.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (111 kB)
+run	Install runtime	2026-11-22T16:23:05.8204387Z Collecting tqdm (from aistudio-sdk>=0.3.5->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.8268035Z   Downloading tqdm-4.70.1-py3-none-any.whl.metadata (57 kB)
+run	Install runtime	2026-11-22T16:23:05.8481707Z Collecting bce-python-sdk (from aistudio-sdk>=0.3.5->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.8584079Z   Downloading bce_python_sdk-0.9.79-py3-none-any.whl.metadata (558 bytes)
+run	Install runtime	2026-11-22T16:23:05.8781609Z Collecting modelscope-hub>=0.7.0 (from modelscope>=1.28.0->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.8884757Z   Downloading modelscope_hub-0.7.1-py3-none-any.whl.metadata (67 kB)
+run	Install runtime	2026-11-22T16:23:05.9534384Z Collecting setuptools (from modelscope>=1.28.0->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:05.9603371Z   Downloading setuptools-84.2.1-py3-none-any.whl.metadata (6.6 kB)
+run	Install runtime	2026-11-22T16:23:06.1028099Z Collecting cryptography>=41 (from modelscope-hub>=0.7.0->modelscope>=1.28.0->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.1096673Z   Downloading cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.4 kB)
+run	Install runtime	2026-11-22T16:23:06.2548045Z Collecting cffi>=2.0.0 (from cryptography>=41->modelscope-hub>=0.7.0->modelscope>=1.28.0->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.2618168Z   Downloading cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.5 kB)
+run	Install runtime	2026-11-22T16:23:06.2762369Z Collecting pycparser (from cffi>=2.0.0->cryptography>=41->modelscope-hub>=0.7.0->modelscope>=1.28.0->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.2830586Z   Downloading pycparser-3.12-py3-none-any.whl.metadata (9.7 kB)
+run	Install runtime	2026-11-22T16:23:06.2875089Z Collecting pandas>=1.3 (from paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.2959741Z   Downloading pandas-3.1.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (18 kB)
+run	Install runtime	2026-11-22T16:23:06.3039425Z INFO: pip is looking at multiple versions of pandas to determine which version is compatible with other requirements. This could take a while.
+run	Install runtime	2026-11-22T16:23:06.3125335Z   Downloading pandas-3.0.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (79 kB)
+run	Install runtime	2026-11-22T16:23:06.3386451Z Collecting python-dateutil>=2.8.2 (from pandas>=1.3->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.3451295Z   Downloading python_dateutil-4.0.0-py3-none-any.whl.metadata (7.3 kB)
+run	Install runtime	2026-11-22T16:23:06.3624235Z Collecting tzdata (from python-dateutil>=2.8.2->pandas>=1.3->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.3701310Z   Downloading tzdata-2026.6-py2.py3-none-any.whl.metadata (1.4 kB)
+run	Install runtime	2026-11-22T16:23:06.4494072Z Collecting pycryptodome>=3.8.0 (from bce-python-sdk->aistudio-sdk>=0.3.5->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.4563789Z   Downloading pycryptodome-4.6.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (5.2 kB)
+run	Install runtime	2026-11-22T16:23:06.4695811Z Collecting future>=0.6.0 (from bce-python-sdk->aistudio-sdk>=0.3.5->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.4760426Z   Downloading future-1.0.0-py3-none-any.whl.metadata (4.0 kB)
+run	Install runtime	2026-11-22T16:23:06.4895695Z Collecting six>=1.4.0 (from bce-python-sdk->aistudio-sdk>=0.3.5->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.4957577Z   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+run	Install runtime	2026-11-22T16:23:06.5624011Z Collecting crc32c>=2.2.post0 (from bce-python-sdk->aistudio-sdk>=0.3.5->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.5834757Z   Downloading crc32c-2.9.post0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (7.8 kB)
+run	Install runtime	2026-11-22T16:23:06.6036174Z Collecting httpcore==1.* (from httpx->paddlepaddle==3.2.2->-r requirements.txt (line 18))
+run	Install runtime	2026-11-22T16:23:06.6103115Z   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+run	Install runtime	2026-11-22T16:23:06.6318919Z Collecting fsspec>=2023.5.0 (from huggingface-hub->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.6383059Z   Downloading fsspec-2026.9.0-py3-none-any.whl.metadata (10 kB)
+run	Install runtime	2026-11-22T16:23:06.6828741Z Collecting hf-xet<2.0.0,>=1.6.0 (from huggingface-hub->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.6900530Z   Downloading hf_xet-1.8.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+run	Install runtime	2026-11-22T16:23:06.7039955Z Collecting httpx2<3,>=2.0.0 (from huggingface-hub->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.7106441Z   Downloading httpx2-2.16.2-py3-none-any.whl.metadata (10.0 kB)
+run	Install runtime	2026-11-22T16:23:06.7292547Z Collecting httpcore2==2.16.2 (from httpx2<3,>=2.0.0->huggingface-hub->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.7362299Z   Downloading httpcore2-2.16.2-py3-none-any.whl.metadata (28 kB)
+run	Install runtime	2026-11-22T16:23:06.7509288Z Collecting truststore>=0.10 (from httpx2<3,>=2.0.0->huggingface-hub->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.7573801Z   Downloading truststore-0.10.5-py3-none-any.whl.metadata (4.5 kB)
+run	Install runtime	2026-11-22T16:23:06.7776228Z Collecting more-itertools (from jaraco.classes->keyring==25.6.0->-r requirements.txt (line 27))
+run	Install runtime	2026-11-22T16:23:06.7840075Z   Downloading more_itertools-11.2.1-py3-none-any.whl.metadata (42 kB)
+run	Install runtime	2026-11-22T16:23:06.8070869Z Collecting wcwidth>=0.3.5 (from prettytable->paddlex<3.8.0,>=3.7.0->paddlex[ocr-core]<3.8.0,>=3.7.0->paddleocr==3.7.0->-r requirements.txt (line 17))
+run	Install runtime	2026-11-22T16:23:06.8136036Z   Downloading wcwidth-0.9.5-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (26 kB)
+run	Install runtime	2026-11-22T16:23:06.8337152Z Collecting mpmath<1.4,>=1.1.0 (from sympy->onnxruntime-openvino==1.24.1->-r requirements.txt (line 15))
+run	Install runtime	2026-11-22T16:23:06.8432740Z   Downloading mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+run	Install runtime	2026-11-22T16:23:06.8567909Z Downloading fastapi-0.115.0-py3-none-any.whl (94 kB)
+run	Install runtime	2026-11-22T16:23:06.8650193Z Downloading pydantic-2.9.2-py3-none-any.whl (434 kB)
+run	Install runtime	2026-11-22T16:23:06.8791945Z Downloading uvicorn-0.30.6-py3-none-any.whl (62 kB)
+run	Install runtime	2026-11-22T16:23:06.8869947Z Downloading requests-2.32.3-py3-none-any.whl (64 kB)
+run	Install runtime	2026-11-22T16:23:06.8947179Z Downloading chardet-5.2.0-py3-none-any.whl (199 kB)
+run	Install runtime	2026-11-22T16:23:06.9026282Z Downloading beautifulsoup4-4.12.3-py3-none-any.whl (147 kB)
+run	Install runtime	2026-11-22T16:23:06.9200333Z Downloading lxml-5.3.0-cp312-cp312-manylinux_2_28_x86_64.whl (4.9 MB)
+run	Install runtime	2026-11-22T16:23:06.9721177Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.9/4.9 MB 109.6 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:06.9792335Z Downloading playwright-1.47.0-py3-none-manylinux1_x86_64.whl (38.1 MB)
+run	Install runtime	2026-11-22T16:23:07.3890181Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 38.1/38.1 MB 93.1 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:07.3958532Z Downloading playwright_stealth-2.0.3-py3-none-any.whl (34 kB)
+run	Install runtime	2026-11-22T16:23:07.4040145Z Downloading pillow-10.4.0-cp312-cp312-manylinux_2_28_x86_64.whl (4.5 MB)
+run	Install runtime	2026-11-22T16:23:07.4520082Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 97.5 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:07.4591241Z Downloading numpy-1.26.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (18.0 MB)
+run	Install runtime	2026-11-22T16:23:07.5872936Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 18.0/18.0 MB 140.8 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:07.6004820Z Downloading opencv_contrib_python-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (68.7 MB)
+run	Install runtime	2026-11-22T16:23:08.3828626Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 68.7/68.7 MB 87.7 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:08.3934284Z Downloading onnxruntime_openvino-1.24.1-cp312-cp312-manylinux_2_28_x86_64.whl (84.4 MB)
+run	Install runtime	2026-11-22T16:23:09.7423763Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 84.4/84.4 MB 62.5 MB/s  0:00:01
+run	Install runtime	2026-11-22T16:23:09.7524055Z Downloading paddleocr-3.7.0-py3-none-any.whl (146 kB)
+run	Install runtime	2026-11-22T16:23:09.7635706Z Downloading paddlepaddle-3.2.2-cp312-cp312-manylinux1_x86_64.whl (189.3 MB)
+run	Install runtime	2026-11-22T16:23:12.6653764Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 189.3/189.3 MB 65.2 MB/s  0:00:02
+run	Install runtime	2026-11-22T16:23:12.6768868Z Downloading pyclipper-1.3.0.post5-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (966 kB)
+run	Install runtime	2026-11-22T16:23:12.7079033Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 966.6/966.6 kB 24.1 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:12.7243870Z Downloading shapely-2.0.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.5 MB)
+run	Install runtime	2026-11-22T16:23:12.7451993Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.5/2.5 MB 129.6 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:12.7519393Z Downloading python_multipart-0.0.20-py3-none-any.whl (24 kB)
+run	Install runtime	2026-11-22T16:23:12.7598457Z Downloading filelock-3.16.1-py3-none-any.whl (16 kB)
+run	Install runtime	2026-11-22T16:23:12.7682148Z Downloading loguru-0.7.2-py3-none-any.whl (62 kB)
+run	Install runtime	2026-11-22T16:23:12.7772980Z Downloading psutil-6.1.1-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (287 kB)
+run	Install runtime	2026-11-22T16:23:12.7890778Z Downloading keyring-25.6.0-py3-none-any.whl (39 kB)
+run	Install runtime	2026-11-22T16:23:12.8000361Z Downloading greenlet-3.0.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (625 kB)
+run	Install runtime	2026-11-22T16:23:12.8038366Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 625.7/625.7 kB 167.3 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:12.8101443Z Downloading opt_einsum-3.3.0-py3-none-any.whl (65 kB)
+run	Install runtime	2026-11-22T16:23:12.8177743Z Downloading pydantic_core-2.23.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
+run	Install runtime	2026-11-22T16:23:12.8251042Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 310.1 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:12.8312489Z Downloading pyee-12.0.0-py3-none-any.whl (14 kB)
+run	Install runtime	2026-11-22T16:23:12.8388734Z Downloading charset_normalizer-3.5.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (257 kB)
+run	Install runtime	2026-11-22T16:23:12.8468653Z Downloading idna-3.20-py3-none-any.whl (69 kB)
+run	Install runtime	2026-11-22T16:23:12.8571690Z Downloading paddlex-3.7.2-py3-none-any.whl (2.2 MB)
+run	Install runtime	2026-11-22T16:23:12.8775270Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.2/2.2 MB 117.0 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:12.8839107Z Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (767 kB)
+run	Install runtime	2026-11-22T16:23:12.8881903Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 767.5/767.5 kB 185.7 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:12.8950574Z Downloading starlette-0.38.6-py3-none-any.whl (71 kB)
+run	Install runtime	2026-11-22T16:23:12.9072167Z Downloading anyio-4.16.0-py3-none-any.whl (134 kB)
+run	Install runtime	2026-11-22T16:23:12.9166769Z Downloading urllib3-2.8.0-py3-none-any.whl (135 kB)
+run	Install runtime	2026-11-22T16:23:13.0417611Z Downloading aiohttp-3.14.5-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (1.9 MB)
+run	Install runtime	2026-11-22T16:23:13.0553810Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 139.3 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.0628856Z Downloading multidict-7.2.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (516 kB)
+run	Install runtime	2026-11-22T16:23:13.0732279Z Downloading yarl-1.25.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (117 kB)
+run	Install runtime	2026-11-22T16:23:13.0810316Z Downloading aiohappyeyeballs-2.7.1-py3-none-any.whl (15 kB)
+run	Install runtime	2026-11-22T16:23:13.0890138Z Downloading aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+run	Install runtime	2026-11-22T16:23:13.1015960Z Downloading aistudio_sdk-0.3.9-py3-none-any.whl (67 kB)
+run	Install runtime	2026-11-22T16:23:13.1094369Z Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+run	Install runtime	2026-11-22T16:23:13.1170077Z Downloading attrs-26.1.0-py3-none-any.whl (67 kB)
+run	Install runtime	2026-11-22T16:23:13.1245748Z Downloading certifi-2026.11.20-py3-none-any.whl (127 kB)
+run	Install runtime	2026-11-22T16:23:13.1321298Z Downloading click-8.5.1-py3-none-any.whl (126 kB)
+run	Install runtime	2026-11-22T16:23:13.1397770Z Downloading frozenlist-1.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (242 kB)
+run	Install runtime	2026-11-22T16:23:13.1487501Z Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+run	Install runtime	2026-11-22T16:23:13.1568714Z Downloading httptools-0.9.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (552 kB)
+run	Install runtime	2026-11-22T16:23:13.1606100Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 552.8/552.8 kB 142.6 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.1670029Z Downloading jeepney-0.9.0-py3-none-any.whl (49 kB)
+run	Install runtime	2026-11-22T16:23:13.1745660Z Downloading modelscope-1.40.3-py3-none-any.whl (6.1 MB)
+run	Install runtime	2026-11-22T16:23:13.2164782Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.1/6.1 MB 145.0 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.2232556Z Downloading modelscope_hub-0.7.1-py3-none-any.whl (304 kB)
+run	Install runtime	2026-11-22T16:23:13.2332108Z Downloading cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl (4.8 MB)
+run	Install runtime	2026-11-22T16:23:13.2668777Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.8/4.8 MB 141.4 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.2736171Z Downloading cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (221 kB)
+run	Install runtime	2026-11-22T16:23:13.2822535Z Downloading pandas-3.0.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (10.8 MB)
+run	Install runtime	2026-11-22T16:23:13.3984157Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.8/10.8 MB 93.2 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.4051626Z Downloading propcache-0.5.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (250 kB)
+run	Install runtime	2026-11-22T16:23:13.4136143Z Downloading protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl (343 kB)
+run	Install runtime	2026-11-22T16:23:13.4221575Z Downloading pypdfium2-5.15.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (4.0 MB)
+run	Install runtime	2026-11-22T16:23:13.4368978Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.0/4.0 MB 294.2 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.4435427Z Downloading python_dateutil-4.0.0-py3-none-any.whl (92 kB)
+run	Install runtime	2026-11-22T16:23:13.4513958Z Downloading python_dotenv-1.2.4-py3-none-any.whl (23 kB)
+run	Install runtime	2026-11-22T16:23:13.4593372Z Downloading safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (516 kB)
+run	Install runtime	2026-11-22T16:23:13.4682071Z Downloading secretstorage-3.5.0-py3-none-any.whl (15 kB)
+run	Install runtime	2026-11-22T16:23:13.4759096Z Downloading soupsieve-4.1.3-py3-none-any.whl (59 kB)
+run	Install runtime	2026-11-22T16:23:13.4840570Z Downloading tqdm-4.70.1-py3-none-any.whl (80 kB)
+run	Install runtime	2026-11-22T16:23:13.4917989Z Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+run	Install runtime	2026-11-22T16:23:13.4994465Z Downloading uvloop-0.23.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.5 MB)
+run	Install runtime	2026-11-22T16:23:13.5171463Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 273.0 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.5242004Z Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (458 kB)
+run	Install runtime	2026-11-22T16:23:13.5327079Z Downloading websockets-17.4-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (226 kB)
+run	Install runtime	2026-11-22T16:23:13.5498882Z Downloading bce_python_sdk-0.9.79-py3-none-any.whl (440 kB)
+run	Install runtime	2026-11-22T16:23:13.5607390Z Downloading crc32c-2.9.post0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (80 kB)
+run	Install runtime	2026-11-22T16:23:13.5689807Z Downloading future-1.0.0-py3-none-any.whl (491 kB)
+run	Install runtime	2026-11-22T16:23:13.5816612Z Downloading pycryptodome-4.6.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (3.5 MB)
+run	Install runtime	2026-11-22T16:23:13.6265562Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.5/3.5 MB 75.3 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.6355686Z Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+run	Install runtime	2026-11-22T16:23:13.6431207Z Downloading colorlog-6.12.0-py3-none-any.whl (12 kB)
+run	Install runtime	2026-11-22T16:23:13.6514190Z Downloading flatbuffers-25.12.19-py2.py3-none-any.whl (26 kB)
+run	Install runtime	2026-11-22T16:23:13.6597978Z Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+run	Install runtime	2026-11-22T16:23:13.6694574Z Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+run	Install runtime	2026-11-22T16:23:13.6776708Z Downloading huggingface_hub-2.4.0-py3-none-any.whl (857 kB)
+run	Install runtime	2026-11-22T16:23:13.6822160Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 857.0/857.0 kB 229.5 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.6889363Z Downloading hf_xet-1.8.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.3 MB)
+run	Install runtime	2026-11-22T16:23:13.7176655Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.3/4.3 MB 152.7 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.7243457Z Downloading httpx2-2.16.2-py3-none-any.whl (97 kB)
+run	Install runtime	2026-11-22T16:23:13.7324648Z Downloading httpcore2-2.16.2-py3-none-any.whl (85 kB)
+run	Install runtime	2026-11-22T16:23:13.7407461Z Downloading fsspec-2026.9.0-py3-none-any.whl (221 kB)
+run	Install runtime	2026-11-22T16:23:13.7493372Z Downloading packaging-26.3-py3-none-any.whl (129 kB)
+run	Install runtime	2026-11-22T16:23:13.7571509Z Downloading truststore-0.10.5-py3-none-any.whl (19 kB)
+run	Install runtime	2026-11-22T16:23:13.7659293Z Downloading imagesize-2.0.1-py3-none-any.whl (14 kB)
+run	Install runtime	2026-11-22T16:23:13.7740410Z Downloading jaraco.classes-3.4.0-py3-none-any.whl (6.8 kB)
+run	Install runtime	2026-11-22T16:23:13.7829031Z Downloading jaraco_context-6.1.2-py3-none-any.whl (7.9 kB)
+run	Install runtime	2026-11-22T16:23:13.7923948Z Downloading jaraco_functools-4.6.0-py3-none-any.whl (11 kB)
+run	Install runtime	2026-11-22T16:23:13.8011640Z Downloading more_itertools-11.2.1-py3-none-any.whl (74 kB)
+run	Install runtime	2026-11-22T16:23:13.8088529Z Downloading networkx-3.7-py3-none-any.whl (2.1 MB)
+run	Install runtime	2026-11-22T16:23:13.8260144Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 122.0 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.8328293Z Downloading prettytable-3.19.0-py3-none-any.whl (37 kB)
+run	Install runtime	2026-11-22T16:23:13.8404135Z Downloading wcwidth-0.9.5-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (822 kB)
+run	Install runtime	2026-11-22T16:23:13.8445349Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 822.7/822.7 kB 222.9 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.8511244Z Downloading py_cpuinfo-9.0.0-py3-none-any.whl (22 kB)
+run	Install runtime	2026-11-22T16:23:13.8586080Z Downloading pycparser-3.12-py3-none-any.whl (62 kB)
+run	Install runtime	2026-11-22T16:23:13.8684895Z Downloading python_bidi-0.6.12-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (296 kB)
+run	Install runtime	2026-11-22T16:23:13.8766728Z Downloading ruamel_yaml-0.19.1-py3-none-any.whl (118 kB)
+run	Install runtime	2026-11-22T16:23:13.8841431Z Downloading setuptools-84.2.1-py3-none-any.whl (876 kB)
+run	Install runtime	2026-11-22T16:23:13.8882914Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 876.3/876.3 kB 247.5 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.8945810Z Downloading sympy-1.14.0-py3-none-any.whl (6.3 MB)
+run	Install runtime	2026-11-22T16:23:13.9280656Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 190.5 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.9347746Z Downloading mpmath-1.3.0-py3-none-any.whl (536 kB)
+run	Install runtime	2026-11-22T16:23:13.9384417Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 130.8 MB/s  0:00:00
+run	Install runtime	2026-11-22T16:23:13.9451135Z Downloading tzdata-2026.6-py2.py3-none-any.whl (348 kB)
+run	Install runtime	2026-11-22T16:23:13.9550896Z Downloading ujson-6.1.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (56 kB)
+run	Install runtime	2026-11-22T16:23:14.7965540Z Installing collected packages: pyclipper, py-cpuinfo, mpmath, flatbuffers, websockets, wcwidth, uvloop, urllib3, ujson, tzdata, typing-extensions, truststore, tqdm, sympy, soupsieve, six, setuptools, safetensors, ruamel.yaml, PyYAML, python-multipart, python-dotenv, python-bidi, pypdfium2, pycryptodome, pycparser, psutil, protobuf, propcache, Pillow, packaging, numpy, networkx, multidict, more-itertools, lxml, loguru, jeepney, jaraco.context, imagesize, idna, httptools, hf-xet, h11, greenlet, future, fsspec, frozenlist, filelock, crc32c, colorlog, click, charset-normalizer, chardet, certifi, attrs, annotated-types, aiohappyeyeballs, yarl, uvicorn, shapely, requests, python-dateutil, pyee, pydantic-core, prettytable, opt_einsum, opencv-contrib-python, onnxruntime-openvino, jaraco.functools, jaraco.classes, httpcore2, httpcore, cffi, beautifulsoup4, bce-python-sdk, anyio, aiosignal, watchfiles, starlette, pydantic, playwright, pandas, httpx2, httpx, cryptography, aistudio-sdk, aiohttp, SecretStorage, playwright-stealth, paddlepaddle, modelscope-hub, huggingface-hub, fastapi, modelscope, keyring, paddlex, paddleocr
+run	Install runtime	2026-11-22T16:23:40.9223588Z 
+run	Install runtime	2026-11-22T16:23:40.9276183Z Successfully installed Pillow-10.4.0 PyYAML-6.0.2 SecretStorage-3.5.0 aiohappyeyeballs-2.7.1 aiohttp-3.14.5 aiosignal-1.4.0 aistudio-sdk-0.3.9 annotated-types-0.8.0 anyio-4.16.0 attrs-26.1.0 bce-python-sdk-0.9.79 beautifulsoup4-4.12.3 certifi-2026.11.20 cffi-2.1.1 chardet-5.2.0 charset-normalizer-3.5.2 click-8.5.1 colorlog-6.12.0 crc32c-2.9.post0 cryptography-50.0.2 fastapi-0.115.0 filelock-3.16.1 flatbuffers-25.12.19 frozenlist-1.8.0 fsspec-2026.9.0 future-1.0.0 greenlet-3.0.3 h11-0.16.0 hf-xet-1.8.0 httpcore-1.0.9 httpcore2-2.16.2 httptools-0.9.0 httpx-0.28.1 httpx2-2.16.2 huggingface-hub-2.4.0 idna-3.20 imagesize-2.0.1 jaraco.classes-3.4.0 jaraco.context-6.1.2 jaraco.functools-4.6.0 jeepney-0.9.0 keyring-25.6.0 loguru-0.7.2 lxml-5.3.0 modelscope-1.40.3 modelscope-hub-0.7.1 more-itertools-11.2.1 mpmath-1.3.0 multidict-7.2.1 networkx-3.7 numpy-1.26.4 onnxruntime-openvino-1.24.1 opencv-contrib-python-4.10.0.84 opt_einsum-3.3.0 packaging-26.3 paddleocr-3.7.0 paddlepaddle-3.2.2 paddlex-3.7.2 pandas-3.0.6 playwright-1.47.0 playwright-stealth-2.0.3 prettytable-3.19.0 propcache-0.5.4 protobuf-7.36.2 psutil-6.1.1 py-cpuinfo-9.0.0 pyclipper-1.3.0.post5 pycparser-3.12 pycryptodome-4.6.0 pydantic-2.9.2 pydantic-core-2.23.4 pyee-12.0.0 pypdfium2-5.15.2 python-bidi-0.6.12 python-dateutil-4.0.0 python-dotenv-1.2.4 python-multipart-0.0.20 requests-2.32.3 ruamel.yaml-0.19.1 safetensors-0.8.0 setuptools-84.2.1 shapely-2.0.6 six-1.17.0 soupsieve-4.1.3 starlette-0.38.6 sympy-1.14.0 tqdm-4.70.1 truststore-0.10.5 typing-extensions-4.16.0 tzdata-2026.6 ujson-6.1.0 urllib3-2.8.0 uvicorn-0.30.6 uvloop-0.23.0 watchfiles-1.3.0 wcwidth-0.9.5 websockets-17.4 yarl-1.25.1
+run	Install runtime	2026-11-22T16:23:41.4242697Z Installing dependencies...
+run	Install runtime	2026-11-22T16:23:41.4309026Z Switching to root user to install dependencies...
+run	Install runtime	2026-11-22T16:23:41.5658994Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+run	Install runtime	2026-11-22T16:23:41.5904153Z Get:6 https://packages.microsoft.com/ubuntu/22.04/prod jammy InRelease [3632 B]
+run	Install runtime	2026-11-22T16:23:41.6084806Z Hit:2 http://azure.archive.ubuntu.com/ubuntu jammy InRelease
+run	Install runtime	2026-11-22T16:23:41.6117452Z Get:3 http://azure.archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+run	Install runtime	2026-11-22T16:23:41.6129352Z Get:4 http://azure.archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+run	Install runtime	2026-11-22T16:23:41.6138170Z Get:5 http://azure.archive.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+run	Install runtime	2026-11-22T16:23:41.6682216Z Get:7 https://packages.microsoft.com/ubuntu/22.04/prod jammy/main amd64 Packages [1129 kB]
+run	Install runtime	2026-11-22T16:23:41.6908014Z Get:8 https://packages.microsoft.com/ubuntu/22.04/prod jammy/main arm64 Packages [848 kB]
+run	Install runtime	2026-11-22T16:23:41.7461138Z Get:9 http://azure.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [4012 kB]
+run	Install runtime	2026-11-22T16:23:41.7569351Z Get:10 http://azure.archive.ubuntu.com/ubuntu jammy-updates/main Translation-en [587 kB]
+run	Install runtime	2026-11-22T16:23:41.7617618Z Get:11 http://azure.archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [6888 kB]
+run	Install runtime	2026-11-22T16:23:41.7780428Z Get:12 http://azure.archive.ubuntu.com/ubuntu jammy-updates/restricted Translation-en [1326 kB]
+run	Install runtime	2026-11-22T16:23:41.7824239Z Get:13 http://azure.archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1291 kB]
+run	Install runtime	2026-11-22T16:23:41.7856584Z Get:14 http://azure.archive.ubuntu.com/ubuntu jammy-updates/universe Translation-en [327 kB]
+run	Install runtime	2026-11-22T16:23:41.8158935Z Get:15 http://azure.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages [3740 kB]
+run	Install runtime	2026-11-22T16:23:41.8263574Z Get:16 http://azure.archive.ubuntu.com/ubuntu jammy-security/main Translation-en [520 kB]
+run	Install runtime	2026-11-22T16:23:41.8298870Z Get:17 http://azure.archive.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [6635 kB]
+run	Install runtime	2026-11-22T16:23:41.8460898Z Get:18 http://azure.archive.ubuntu.com/ubuntu jammy-security/restricted Translation-en [1277 kB]
+run	Install runtime	2026-11-22T16:23:41.8905301Z Get:19 http://azure.archive.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1058 kB]
+run	Install runtime	2026-11-22T16:23:49.1580500Z Fetched 30.0 MB in 2s (13.2 MB/s)
+run	Install runtime	2026-11-22T16:23:50.2189244Z Reading package lists...
+run	Install runtime	2026-11-22T16:23:50.2563508Z Reading package lists...
+run	Install runtime	2026-11-22T16:23:50.5082622Z Building dependency tree...
+run	Install runtime	2026-11-22T16:23:50.5091804Z Reading state information...
+run	Install runtime	2026-11-22T16:23:50.6500883Z fonts-liberation is already the newest version (1:1.07.4-11).
+run	Install runtime	2026-11-22T16:23:50.6501471Z fonts-liberation set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6501926Z libatk-bridge2.0-0 is already the newest version (2.38.0-3).
+run	Install runtime	2026-11-22T16:23:50.6502394Z libatk-bridge2.0-0 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6502842Z libatk1.0-0 is already the newest version (2.36.0-3build1).
+run	Install runtime	2026-11-22T16:23:50.6503290Z libatk1.0-0 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6503707Z libatspi2.0-0 is already the newest version (2.44.0-3).
+run	Install runtime	2026-11-22T16:23:50.6504111Z libatspi2.0-0 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6504583Z libfontconfig1 is already the newest version (2.13.1-4.2ubuntu5).
+run	Install runtime	2026-11-22T16:23:50.6505001Z libfontconfig1 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6505386Z libxcb1 is already the newest version (1.14-3ubuntu3).
+run	Install runtime	2026-11-22T16:23:50.6505795Z libxcb1 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6506209Z libxcomposite1 is already the newest version (1:0.4.5-1build2).
+run	Install runtime	2026-11-22T16:23:50.6506779Z libxcomposite1 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6507079Z libxdamage1 is already the newest version (1:1.1.5-2build2).
+run	Install runtime	2026-11-22T16:23:50.6507370Z libxdamage1 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6507634Z libxext6 is already the newest version (2:1.3.4-1build1).
+run	Install runtime	2026-11-22T16:23:50.6507897Z libxext6 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6508116Z libxfixes3 is already the newest version (1:6.0.0-1).
+run	Install runtime	2026-11-22T16:23:50.6508300Z libxfixes3 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6508480Z libxkbcommon0 is already the newest version (1.4.0-1).
+run	Install runtime	2026-11-22T16:23:50.6508666Z libxkbcommon0 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6508852Z libxrandr2 is already the newest version (2:1.5.2-1build1).
+run	Install runtime	2026-11-22T16:23:50.6509044Z libxrandr2 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6509677Z fonts-noto-color-emoji is already the newest version (2.047-0ubuntu0.22.04.1).
+run	Install runtime	2026-11-22T16:23:50.6509940Z libasound2 is already the newest version (1.2.6.1-1ubuntu1.2).
+run	Install runtime	2026-11-22T16:23:50.6510134Z libasound2 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6510318Z libcairo2 is already the newest version (1.16.0-5ubuntu2.1).
+run	Install runtime	2026-11-22T16:23:50.6510509Z libcairo2 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6510702Z libcups2 is already the newest version (2.4.1op1-1ubuntu4.21).
+run	Install runtime	2026-11-22T16:23:50.6510896Z libcups2 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6511082Z libdbus-1-3 is already the newest version (1.12.20-2ubuntu4.1).
+run	Install runtime	2026-11-22T16:23:50.6511278Z libdbus-1-3 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6511470Z libdrm2 is already the newest version (2.4.113-2~ubuntu0.22.04.1).
+run	Install runtime	2026-11-22T16:23:50.6511668Z libdrm2 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6511861Z libfreetype6 is already the newest version (2.11.1+dfsg-1ubuntu0.4).
+run	Install runtime	2026-11-22T16:23:50.6512078Z libfreetype6 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6512274Z libgbm1 is already the newest version (23.2.1-1ubuntu3.1~22.04.4).
+run	Install runtime	2026-11-22T16:23:50.6512470Z libgbm1 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6512653Z libglib2.0-0 is already the newest version (2.72.4-0ubuntu2.11).
+run	Install runtime	2026-11-22T16:23:50.6512848Z libglib2.0-0 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6513038Z libnspr4 is already the newest version (2:4.35-0ubuntu0.22.04.1).
+run	Install runtime	2026-11-22T16:23:50.6513269Z libnss3 is already the newest version (2:3.98-0ubuntu0.22.04.5).
+run	Install runtime	2026-11-22T16:23:50.6513498Z libpango-1.0-0 is already the newest version (1.50.6+ds-2ubuntu1).
+run	Install runtime	2026-11-22T16:23:50.6513698Z libpango-1.0-0 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6513906Z libwayland-client0 is already the newest version (1.20.0-1ubuntu0.1).
+run	Install runtime	2026-11-22T16:23:50.6514207Z libwayland-client0 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6514406Z libx11-6 is already the newest version (2:1.7.5-1ubuntu0.4).
+run	Install runtime	2026-11-22T16:23:50.6514592Z libx11-6 set to manually installed.
+run	Install runtime	2026-11-22T16:23:50.6514784Z xvfb is already the newest version (2:21.1.4-2ubuntu1.7~22.04.16).
+run	Install runtime	2026-11-22T16:23:50.6515003Z The following additional packages will be installed:
+run	Install runtime	2026-11-22T16:23:50.6515187Z   xfonts-encodings xfonts-utils
+run	Install runtime	2026-11-22T16:23:50.6515333Z Recommended packages:
+run	Install runtime	2026-11-22T16:23:50.6515475Z   fonts-ipafont-mincho fonts-tlwg-loma
+run	Install runtime	2026-11-22T16:23:50.6825092Z The following NEW packages will be installed:
+run	Install runtime	2026-11-22T16:23:50.6825681Z   fonts-freefont-ttf fonts-ipafont-gothic fonts-tlwg-loma-otf fonts-unifont
+run	Install runtime	2026-11-22T16:23:50.6828283Z   fonts-wqy-zenhei xfonts-cyrillic xfonts-encodings xfonts-scalable
+run	Install runtime	2026-11-22T16:23:50.6828695Z   xfonts-utils
+run	Install runtime	2026-11-22T16:23:50.6921438Z 0 upgraded, 9 newly installed, 0 to remove and 62 not upgraded.
+run	Install runtime	2026-11-22T16:23:50.6921823Z Need to get 18.4 MB of archives.
+run	Install runtime	2026-11-22T16:23:50.6922126Z After this operation, 56.8 MB of additional disk space will be used.
+run	Install runtime	2026-11-22T16:23:50.6922517Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+run	Install runtime	2026-11-22T16:23:50.8045495Z Get:2 http://azure.archive.ubuntu.com/ubuntu jammy/universe amd64 fonts-ipafont-gothic all 00303-21ubuntu1 [3513 kB]
+run	Install runtime	2026-11-22T16:23:52.6943575Z Get:3 http://azure.archive.ubuntu.com/ubuntu jammy/main amd64 fonts-freefont-ttf all 20120503-10build1 [2388 kB]
+run	Install runtime	2026-11-22T16:23:53.6370113Z Get:4 http://azure.archive.ubuntu.com/ubuntu jammy/universe amd64 fonts-tlwg-loma-otf all 1:0.7.3-1 [107 kB]
+run	Install runtime	2026-11-22T16:23:53.7495070Z Get:5 http://azure.archive.ubuntu.com/ubuntu jammy/universe amd64 fonts-unifont all 1:14.0.01-1 [3551 kB]
+run	Install runtime	2026-11-22T16:23:55.0310302Z Get:6 http://azure.archive.ubuntu.com/ubuntu jammy/universe amd64 fonts-wqy-zenhei all 0.9.45-8 [7472 kB]
+run	Install runtime	2026-11-22T16:23:57.6353191Z Get:7 http://azure.archive.ubuntu.com/ubuntu jammy/main amd64 xfonts-encodings all 1:1.0.5-0ubuntu2 [578 kB]
+run	Install runtime	2026-11-22T16:23:57.8927992Z Get:8 http://azure.archive.ubuntu.com/ubuntu jammy/main amd64 xfonts-utils amd64 1:7.7+6build2 [94.6 kB]
+run	Install runtime	2026-11-22T16:23:57.9951728Z Get:9 http://azure.archive.ubuntu.com/ubuntu jammy/universe amd64 xfonts-cyrillic all 1:1.0.5 [386 kB]
+run	Install runtime	2026-11-22T16:23:58.1972979Z Get:10 http://azure.archive.ubuntu.com/ubuntu jammy/main amd64 xfonts-scalable all 1:1.0.3-1.2ubuntu1 [306 kB]
+run	Install runtime	2026-11-22T16:23:58.4983120Z Fetched 18.4 MB in 8s (2420 kB/s)
+run	Install runtime	2026-11-22T16:23:58.5282741Z Selecting previously unselected package fonts-ipafont-gothic.
+run	Install runtime	2026-11-22T16:23:58.6108449Z (Reading database ... 
+run	Install runtime	2026-11-22T16:23:58.6108745Z (Reading database ... 5%
+run	Install runtime	2026-11-22T16:23:58.6108898Z (Reading database ... 10%
+run	Install runtime	2026-11-22T16:23:58.6109034Z (Reading database ... 15%
+run	Install runtime	2026-11-22T16:23:58.6109206Z (Reading database ... 20%
+run	Install runtime	2026-11-22T16:23:58.6109399Z (Reading database ... 25%
+run	Install runtime	2026-11-22T16:23:58.6109603Z (Reading database ... 30%
+run	Install runtime	2026-11-22T16:23:58.6109736Z (Reading database ... 35%
+run	Install runtime	2026-11-22T16:23:58.6109894Z (Reading database ... 40%
+run	Install runtime	2026-11-22T16:23:58.6110020Z (Reading database ... 45%
+run	Install runtime	2026-11-22T16:23:58.6110147Z (Reading database ... 50%
+run	Install runtime	2026-11-22T16:23:58.9168533Z (Reading database ... 55%
+run	Install runtime	2026-11-22T16:23:59.1886873Z (Reading database ... 60%
+run	Install runtime	2026-11-22T16:23:59.4710260Z (Reading database ... 65%
+run	Install runtime	2026-11-22T16:23:59.7387864Z (Reading database ... 70%
+run	Install runtime	2026-11-22T16:24:00.2551093Z (Reading database ... 75%
+run	Install runtime	2026-11-22T16:24:00.8930202Z (Reading database ... 80%
+run	Install runtime	2026-11-22T16:24:01.5296615Z (Reading database ... 85%
+run	Install runtime	2026-11-22T16:24:02.2627538Z (Reading database ... 90%
+run	Install runtime	2026-11-22T16:24:02.8253232Z (Reading database ... 95%
+run	Install runtime	2026-11-22T16:24:02.8253576Z (Reading database ... 100%
+run	Install runtime	2026-11-22T16:24:02.8253904Z (Reading database ... 265161 files and directories currently installed.)
+run	Install runtime	2026-11-22T16:24:02.8304567Z Preparing to unpack .../0-fonts-ipafont-gothic_00303-21ubuntu1_all.deb ...
+run	Install runtime	2026-11-22T16:24:02.8359417Z Unpacking fonts-ipafont-gothic (00303-21ubuntu1) ...
+run	Install runtime	2026-11-22T16:24:03.0534531Z Selecting previously unselected package fonts-freefont-ttf.
+run	Install runtime	2026-11-22T16:24:03.0633592Z Preparing to unpack .../1-fonts-freefont-ttf_20120503-10build1_all.deb ...
+run	Install runtime	2026-11-22T16:24:03.0640062Z Unpacking fonts-freefont-ttf (20120503-10build1) ...
+run	Install runtime	2026-11-22T16:24:03.2041938Z Selecting previously unselected package fonts-tlwg-loma-otf.
+run	Install runtime	2026-11-22T16:24:03.2142058Z Preparing to unpack .../2-fonts-tlwg-loma-otf_1%3a0.7.3-1_all.deb ...
+run	Install runtime	2026-11-22T16:24:03.2148410Z Unpacking fonts-tlwg-loma-otf (1:0.7.3-1) ...
+run	Install runtime	2026-11-22T16:24:03.2309221Z Selecting previously unselected package fonts-unifont.
+run	Install runtime	2026-11-22T16:24:03.2407464Z Preparing to unpack .../3-fonts-unifont_1%3a14.0.01-1_all.deb ...
+run	Install runtime	2026-11-22T16:24:03.2412672Z Unpacking fonts-unifont (1:14.0.01-1) ...
+run	Install runtime	2026-11-22T16:24:03.3553635Z Selecting previously unselected package fonts-wqy-zenhei.
+run	Install runtime	2026-11-22T16:24:03.3652150Z Preparing to unpack .../4-fonts-wqy-zenhei_0.9.45-8_all.deb ...
+run	Install runtime	2026-11-22T16:24:03.3747496Z Unpacking fonts-wqy-zenhei (0.9.45-8) ...
+run	Install runtime	2026-11-22T16:24:03.8147334Z Selecting previously unselected package xfonts-encodings.
+run	Install runtime	2026-11-22T16:24:03.8245394Z Preparing to unpack .../5-xfonts-encodings_1%3a1.0.5-0ubuntu2_all.deb ...
+run	Install runtime	2026-11-22T16:24:03.8251810Z Unpacking xfonts-encodings (1:1.0.5-0ubuntu2) ...
+run	Install runtime	2026-11-22T16:24:03.8391665Z Selecting previously unselected package xfonts-utils.
+run	Install runtime	2026-11-22T16:24:03.8492066Z Preparing to unpack .../6-xfonts-utils_1%3a7.7+6build2_amd64.deb ...
+run	Install runtime	2026-11-22T16:24:03.8500075Z Unpacking xfonts-utils (1:7.7+6build2) ...
+run	Install runtime	2026-11-22T16:24:03.8876145Z Selecting previously unselected package xfonts-cyrillic.
+run	Install runtime	2026-11-22T16:24:03.8973944Z Preparing to unpack .../7-xfonts-cyrillic_1%3a1.0.5_all.deb ...
+run	Install runtime	2026-11-22T16:24:03.8980066Z Unpacking xfonts-cyrillic (1:1.0.5) ...
+run	Install runtime	2026-11-22T16:24:03.9306681Z Selecting previously unselected package xfonts-scalable.
+run	Install runtime	2026-11-22T16:24:03.9404460Z Preparing to unpack .../8-xfonts-scalable_1%3a1.0.3-1.2ubuntu1_all.deb ...
+run	Install runtime	2026-11-22T16:24:03.9410857Z Unpacking xfonts-scalable (1:1.0.3-1.2ubuntu1) ...
+run	Install runtime	2026-11-22T16:24:03.9698862Z Setting up fonts-wqy-zenhei (0.9.45-8) ...
+run	Install runtime	2026-11-22T16:24:03.9762609Z Setting up fonts-freefont-ttf (20120503-10build1) ...
+run	Install runtime	2026-11-22T16:24:03.9777120Z Setting up fonts-tlwg-loma-otf (1:0.7.3-1) ...
+run	Install runtime	2026-11-22T16:24:03.9789740Z Setting up xfonts-encodings (1:1.0.5-0ubuntu2) ...
+run	Install runtime	2026-11-22T16:24:03.9801375Z Setting up fonts-ipafont-gothic (00303-21ubuntu1) ...
+run	Install runtime	2026-11-22T16:24:03.9843462Z update-alternatives: using /usr/share/fonts/opentype/ipafont-gothic/ipag.ttf to provide /usr/share/fonts/truetype/fonts-japanese-gothic.ttf (fonts-japanese-gothic.ttf) in auto mode
+run	Install runtime	2026-11-22T16:24:03.9857706Z Setting up fonts-unifont (1:14.0.01-1) ...
+run	Install runtime	2026-11-22T16:24:03.9871303Z Setting up xfonts-utils (1:7.7+6build2) ...
+run	Install runtime	2026-11-22T16:24:03.9894200Z Setting up xfonts-cyrillic (1:1.0.5) ...
+run	Install runtime	2026-11-22T16:24:04.0095746Z Setting up xfonts-scalable (1:1.0.3-1.2ubuntu1) ...
+run	Install runtime	2026-11-22T16:24:04.0228588Z Processing triggers for man-db (2.10.2-1) ...
+run	Install runtime	2026-11-22T16:24:04.0278399Z Not building database; man-db/auto-update is not 'true'.
+run	Install runtime	2026-11-22T16:24:04.0287831Z Processing triggers for fontconfig (2.13.1-4.2ubuntu5) ...
+run	Install runtime	2026-11-22T16:24:04.9370791Z 
+run	Install runtime	2026-11-22T16:24:04.9371314Z Running kernel seems to be up-to-date.
+run	Install runtime	2026-11-22T16:24:04.9371526Z 
+run	Install runtime	2026-11-22T16:24:04.9371594Z No services need to be restarted.
+run	Install runtime	2026-11-22T16:24:04.9371697Z 
+run	Install runtime	2026-11-22T16:24:04.9376754Z No containers need to be restarted.
+run	Install runtime	2026-11-22T16:24:04.9376877Z 
+run	Install runtime	2026-11-22T16:24:04.9376952Z No user sessions are running outdated binaries.
+run	Install runtime	2026-11-22T16:24:04.9377069Z 
+run	Install runtime	2026-11-22T16:24:04.9377181Z No VM guests are running outdated hypervisor (qemu) binaries on this host.
+run	Install runtime	2026-11-22T16:24:06.1151617Z Downloading Chromium 129.0.6668.29 (playwright build v1134) from https://playwright.azureedge.net/builds/chromium/1134/chromium-linux.zip
+run	Install runtime	2026-11-22T16:24:06.2606526Z |                                                                                |   0% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.3605678Z |■■■■■■■■                                                                        |  10% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.4182420Z |■■■■■■■■■■■■■■■■                                                                |  20% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.4599932Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.5021410Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.6195398Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.6665986Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.7109590Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.7454780Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.7844104Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:06.8263553Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 165.1 MiB
+run	Install runtime	2026-11-22T16:24:08.8425602Z Chromium 129.0.6668.29 (playwright build v1134) downloaded to /home/runner/.cache/ms-playwright/chromium-1134
+run	Install runtime	2026-11-22T16:24:08.8426939Z Downloading FFMPEG playwright build v1010 from https://playwright.azureedge.net/builds/ffmpeg/1010/ffmpeg-linux.zip
+run	Install runtime	2026-11-22T16:24:08.9630242Z |                                                                                |   0% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:08.9727686Z |■■■■■■■■                                                                        |  10% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:08.9794591Z |■■■■■■■■■■■■■■■■                                                                |  20% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:08.9927227Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:08.9981723Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:09.0042725Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:09.0326108Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:09.0665702Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:09.0743670Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:09.0780516Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:09.0845690Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 2.3 MiB
+run	Install runtime	2026-11-22T16:24:09.1234055Z FFMPEG playwright build v1010 downloaded to /home/runner/.cache/ms-playwright/ffmpeg-1010
+run	Restore detector and inpaint models	﻿2026-11-22T16:24:09.5217402Z ##[group]Run actions/cache/restore@v4
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5217582Z with:
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5217724Z   path: models/*.onnx
+run	Restore detector and inpaint models	models/.e2e-provenance.json
+run	Restore detector and inpaint models	
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5217929Z   key: processing-profile-models-b224548-v1
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5218105Z   enableCrossOsArchive: false
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5218254Z   fail-on-cache-miss: false
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5218397Z   lookup-only: false
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5218520Z env:
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5218632Z   PYTHONUNBUFFERED: 1
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5218759Z   PYTHONPATH: .
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5218894Z   MANGA_PROCESSING_PIPELINE: fast
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5219044Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5219184Z   MANGA_ORT_PROVIDER: openvino
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5219326Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5219476Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5219630Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5219770Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5219942Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5220158Z   OPENBLAS_NUM_THREADS: 1
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5220324Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5220561Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5220802Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5221017Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5221230Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5221449Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5221634Z ##[endgroup]
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5890713Z (node:3362) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+run	Restore detector and inpaint models	2026-11-22T16:24:09.5891182Z (Use `node --trace-deprecation ...` to show where the warning was created)
+run	Restore detector and inpaint models	2026-11-22T16:24:09.8344315Z Cache hit for: processing-profile-models-b224548-v1
+run	Restore detector and inpaint models	2026-11-22T16:24:09.8431047Z (node:3362) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+run	Restore detector and inpaint models	2026-11-22T16:24:11.1192619Z Received 37748736 of 250717953 (15.1%), 36.0 MBs/sec
+run	Restore detector and inpaint models	2026-11-22T16:24:12.1190857Z Received 205520896 of 250717953 (82.0%), 98.0 MBs/sec
+run	Restore detector and inpaint models	2026-11-22T16:24:12.3654315Z Received 250717953 of 250717953 (100.0%), 106.4 MBs/sec
+run	Restore detector and inpaint models	2026-11-22T16:24:12.3655804Z Cache Size: ~239 MB (250717953 B)
+run	Restore detector and inpaint models	2026-11-22T16:24:12.3707095Z [command]/usr/bin/tar -xf /home/runner/work/_temp/0445335a-eee0-43c9-a678-e63b0a433847/cache.tzst -P -C /home/runner/work/manga-translator/manga-translator --use-compress-program unzstd
+run	Restore detector and inpaint models	2026-11-22T16:24:12.6247121Z Cache restored successfully
+run	Restore detector and inpaint models	2026-11-22T16:24:12.8821113Z Cache restored from key: processing-profile-models-b224548-v1
+run	Use the committed Kiuyha, not the cached one	﻿2026-11-22T16:24:12.8954522Z ##[group]Run git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8954952Z ^[[36;1mgit checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx^[[0m
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8981423Z shell: /usr/bin/bash -e {0}
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8981572Z env:
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8981693Z   PYTHONUNBUFFERED: 1
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8981831Z   PYTHONPATH: .
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8981963Z   MANGA_PROCESSING_PIPELINE: fast
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8982120Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8982264Z   MANGA_ORT_PROVIDER: openvino
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8982414Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8982565Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8982720Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8982865Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8983043Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8983233Z   OPENBLAS_NUM_THREADS: 1
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8983405Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8983670Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8983998Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8984217Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8984435Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8984652Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:12.8984839Z ##[endgroup]
+run	Use the committed Kiuyha, not the cached one	2026-11-22T16:24:13.0182095Z dd916f96c48a71100912ca00c5480372  models/kiuyha-tuned-1023.onnx
+run	Download LaMa when the cache has expired	﻿2026-11-22T16:24:13.0263413Z ##[group]Run test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0263854Z ^[[36;1mtest -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \^[[0m
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0264252Z ^[[36;1m  https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx^[[0m
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0264698Z ^[[36;1mecho "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c^[[0m
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0291545Z shell: /usr/bin/bash -e {0}
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0291696Z env:
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0291818Z   PYTHONUNBUFFERED: 1
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0291953Z   PYTHONPATH: .
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0292085Z   MANGA_PROCESSING_PIPELINE: fast
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0292241Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0292387Z   MANGA_ORT_PROVIDER: openvino
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0292539Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0292691Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0292875Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0293026Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0293205Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0293399Z   OPENBLAS_NUM_THREADS: 1
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0293578Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0293822Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0294074Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0294296Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0294519Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0294743Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.0294935Z ##[endgroup]
+run	Download LaMa when the cache has expired	2026-11-22T16:24:13.4384605Z models/lama-manga-dynamic.onnx: OK
+run	Build the CTD mask model	﻿2026-11-22T16:24:13.4464437Z Prepare all required actions
+run	Build the CTD mask model	2026-11-22T16:24:13.4464848Z Getting action download info
+run	Build the CTD mask model	2026-11-22T16:24:13.7271034Z ##[group]Run ./.github/actions/build-ctd
+run	Build the CTD mask model	2026-11-22T16:24:13.7271225Z env:
+run	Build the CTD mask model	2026-11-22T16:24:13.7271348Z   PYTHONUNBUFFERED: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7271480Z   PYTHONPATH: .
+run	Build the CTD mask model	2026-11-22T16:24:13.7271615Z   MANGA_PROCESSING_PIPELINE: fast
+run	Build the CTD mask model	2026-11-22T16:24:13.7271772Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7271922Z   MANGA_ORT_PROVIDER: openvino
+run	Build the CTD mask model	2026-11-22T16:24:13.7272070Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7272237Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Build the CTD mask model	2026-11-22T16:24:13.7272397Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Build the CTD mask model	2026-11-22T16:24:13.7272542Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7272722Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Build the CTD mask model	2026-11-22T16:24:13.7272913Z   OPENBLAS_NUM_THREADS: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7273089Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7273331Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Build the CTD mask model	2026-11-22T16:24:13.7273602Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7273826Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7274045Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7274269Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Build the CTD mask model	2026-11-22T16:24:13.7274457Z ##[endgroup]
+run	Build the CTD mask model	2026-11-22T16:24:13.7310163Z ##[start-action display=Run actions/cache@v4;id=__self.cache]
+run	Build the CTD mask model	2026-11-22T16:24:13.7691376Z ##[group]Run actions/cache@v4
+run	Build the CTD mask model	2026-11-22T16:24:13.7691560Z with:
+run	Build the CTD mask model	2026-11-22T16:24:13.7691682Z   path: models/ctd_seg.onnx
+run	Build the CTD mask model	2026-11-22T16:24:13.7691922Z   key: ctd-seg-b64ba6d1a53e90b5e1507b73e9393509aa18de0f5488b679d1a4092187a4b6aa-v1
+run	Build the CTD mask model	2026-11-22T16:24:13.7692169Z   enableCrossOsArchive: false
+run	Build the CTD mask model	2026-11-22T16:24:13.7692322Z   fail-on-cache-miss: false
+run	Build the CTD mask model	2026-11-22T16:24:13.7692462Z   lookup-only: false
+run	Build the CTD mask model	2026-11-22T16:24:13.7692594Z   save-always: false
+run	Build the CTD mask model	2026-11-22T16:24:13.7692718Z env:
+run	Build the CTD mask model	2026-11-22T16:24:13.7692850Z   PYTHONUNBUFFERED: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7692980Z   PYTHONPATH: .
+run	Build the CTD mask model	2026-11-22T16:24:13.7693108Z   MANGA_PROCESSING_PIPELINE: fast
+run	Build the CTD mask model	2026-11-22T16:24:13.7693259Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7693401Z   MANGA_ORT_PROVIDER: openvino
+run	Build the CTD mask model	2026-11-22T16:24:13.7693545Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7693699Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Build the CTD mask model	2026-11-22T16:24:13.7693853Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Build the CTD mask model	2026-11-22T16:24:13.7693997Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7694185Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Build the CTD mask model	2026-11-22T16:24:13.7694377Z   OPENBLAS_NUM_THREADS: 1
+run	Build the CTD mask model	2026-11-22T16:24:13.7694544Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7694786Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Build the CTD mask model	2026-11-22T16:24:13.7695031Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7695247Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7695468Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Build the CTD mask model	2026-11-22T16:24:13.7695686Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Build the CTD mask model	2026-11-22T16:24:13.7695875Z ##[endgroup]
+run	Build the CTD mask model	2026-11-22T16:24:13.8343771Z (node:3397) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+run	Build the CTD mask model	2026-11-22T16:24:13.8344457Z (Use `node --trace-deprecation ...` to show where the warning was created)
+run	Build the CTD mask model	2026-11-22T16:24:14.0581818Z Cache hit for: ctd-seg-b64ba6d1a53e90b5e1507b73e9393509aa18de0f5488b679d1a4092187a4b6aa-v1
+run	Build the CTD mask model	2026-11-22T16:24:14.0672794Z (node:3397) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+run	Build the CTD mask model	2026-11-22T16:24:15.2662428Z Received 16960501 of 16960501 (100.0%), 17.8 MBs/sec
+run	Build the CTD mask model	2026-11-22T16:24:15.2662877Z Cache Size: ~16 MB (16960501 B)
+run	Build the CTD mask model	2026-11-22T16:24:15.2677219Z [command]/usr/bin/tar -xf /home/runner/work/_temp/4b8e4954-3d71-48db-8563-5dee911648aa/cache.tzst -P -C /home/runner/work/manga-translator/manga-translator --use-compress-program unzstd
+run	Build the CTD mask model	2026-11-22T16:24:15.3298265Z Cache restored successfully
+run	Build the CTD mask model	2026-11-22T16:24:15.3361781Z Cache restored from key: ctd-seg-b64ba6d1a53e90b5e1507b73e9393509aa18de0f5488b679d1a4092187a4b6aa-v1
+run	Build the CTD mask model	2026-11-22T16:24:15.3424944Z ##[end-action id=__self.cache;outcome=success;conclusion=success;duration_ms=1611]
+run	Build the CTD mask model	2026-11-22T16:24:15.3428316Z ##[start-action display=Run python -m venv /tmp/ctd;id=__self.__run]
+run	Build the CTD mask model	2026-11-22T16:24:15.3435112Z ##[end-action id=__self.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+run	Wire the NVIDIA provider from the repo secret	﻿2026-11-22T16:24:15.3457993Z ##[group]Run python scripts/wire_nvidia_provider.py
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3458239Z ^[[36;1mpython scripts/wire_nvidia_provider.py^[[0m
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3484495Z shell: /usr/bin/bash -e {0}
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3484650Z env:
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3484774Z   PYTHONUNBUFFERED: 1
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3484914Z   PYTHONPATH: .
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3485050Z   MANGA_PROCESSING_PIPELINE: fast
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3485213Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3485364Z   MANGA_ORT_PROVIDER: openvino
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3485521Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3485681Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3485846Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3485997Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3486179Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3486549Z   OPENBLAS_NUM_THREADS: 1
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3486728Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3486984Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3487264Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3487496Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3487728Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3487959Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3488527Z   NVIDIA_API_KEY: ***
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.3488666Z ##[endgroup]
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.5569109Z config: {'id': 'nvidia', 'label': 'NVIDIA NIM', 'protocol': 'openai', 'api_base': 'https://integrate.api.nvidia.com/v1'}
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.5569653Z key status: {'configured': True, 'source': 'local_file', 'count': 1}
+run	Wire the NVIDIA provider from the repo secret	2026-11-22T16:24:15.5569867Z WIRING OK
+run	Wire the MiniRouter provider from the repo secret	﻿2026-11-22T16:24:15.5768072Z ##[group]Run python scripts/wire_minirouter_provider.py
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5768353Z ^[[36;1mpython scripts/wire_minirouter_provider.py^[[0m
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5794696Z shell: /usr/bin/bash -e {0}
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5794858Z env:
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5794981Z   PYTHONUNBUFFERED: 1
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5795123Z   PYTHONPATH: .
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5795258Z   MANGA_PROCESSING_PIPELINE: fast
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5795420Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5795568Z   MANGA_ORT_PROVIDER: openvino
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5795724Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5795882Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5796049Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5796201Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5796521Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5796722Z   OPENBLAS_NUM_THREADS: 1
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5796904Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5797167Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5797442Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5797673Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5797901Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5798130Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5798481Z   MINIROUTER_API_KEY: ***
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.5798623Z ##[endgroup]
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.6684536Z config: {'id': 'minirouter', 'label': 'MiniRouter', 'protocol': 'openai', 'api_base': 'https://api.minirouter.sh/v1'}
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.6685206Z key status: {'configured': True, 'source': 'local_file', 'count': 1}
+run	Wire the MiniRouter provider from the repo secret	2026-11-22T16:24:15.6685732Z WIRING OK
+run	Wire the Gemini provider from the repo secret	﻿2026-11-22T16:24:15.6884092Z ##[group]Run python scripts/wire_gemini_provider.py
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6884370Z ^[[36;1mpython scripts/wire_gemini_provider.py^[[0m
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6910944Z shell: /usr/bin/bash -e {0}
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6911119Z env:
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6911247Z   PYTHONUNBUFFERED: 1
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6911483Z   PYTHONPATH: .
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6911635Z   MANGA_PROCESSING_PIPELINE: fast
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6911798Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6911956Z   MANGA_ORT_PROVIDER: openvino
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6912110Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6912274Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6912448Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6912603Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6912791Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6912993Z   OPENBLAS_NUM_THREADS: 1
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6913177Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6913429Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6913710Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6913946Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6914297Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6914531Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6914913Z   GEMINI_API_KEY: ***
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.6915057Z ##[endgroup]
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.7788712Z key status: {'configured': True, 'source': 'environment', 'count': 1}
+run	Wire the Gemini provider from the repo secret	2026-11-22T16:24:15.7789036Z WIRING OK
+run	Start the app server	﻿2026-11-22T16:24:15.7976438Z ##[group]Run nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+run	Start the app server	2026-11-22T16:24:15.7976896Z ^[[36;1mnohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &^[[0m
+run	Start the app server	2026-11-22T16:24:15.7977157Z ^[[36;1mfor i in $(seq 1 60); do^[[0m
+run	Start the app server	2026-11-22T16:24:15.7977410Z ^[[36;1m  curl -fsS http://127.0.0.1:8000/api/visual_qc/settings >/dev/null && break^[[0m
+run	Start the app server	2026-11-22T16:24:15.7977644Z ^[[36;1m  sleep 5^[[0m
+run	Start the app server	2026-11-22T16:24:15.7977773Z ^[[36;1mdone^[[0m
+run	Start the app server	2026-11-22T16:24:15.7977965Z ^[[36;1mcurl -fsS http://127.0.0.1:8000/api/visual_qc/settings | python -c "^[[0m
+run	Start the app server	2026-11-22T16:24:15.7978209Z ^[[36;1mimport sys, json, os^[[0m
+run	Start the app server	2026-11-22T16:24:15.7978367Z ^[[36;1md = json.load(sys.stdin)^[[0m
+run	Start the app server	2026-11-22T16:24:15.7978587Z ^[[36;1mprov = os.environ['PROVIDER']; tr = os.environ['TRANSLATE_PROVIDER']^[[0m
+run	Start the app server	2026-11-22T16:24:15.7978904Z ^[[36;1mok = d['providers'][prov]['configured'] and (not tr or d['providers'][tr]['configured'])^[[0m
+run	Start the app server	2026-11-22T16:24:15.7979215Z ^[[36;1mprint(prov, 'configured:', d['providers'][prov]['configured'])^[[0m
+run	Start the app server	2026-11-22T16:24:15.7979525Z ^[[36;1mprint(tr, 'configured:', d['providers'][tr]['configured'] if tr else 'n/a')^[[0m
+run	Start the app server	2026-11-22T16:24:15.7979767Z ^[[36;1msys.exit(0 if ok else 1)^[[0m
+run	Start the app server	2026-11-22T16:24:15.7979922Z ^[[36;1m"^[[0m
+run	Start the app server	2026-11-22T16:24:15.8006579Z shell: /usr/bin/bash -e {0}
+run	Start the app server	2026-11-22T16:24:15.8006734Z env:
+run	Start the app server	2026-11-22T16:24:15.8006864Z   PYTHONUNBUFFERED: 1
+run	Start the app server	2026-11-22T16:24:15.8007000Z   PYTHONPATH: .
+run	Start the app server	2026-11-22T16:24:15.8007141Z   MANGA_PROCESSING_PIPELINE: fast
+run	Start the app server	2026-11-22T16:24:15.8007307Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Start the app server	2026-11-22T16:24:15.8007458Z   MANGA_ORT_PROVIDER: openvino
+run	Start the app server	2026-11-22T16:24:15.8007614Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Start the app server	2026-11-22T16:24:15.8007773Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Start the app server	2026-11-22T16:24:15.8007940Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Start the app server	2026-11-22T16:24:15.8008091Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Start the app server	2026-11-22T16:24:15.8008282Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Start the app server	2026-11-22T16:24:15.8008479Z   OPENBLAS_NUM_THREADS: 1
+run	Start the app server	2026-11-22T16:24:15.8008670Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Start the app server	2026-11-22T16:24:15.8008925Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Start the app server	2026-11-22T16:24:15.8009174Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Start the app server	2026-11-22T16:24:15.8009404Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Start the app server	2026-11-22T16:24:15.8009629Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Start the app server	2026-11-22T16:24:15.8009861Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Start the app server	2026-11-22T16:24:15.8010059Z   PROVIDER: gemini
+run	Start the app server	2026-11-22T16:24:15.8010193Z   TRANSLATE_PROVIDER: nvidia
+run	Start the app server	2026-11-22T16:24:15.8010343Z ##[endgroup]
+run	Start the app server	2026-11-22T16:24:15.8090436Z curl: (7) Failed to connect to 127.0.0.1 port 8000 after 0 ms: Connection refused
+run	Start the app server	2026-11-22T16:24:20.8141479Z curl: (7) Failed to connect to 127.0.0.1 port 8000 after 0 ms: Connection refused
+run	Start the app server	2026-11-22T16:24:25.8746048Z gemini configured: True
+run	Start the app server	2026-11-22T16:24:25.8746575Z nvidia configured: True
+run	Run the chapter	﻿2026-11-22T16:24:25.8796885Z ##[group]Run if [ -n "$CHAPTER_ZIP" ]; then
+run	Run the chapter	2026-11-22T16:24:25.8797288Z ^[[36;1mif [ -n "$CHAPTER_ZIP" ]; then^[[0m
+run	Run the chapter	2026-11-22T16:24:25.8797775Z ^[[36;1m  SRC_ARGS=(--chapter-zip "$CHAPTER_ZIP")^[[0m
+run	Run the chapter	2026-11-22T16:24:25.8798094Z ^[[36;1melse^[[0m
+run	Run the chapter	2026-11-22T16:24:25.8798393Z ^[[36;1m  SRC_ARGS=(--url "$CHAPTER_URL")^[[0m
+run	Run the chapter	2026-11-22T16:24:25.8798684Z ^[[36;1mfi^[[0m
+run	Run the chapter	2026-11-22T16:24:25.8799625Z ^[[36;1mpython scripts/ai_mode_run.py "${SRC_ARGS[@]}" --provider "$PROVIDER" --model "$MODEL" --target-lang "$TARGET_LANG" --budget-usd "$BUDGET_USD" --images-per-request "$IMAGES_PER_REQUEST" --translate-provider "$TRANSLATE_PROVIDER" --translate-model "$TRANSLATE_MODEL"^[[0m
+run	Run the chapter	2026-11-22T16:24:25.8827291Z shell: /usr/bin/bash -e {0}
+run	Run the chapter	2026-11-22T16:24:25.8827516Z env:
+run	Run the chapter	2026-11-22T16:24:25.8827676Z   PYTHONUNBUFFERED: 1
+run	Run the chapter	2026-11-22T16:24:25.8827906Z   PYTHONPATH: .
+run	Run the chapter	2026-11-22T16:24:25.8828096Z   MANGA_PROCESSING_PIPELINE: fast
+run	Run the chapter	2026-11-22T16:24:25.8828320Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Run the chapter	2026-11-22T16:24:25.8828538Z   MANGA_ORT_PROVIDER: openvino
+run	Run the chapter	2026-11-22T16:24:25.8828810Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Run the chapter	2026-11-22T16:24:25.8829022Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Run the chapter	2026-11-22T16:24:25.8829256Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Run the chapter	2026-11-22T16:24:25.8829462Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Run the chapter	2026-11-22T16:24:25.8829707Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Run the chapter	2026-11-22T16:24:25.8829963Z   OPENBLAS_NUM_THREADS: 1
+run	Run the chapter	2026-11-22T16:24:25.8830215Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Run the chapter	2026-11-22T16:24:25.8830510Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Run the chapter	2026-11-22T16:24:25.8830823Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Run the chapter	2026-11-22T16:24:25.8831106Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Run the chapter	2026-11-22T16:24:25.8831377Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Run the chapter	2026-11-22T16:24:25.8831683Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Run the chapter	2026-11-22T16:24:25.8831914Z   CHAPTER_ZIP: 
+run	Run the chapter	2026-11-22T16:24:25.8832208Z   CHAPTER_URL: https://asurascans.com/comics/nano-machine-7ba78ec7/chapter/338
+run	Run the chapter	2026-11-22T16:24:25.8832484Z   PROVIDER: gemini
+run	Run the chapter	2026-11-22T16:24:25.8832694Z   MODEL: gemma-4-31b-it
+run	Run the chapter	2026-11-22T16:24:25.8832885Z   TARGET_LANG: vi
+run	Run the chapter	2026-11-22T16:24:25.8833057Z   BUDGET_USD: 0.30
+run	Run the chapter	2026-11-22T16:24:25.8833251Z   IMAGES_PER_REQUEST: 2
+run	Run the chapter	2026-11-22T16:24:25.8833431Z   TRANSLATE_PROVIDER: nvidia
+run	Run the chapter	2026-11-22T16:24:25.8833677Z   TRANSLATE_MODEL: minimaxai/minimax-m3.1-flash
+run	Run the chapter	2026-11-22T16:24:25.8833899Z ##[endgroup]
+run	Run the chapter	2026-11-22T16:24:26.0287390Z job: 7a5f219171884236a4a590398e90fe89
+run	Run the chapter	2026-11-22T16:24:26.0304556Z [16:24] running download=0/1 scan=0/0 clean=0/0 review=0/0 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:25:26.0324130Z [16:25] running download=1/1 scan=2/77 clean=0/0 review=0/0 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:26:26.0340798Z [16:26] running download=1/1 scan=4/77 clean=0/0 review=0/0 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:27:26.0359991Z [16:27] running download=1/1 scan=12/77 clean=0/0 review=0/0 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:28:26.0376876Z [16:28] running download=1/1 scan=20/77 clean=0/0 review=0/0 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:29:26.0397501Z [16:29] running download=1/1 scan=77/77 clean=1/77 review=1/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:30:26.0447912Z [16:30] running download=1/1 scan=77/77 clean=10/77 review=10/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:31:26.0462621Z [16:31] running download=1/1 scan=77/77 clean=26/77 review=26/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:32:26.0483233Z [16:32] running download=1/1 scan=77/77 clean=34/77 review=34/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:33:26.0505982Z [16:33] running download=1/1 scan=77/77 clean=41/77 review=41/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:34:26.0538113Z [16:34] running download=1/1 scan=77/77 clean=50/77 review=50/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:35:26.0605532Z [16:35] running download=1/1 scan=77/77 clean=59/77 review=59/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:36:26.0677558Z [16:36] running download=1/1 scan=77/77 clean=70/77 review=70/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:37:26.0684691Z [16:37] running download=1/1 scan=77/77 clean=76/77 review=76/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:38:26.0711340Z [16:38] running download=1/1 scan=77/77 clean=77/77 review=77/77 translate=0/0 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:39:26.3561251Z [16:39] running download=1/1 scan=77/77 clean=77/77 review=77/77 translate=70/77 polish=0/0 render=0/0 finish=0/0
+run	Run the chapter	2026-11-22T16:40:26.3587335Z [16:40] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:41:26.3612877Z [16:41] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:42:26.3639896Z [16:42] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:43:26.3664084Z [16:43] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:44:26.3688272Z [16:44] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:45:26.3713640Z [16:45] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:46:26.3738541Z [16:46] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:47:26.3763002Z [16:47] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:48:26.3787689Z [16:48] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:49:26.3814606Z [16:49] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:50:26.3841417Z [16:50] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:51:26.3869068Z [16:51] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:52:26.3895979Z [16:52] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:53:26.3922146Z [16:53] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:54:26.3947226Z [16:54] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:55:26.3971686Z [16:55] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:56:26.3996658Z [16:56] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:57:26.4024131Z [16:57] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:58:26.4049173Z [16:58] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T16:59:26.4074182Z [16:59] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:00:26.4100024Z [17:00] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:01:26.4127212Z [17:01] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:02:26.4152507Z [17:02] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:03:26.4199337Z [17:03] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:04:26.4224014Z [17:04] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:05:26.4250629Z [17:05] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:06:26.4279026Z [17:06] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:07:26.4305913Z [17:07] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:08:26.4331623Z [17:08] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:09:26.4356687Z [17:09] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:10:26.4381492Z [17:10] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:11:26.4408831Z [17:11] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:12:26.4437286Z [17:12] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:13:26.4471644Z [17:13] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:14:26.4499941Z [17:14] completed_with_blockers download=1/1 scan=77/77 clean=77/77 review=77/77 translate=77/77 polish=0/0 render=77/77 finish=1/1
+run	Run the chapter	2026-11-22T17:14:40.2812921Z ##[error]The operation was canceled.
+run	Upload rendered chapter	﻿2026-11-22T17:14:40.2852170Z ##[group]Run actions/upload-artifact@v4
+run	Upload rendered chapter	2026-11-22T17:14:40.2852357Z with:
+run	Upload rendered chapter	2026-11-22T17:14:40.2852492Z   name: ai-mode-chapter
+run	Upload rendered chapter	2026-11-22T17:14:40.2852821Z   path: data/output/
+run	Upload rendered chapter	data/processed/*/manifest.json
+run	Upload rendered chapter	data/processed/*/clean_*.png
+run	Upload rendered chapter	data/processed/*/auto_clean_*.png
+run	Upload rendered chapter	server.log
+run	Upload rendered chapter	
+run	Upload rendered chapter	2026-11-22T17:14:40.2853170Z   if-no-files-found: warn
+run	Upload rendered chapter	2026-11-22T17:14:40.2853320Z   compression-level: 6
+run	Upload rendered chapter	2026-11-22T17:14:40.2853463Z   overwrite: false
+run	Upload rendered chapter	2026-11-22T17:14:40.2853603Z   include-hidden-files: false
+run	Upload rendered chapter	2026-11-22T17:14:40.2853757Z env:
+run	Upload rendered chapter	2026-11-22T17:14:40.2853884Z   PYTHONUNBUFFERED: 1
+run	Upload rendered chapter	2026-11-22T17:14:40.2854023Z   PYTHONPATH: .
+run	Upload rendered chapter	2026-11-22T17:14:40.2854168Z   MANGA_PROCESSING_PIPELINE: fast
+run	Upload rendered chapter	2026-11-22T17:14:40.2854330Z   MANGA_USE_DYNAMIC_LAMA: 1
+run	Upload rendered chapter	2026-11-22T17:14:40.2854486Z   MANGA_ORT_PROVIDER: openvino
+run	Upload rendered chapter	2026-11-22T17:14:40.2854645Z   MANGA_ORT_REQUIRE_PROVIDER: 1
+run	Upload rendered chapter	2026-11-22T17:14:40.2854809Z   MANGA_ORT_OPENVINO_SCOPE: detectors
+run	Upload rendered chapter	2026-11-22T17:14:40.2854980Z   MANGA_ORT_OPENVINO_THREADS: 2
+run	Upload rendered chapter	2026-11-22T17:14:40.2855162Z   MANGA_ORT_OPENVINO_STREAMS: 1
+run	Upload rendered chapter	2026-11-22T17:14:40.2855358Z   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+run	Upload rendered chapter	2026-11-22T17:14:40.2855567Z   OPENBLAS_NUM_THREADS: 1
+run	Upload rendered chapter	2026-11-22T17:14:40.2855753Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Upload rendered chapter	2026-11-22T17:14:40.2856016Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+run	Upload rendered chapter	2026-11-22T17:14:40.2856279Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Upload rendered chapter	2026-11-22T17:14:40.2856669Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Upload rendered chapter	2026-11-22T17:14:40.2856907Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.16/x64
+run	Upload rendered chapter	2026-11-22T17:14:40.2857144Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.16/x64/lib
+run	Upload rendered chapter	2026-11-22T17:14:40.2857346Z ##[endgroup]
+run	Upload rendered chapter	2026-11-22T17:14:40.3883712Z (node:4237) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+run	Upload rendered chapter	2026-11-22T17:14:40.3884483Z (Use `node --trace-deprecation ...` to show where the warning was created)
+run	Upload rendered chapter	2026-11-22T17:14:40.4137871Z Multiple search paths detected. Calculating the least common ancestor of all paths
+run	Upload rendered chapter	2026-11-22T17:14:40.4140357Z The least common ancestor is /home/runner/work/manga-translator/manga-translator. This will be the root directory of the artifact
+run	Upload rendered chapter	2026-11-22T17:14:40.4141564Z With the provided path, there will be 193 files uploaded
+run	Upload rendered chapter	2026-11-22T17:14:40.4145040Z Artifact name is valid!
+run	Upload rendered chapter	2026-11-22T17:14:40.4145457Z Root directory input is valid!
+run	Upload rendered chapter	2026-11-22T17:14:40.7973857Z Beginning upload of artifact content to blob storage
+run	Upload rendered chapter	2026-11-22T17:14:40.9961430Z (node:4237) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+run	Upload rendered chapter	2026-11-22T17:14:41.9474107Z Uploaded bytes 8388608
+run	Upload rendered chapter	2026-11-22T17:14:42.1547000Z Uploaded bytes 16777216
+run	Upload rendered chapter	2026-11-22T17:14:42.2419393Z Uploaded bytes 25165824
+run	Upload rendered chapter	2026-11-22T17:14:42.3268892Z Uploaded bytes 33554432
+run	Upload rendered chapter	2026-11-22T17:14:42.5014572Z Uploaded bytes 41943040
+run	Upload rendered chapter	2026-11-22T17:14:42.5063156Z Uploaded bytes 50331648
+run	Upload rendered chapter	2026-11-22T17:14:42.5325633Z Uploaded bytes 58720256
+run	Upload rendered chapter	2026-11-22T17:14:42.6108624Z Uploaded bytes 67108864
+run	Upload rendered chapter	2026-11-22T17:14:42.7986555Z Uploaded bytes 75497472
+run	Upload rendered chapter	2026-11-22T17:14:42.9808545Z Uploaded bytes 83886080
+run	Upload rendered chapter	2026-11-22T17:14:43.2073155Z Uploaded bytes 92274688
+run	Upload rendered chapter	2026-11-22T17:14:43.4386205Z Uploaded bytes 100663296
+run	Upload rendered chapter	2026-11-22T17:14:43.5716234Z Uploaded bytes 109051904
+run	Upload rendered chapter	2026-11-22T17:14:43.8250733Z Uploaded bytes 117440512
+run	Upload rendered chapter	2026-11-22T17:14:43.9802641Z Uploaded bytes 125829120
+run	Upload rendered chapter	2026-11-22T17:14:44.2211980Z Uploaded bytes 134217728
+run	Upload rendered chapter	2026-11-22T17:14:44.3695825Z Uploaded bytes 142606336
+run	Upload rendered chapter	2026-11-22T17:14:44.5807677Z Uploaded bytes 150994944
+run	Upload rendered chapter	2026-11-22T17:14:44.7771529Z Uploaded bytes 159383552
+run	Upload rendered chapter	2026-11-22T17:14:45.0162757Z Uploaded bytes 167772160
+run	Upload rendered chapter	2026-11-22T17:14:45.2311656Z Uploaded bytes 176160768
+run	Upload rendered chapter	2026-11-22T17:14:45.4414246Z Uploaded bytes 184549376
+run	Upload rendered chapter	2026-11-22T17:14:45.6284919Z Uploaded bytes 192937984
+run	Upload rendered chapter	2026-11-22T17:14:45.8722033Z Uploaded bytes 201326592
+run	Upload rendered chapter	2026-11-22T17:14:46.0671054Z Uploaded bytes 209715200
+run	Upload rendered chapter	2026-11-22T17:14:46.2339579Z Uploaded bytes 218103808
+run	Upload rendered chapter	2026-11-22T17:14:46.4978150Z Uploaded bytes 226492416
+run	Upload rendered chapter	2026-11-22T17:14:46.6409265Z Uploaded bytes 234881024
+run	Upload rendered chapter	2026-11-22T17:14:46.8507451Z Uploaded bytes 243269632
+run	Upload rendered chapter	2026-11-22T17:14:47.0468865Z Uploaded bytes 251658240
+run	Upload rendered chapter	2026-11-22T17:14:47.2380566Z Uploaded bytes 260046848
+run	Upload rendered chapter	2026-11-22T17:14:47.5030537Z Uploaded bytes 268435456
+run	Upload rendered chapter	2026-11-22T17:14:47.6957389Z Uploaded bytes 276824064
+run	Upload rendered chapter	2026-11-22T17:14:47.9066230Z Uploaded bytes 281471223
+run	Upload rendered chapter	2026-11-22T17:14:47.9878035Z Finished uploading artifact content to blob storage!
+run	Upload rendered chapter	2026-11-22T17:14:47.9880125Z SHA256 digest of uploaded artifact zip is a328095c5ac9ee756b39b3e72b9330f4414b5c95be59742a7a44a75abd9cee99
+run	Upload rendered chapter	2026-11-22T17:14:47.9881709Z Finalizing artifact upload
+run	Upload rendered chapter	2026-11-22T17:14:48.4797949Z Artifact ai-mode-chapter.zip successfully finalized. Artifact ID 14764845639
+run	Upload rendered chapter	2026-11-22T17:14:48.4798513Z Artifact ai-mode-chapter has been successfully uploaded! Final size is 281471223 bytes. Artifact ID is 14764845639
+run	Upload rendered chapter	2026-11-22T17:14:48.4804114Z Artifact download URL: https://github.com/tuantran00541-spec/manga-translator/actions/runs/45043505983/artifacts/14764845639
+run	Post Build the CTD mask model	﻿2026-11-22T17:14:48.4963091Z Post job cleanup.
+run	Post Build the CTD mask model	2026-11-22T17:14:48.4965624Z ##[start-action display=Run actions/cache@v4;id=__70c10b99-957f-4978-ac29-74ae9fd41acf.cache]
+run	Post Build the CTD mask model	2026-11-22T17:14:48.4967397Z ##[end-action id=__70c10b99-957f-4978-ac29-74ae9fd41acf.cache;outcome=skipped;conclusion=skipped;duration_ms=0]
+run	Post Run actions/checkout@v4	﻿2026-11-22T17:14:48.5025299Z Post job cleanup.
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5597393Z [command]/usr/bin/git version
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5647217Z git version 2.56.1
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5688859Z Temporarily overriding HOME='/home/runner/work/_temp/8b96c23e-5238-48c6-a2e8-dd91cde23226' before making global git config changes
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5689829Z Adding repository directory to the temporary git global config as a safe directory
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5690640Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/manga-translator/manga-translator
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5708152Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5734030Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5907340Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5924689Z http.https://github.com/.extraheader
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5933495Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.5961390Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.6134489Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+run	Post Run actions/checkout@v4	2026-11-22T17:14:48.6162212Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+run	Complete job	﻿2026-11-22T17:14:48.6437764Z Cleaning up orphan processes
+run	Complete job	2026-11-22T17:14:48.6548245Z Terminate orphan process: pid (3498) (python)
+run	Complete job	2026-11-22T17:14:48.6608167Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache/restore@v4, actions/cache@v4, actions/checkout@v4, actions/setup-python@v5, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
