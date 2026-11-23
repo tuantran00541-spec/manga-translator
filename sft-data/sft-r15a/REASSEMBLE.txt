@@ -1,6 +1,0 @@
-The two adapter_model.safetensors files were split into ~17MB parts because
-GitHub's git-blob API rejects single uploads above ~30MB.
-Reassemble with:
-  cat pilot-out/adapter_model.safetensors.part* > pilot-out/adapter_model.safetensors
-  cat pilot-out/epoch-1/adapter_model.safetensors.part* > pilot-out/epoch-1/adapter_model.safetensors
-Then verify: sha256sum should match the adapter hashes in the run artifact.
