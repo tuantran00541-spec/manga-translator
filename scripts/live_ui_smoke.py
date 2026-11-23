@@ -172,11 +172,12 @@ def _exercise_desktop(page: Page) -> None:
     expect(translation).to_have_value("Bong bóng thứ hai")
 
     peek = page.get_by_role("button", name="Giữ để xem ảnh gốc", exact=False)
-    peek.dispatch_event("pointerdown", {"button": 0})
+    peek.hover()
+    page.mouse.down()
     page.wait_for_function(
         "() => document.querySelector('.review-workspace-shell')?.classList.contains('review-peek-active')"
     )
-    peek.dispatch_event("pointerup")
+    page.mouse.up()
     page.wait_for_function(
         "() => !document.querySelector('.review-workspace-shell')?.classList.contains('review-peek-active')"
     )
