@@ -33,7 +33,12 @@ DEFAULT_API_INPAINT_MODEL = "openai/gpt-image-2.6-flare"
 DEFAULT_API_INPAINT_QUALITY = "low"
 DEFAULT_MAX_API_CALLS_PER_CHAPTER = 3
 ATLAS_SIZE = 1024
-ATLAS_DIVIDER = 12
+ATLAS_DIVIDER_2X2 = 12
+ATLAS_DIVIDER_3X3 = 10
+ATLAS_DIVIDER = ATLAS_DIVIDER_2X2
+ATLAS_COMPACT_MAX_DIM = 380
+ATLAS_MAX_SLOTS_2X2 = 4
+ATLAS_MAX_SLOTS_3X3 = 9
 MAX_ATLAS_WORKERS = 3
 
 # Never allow "auto": on image-2.6-flare at 1024x1024, "auto" bills ~$0.22/img (~8x "low").
@@ -57,13 +62,16 @@ _SINGLE_PROMPT = (
     "where text was removed. Do not add any new text or letters."
 )
 
-_ATLAS_PROMPT = (
-    "This 1024x1024 image is a 2x2 grid of separate manga/manhwa artwork crops divided by thick solid dark gray borders. "
-    "For EVERY crop quadrant independently: completely remove ALL text, letters, and sound effects (SFX) and seamlessly "
-    "redraw the underlying speech bubble interiors, crisp black ink borders, hair, clothing, speedlines, and background art. "
-    "Preserve the exact 2x2 grid divider lines, exact crop positions, framing, scale, character faces, and line-art style "
-    "100% faithfully in each quadrant. Do not shift, zoom, merge quadrants, or add any new text."
-)
+
+def _atlas_prompt_for_grid(grid_dim: int) -> str:
+    label = f"{grid_dim}x{grid_dim}"
+    return (
+        f"This 1024x1024 image is a {label} grid of separate manga/manhwa artwork crops divided by thick solid dark gray borders. "
+        "For EVERY non-blank crop cell independently: completely remove ALL text, letters, and sound effects (SFX) and seamlessly "
+        "redraw the underlying speech bubble interiors, crisp black ink borders, hair, clothing, speedlines, and background art. "
+        f"Preserve the exact {label} grid divider lines, exact crop positions, framing, scale, character faces, and line-art style "
+        "100% faithfully in each cell. Do not shift, zoom, merge cells, or add any new text."
+    )
 
 
 def _normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -265,40 +273,103 @@ def pack_regions_to_atlas(
     crops_bgr: list[np.ndarray],
     *,
     atlas_size: int = ATLAS_SIZE,
-) -> tuple[Image.Image, list[dict[str, Any]], bool]:
-    """Pack 1..4 BGR crops into a single 1024x1024 PNG image (single or 2x2 grid)."""
-    if not crops_bgr or len(crops_bgr) > 4:
-        raise ValueError("pack_regions_to_atlas accepts 1 to 4 crops")
+) -> tuple[Image.Image, list[dict[str, Any]], int]:
+    """Pack 1..9 BGR crops into a single 1024x1024 PNG image (1x1, 2x2, or 3x3 grid).
+
+    Returns (atlas_pil, slots, grid_dim) where grid_dim is 1, 2, or 3.
+    """
+    if not crops_bgr or len(crops_bgr) > ATLAS_MAX_SLOTS_3X3:
+        raise ValueError(f"pack_regions_to_atlas accepts 1 to {ATLAS_MAX_SLOTS_3X3} crops")
 
     pil_crops = [Image.fromarray(cv2.cvtColor(c, cv2.COLOR_BGR2RGB)) for c in crops_bgr]
-    if len(pil_crops) == 1:
+    count = len(pil_crops)
+    if count == 1:
         canvas, box = _pad_into_cell(pil_crops[0], atlas_size, atlas_size)
         slots = [{
             "index": 0,
             "orig_size": pil_crops[0].size,
             "atlas_box": box,
         }]
-        return canvas, slots, False
+        return canvas, slots, 1
 
-    half = (atlas_size - ATLAS_DIVIDER) // 2
+    grid_dim = 2 if count <= ATLAS_MAX_SLOTS_2X2 else 3
+    divider = ATLAS_DIVIDER_2X2 if grid_dim == 2 else ATLAS_DIVIDER_3X3
+    cell_size = (atlas_size - divider * (grid_dim - 1)) // grid_dim
     atlas = Image.new("RGB", (atlas_size, atlas_size), (40, 40, 40))
-    offsets = [
-        (0, 0),
-        (half + ATLAS_DIVIDER, 0),
-        (0, half + ATLAS_DIVIDER),
-        (half + ATLAS_DIVIDER, half + ATLAS_DIVIDER),
-    ]
+
     slots: list[dict[str, Any]] = []
     for idx, im in enumerate(pil_crops):
-        ox0, oy0 = offsets[idx]
-        cell, (bx1, by1, bx2, by2) = _pad_into_cell(im, half, half)
+        row = idx // grid_dim
+        col = idx % grid_dim
+        ox0 = col * (cell_size + divider)
+        oy0 = row * (cell_size + divider)
+        cell, (bx1, by1, bx2, by2) = _pad_into_cell(im, cell_size, cell_size)
         atlas.paste(cell, (ox0, oy0))
         slots.append({
             "index": idx,
             "orig_size": im.size,
             "atlas_box": (ox0 + bx1, oy0 + by1, ox0 + bx2, oy0 + by2),
         })
-    return atlas, slots, True
+    return atlas, slots, grid_dim
+
+
+def plan_atlas_batches(
+    regions: list[dict[str, Any]],
+    *,
+    pack_atlas: bool = True,
+    max_calls: int | None = None,
+) -> list[list[int]]:
+    """Dynamically group region indices into 1x1, 2x2 (large crops), or 3x3 (compact crops) bins.
+
+    - Compact crops (max dim <= 380px) pack up to 9 per 1024x1024 call (3x3 grid).
+    - Large crops (max dim > 380px) pack up to 4 per 1024x1024 call (2x2 grid) to preserve detail.
+    - Strictly enforces max_calls while keeping priority order (earlier indices packed first).
+    """
+    if not regions:
+        return []
+    if not pack_atlas:
+        limit = len(regions) if max_calls is None else min(len(regions), max(0, int(max_calls)))
+        return [[i] for i in range(limit)]
+
+    budget = None if max_calls is None else max(0, int(max_calls))
+    if budget == 0:
+        return []
+
+    bins: list[dict[str, Any]] = []
+
+    for idx, region in enumerate(regions):
+        crop = region["crop"]
+        max_dim = max(int(crop.shape[0]), int(crop.shape[1]))
+        is_compact = max_dim <= ATLAS_COMPACT_MAX_DIM
+
+        placed = False
+        if is_compact:
+            for b in bins:
+                if b["kind"] == "3x3" and len(b["indices"]) < ATLAS_MAX_SLOTS_3X3:
+                    b["indices"].append(idx)
+                    placed = True
+                    break
+            if not placed and (budget is None or len(bins) < budget):
+                bins.append({"kind": "3x3", "indices": [idx]})
+                placed = True
+            if not placed:
+                # Budget reached: tuck compact crop into any remaining slot of a 2x2 bin.
+                for b in bins:
+                    if len(b["indices"]) < ATLAS_MAX_SLOTS_2X2:
+                        b["indices"].append(idx)
+                        placed = True
+                        break
+        else:
+            for b in bins:
+                if b["kind"] == "2x2" and len(b["indices"]) < ATLAS_MAX_SLOTS_2X2:
+                    b["indices"].append(idx)
+                    placed = True
+                    break
+            if not placed and (budget is None or len(bins) < budget):
+                bins.append({"kind": "2x2", "indices": [idx]})
+                placed = True
+
+    return [b["indices"] for b in bins if b["indices"]]
 
 
 def unpack_atlas(
@@ -438,7 +509,7 @@ def _call_images_edit_endpoint(
     quality: str,
     atlas_image: Image.Image,
     *,
-    is_atlas: bool,
+    grid_dim: int = 1,
     timeout: float = 150.0,
 ) -> Image.Image:
     base = str(provider.api_base or "").rstrip("/")
@@ -449,9 +520,10 @@ def _call_images_edit_endpoint(
     atlas_image.save(buf, format="PNG")
     png_bytes = buf.getvalue()
 
+    prompt = _SINGLE_PROMPT if grid_dim <= 1 else _atlas_prompt_for_grid(grid_dim)
     data = {
         "model": model,
-        "prompt": _ATLAS_PROMPT if is_atlas else _SINGLE_PROMPT,
+        "prompt": prompt,
         "n": "1",
         "size": f"{atlas_image.width}x{atlas_image.height}",
         "quality": quality,
@@ -502,7 +574,8 @@ def inpaint_regions_via_api(
 ) -> list[np.ndarray | None]:
     """Redraw a list of {'crop': BGR ndarray, 'mask': uint8 ndarray} regions via configured API.
 
-    Packs up to 4 crops into a single 1024x1024 2x2 atlas call and executes batches in parallel.
+    Dynamically packs compact crops into 3x3 (up to 9/call) and large crops into 2x2 (up to 4/call)
+    inside a 1024x1024 atlas and executes batches in parallel.
     Returns a list aligned 1-to-1 with `regions` (None entries indicate skipped/over-budget or failed).
     """
     if not regions:
@@ -513,25 +586,21 @@ def inpaint_regions_via_api(
         model=model,
         quality=quality,
     )
-    group_size = 4 if pack_atlas else 1
-    batches: list[list[int]] = []
-    for start in range(0, len(regions), group_size):
-        if max_calls is not None and len(batches) >= max_calls:
-            break
-        batches.append(list(range(start, min(len(regions), start + group_size))))
-
+    batches = plan_atlas_batches(regions, pack_atlas=pack_atlas, max_calls=max_calls)
     results: list[np.ndarray | None] = [None] * len(regions)
+    if not batches:
+        return results
 
     def _run_batch(indices: list[int]) -> None:
         crops = [regions[i]["crop"] for i in indices]
-        atlas_pil, slots, is_atlas = pack_regions_to_atlas(crops)
+        atlas_pil, slots, grid_dim = pack_regions_to_atlas(crops)
         edited_pil = _call_images_edit_endpoint(
             provider,
             api_key,
             effective_model,
             effective_quality,
             atlas_pil,
-            is_atlas=is_atlas,
+            grid_dim=grid_dim,
         )
         unpacked = unpack_atlas(edited_pil, slots)
         for idx, ai_crop in zip(indices, unpacked):

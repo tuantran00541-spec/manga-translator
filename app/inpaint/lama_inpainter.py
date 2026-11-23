@@ -387,6 +387,7 @@ class Inpainter:
         boxes: list[BubbleBox],
         *,
         protected_regions: list[dict] | None = None,
+        deferred_ai_items: list[dict] | None = None,
     ) -> np.ndarray:
         self._begin_metrics(boxes=len(boxes))
         if not boxes:
@@ -447,12 +448,18 @@ class Inpainter:
             result = self._smart_paint_region(result, local_mask, crop_box, hole=hole)
 
         if ai_candidates:
+            if deferred_ai_items is not None:
+                for item in ai_candidates:
+                    cx1, cy1, cx2, cy2 = item["crop_box"]
+                    deferred_ai_items.append({
+                        **item,
+                        "crop": result[cy1:cy2, cx1:cx2].copy(),
+                    })
+                return result
+
             ai_candidates.sort(key=lambda item: item["score"], reverse=True)
             pack_atlas = bool(api_cfg.get("pack_atlas", True))
             max_calls = max(1, int(api_cfg.get("max_api_calls_per_chapter", 3)))
-            max_regions = max_calls * (4 if pack_atlas else 1)
-            selected = ai_candidates[:max_regions]
-            overflow = ai_candidates[max_regions:]
 
             api_outputs: list[np.ndarray | None] | None = None
             try:
@@ -464,7 +471,7 @@ class Inpainter:
                         ].copy(),
                         "mask": item["local_mask"],
                     }
-                    for item in selected
+                    for item in ai_candidates
                 ]
                 api_outputs = inpaint_regions_via_api(
                     regions_payload,
@@ -478,7 +485,7 @@ class Inpainter:
                 logger.warning("Hybrid API inpaint failed; falling back to local LaMa: {}", exc)
                 api_outputs = None
 
-            for idx, item in enumerate(selected):
+            for idx, item in enumerate(ai_candidates):
                 ai_crop = api_outputs[idx] if api_outputs is not None and idx < len(api_outputs) else None
                 if ai_crop is not None:
                     result = composite_api_region(
@@ -496,14 +503,6 @@ class Inpainter:
                         item["crop_box"],
                         hole=item["hole"],
                     )
-
-            for item in overflow:
-                result = self._smart_paint_region(
-                    result,
-                    item["local_mask"],
-                    item["crop_box"],
-                    hole=item["hole"],
-                )
 
         return result
 

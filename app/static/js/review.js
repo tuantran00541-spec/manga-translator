@@ -174,7 +174,7 @@ function chooseRepaintMode() {
     const aiOption = createOption(
       "ai",
       "Vẽ lại bằng AI (API)",
-      "Gửi vùng đã tô sang mô hình ảnh API đã cấu hình. Tự gom nhiều vùng thành lưới 2×2 để giảm chi phí và căn chỉnh sát nét vẽ gốc.",
+      "Gửi vùng đã tô sang mô hình ảnh API đã cấu hình. Tự gom nhiều vùng thành lưới động 2×2 / 3×3 (tối đa 9 vùng/lượt) để giảm chi phí và căn chỉnh sát nét vẽ gốc.",
       "Đẹp nhất cho SFX"
     );
     const restoreOption = createOption(

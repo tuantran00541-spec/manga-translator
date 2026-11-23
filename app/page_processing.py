@@ -110,6 +110,7 @@ class PageProcessingMixin:
         supplemental_detections: list[BubbleBox] | None = None,
         seam_context_unavailable: bool = False,
         screen=None,
+        defer_chapter_ai: bool = False,
     ) -> dict:
         started_at = time.perf_counter()
         read_started_at = started_at
@@ -267,18 +268,34 @@ class PageProcessingMixin:
             ))
 
         auto_inpaint_started_at = time.perf_counter()
-        clean_image = self.inpainter.inpaint(
-            image,
-            effective_boxes,
-            protected_regions=preserve_regions,
-        )
+        deferred_ai_items: list[dict] | None = [] if defer_chapter_ai else None
+        if deferred_ai_items is not None:
+            clean_image = self.inpainter.inpaint(
+                image,
+                effective_boxes,
+                protected_regions=preserve_regions,
+                deferred_ai_items=deferred_ai_items,
+            )
+        else:
+            clean_image = self.inpainter.inpaint(
+                image,
+                effective_boxes,
+                protected_regions=preserve_regions,
+            )
         auto_inpaint_metrics = self.inpainter.last_metrics()
+        deferred_regions_for_skip = [
+            {"x1": c[0], "y1": c[1], "x2": c[2], "y2": c[3]}
+            for item in (deferred_ai_items or [])
+            for c in (item["crop_box"],)
+        ]
         second_pass_boxes = 0
         seen: set[tuple[int, int, int, int]] = set()
         for _ in range(LEFTOVER_PASSES if effective_boxes else 0):
             leftovers = [box for box in self.detector.leftover_boxes(clean_image, effective_boxes)
                          if not geometry_center_in_regions(
                              {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2}, preserve_regions)
+                         and not geometry_center_in_regions(
+                             {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2}, deferred_regions_for_skip)
                          and (box.x1, box.y1, box.x2, box.y2) not in seen]
             if not leftovers:
                 break
@@ -435,4 +452,8 @@ class PageProcessingMixin:
             res["manual_mask"] = manual_mask_posix
         if manual_lama_mask_posix:
             res["manual_lama_mask"] = manual_lama_mask_posix
+        if deferred_ai_items:
+            res["_deferred_ai"] = deferred_ai_items
+            res["_img_path"] = img_path.as_posix()
+            res["_preserve_regions"] = preserve_regions or []
         return res

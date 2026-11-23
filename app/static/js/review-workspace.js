@@ -196,7 +196,7 @@
     const inpaintDesc = el(
       "p",
       "settings-row-desc",
-      "Giữ ~85% khung thoại phẳng chạy Smart Fill cục bộ miễn phí (<2ms); chỉ gom các vùng SFX/tranh phức tạp thành lưới 2×2 gửi tới nhà cung cấp AI giao thức OpenAI bạn đã cấu hình.",
+      "Giữ ~85% khung thoại phẳng chạy Smart Fill cục bộ miễn phí (<2ms); chỉ gom các vùng SFX/tranh phức tạp xuyên cả chương thành lưới động 3×3 (tối đa 9 vùng/lượt) hoặc 2×2 (vùng lớn) gửi tới nhà cung cấp AI bạn đã cấu hình.",
     );
 
     const inpaintProvider = el("select", "ui-select");
@@ -226,8 +226,8 @@
       wrap.append(box, el("span", "", labelText));
       return { wrap, box };
     };
-    const hybridToggle = makeCheckbox("Bật Hybrid tự động khi xử lý chương (tự gửi vùng SFX khó cho AI)");
-    const atlasToggle = makeCheckbox("Gom lưới 2×2 (nhồi 4 vùng khó vào 1 ảnh 1024×1024 để giảm 4× chi phí)");
+    const hybridToggle = makeCheckbox("Bật Hybrid tự động xuyên cả chương (gom vùng SFX khó toàn chương trước khi gọi AI)");
+    const atlasToggle = makeCheckbox("Gom lưới động 3×3 / 2×2 (tối đa 9 vùng vừa hoặc 4 vùng lớn trong 1 ảnh 1024×1024)");
 
     const inpaintGrid = el("div", "settings-inpaint-grid");
     const miniField = (labelText, control) => {

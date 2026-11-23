@@ -679,9 +679,18 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         shared_seam_detections, seam_context_unavailable, shared_seam_metrics = (
             self._shared_seam_detections(chapter_id, work_items, max_workers=max_workers)
         )
+        from app.inpaint.api_inpaint import load_inpaint_settings
+
+        api_cfg = load_inpaint_settings()
+        chapter_hybrid_batch = bool(
+            api_cfg.get("enabled")
+            and api_cfg.get("hybrid_auto")
+            and len(work_items) > 1
+        )
         committed_indices: list[int] = []
         discarded_stale_indices: list[int] = []
         errors: list[tuple[int, Exception]] = []
+        pending_ai_pages: list[tuple[int, dict, dict | None]] = []
 
         def _process_one(item) -> tuple[int, dict, dict | None]:
             (
@@ -692,17 +701,22 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 stitch_core,
                 snapshot,
             ) = item
+            kwargs = {
+                "preserve_regions": preserve_regions,
+                "existing_boxes": existing_boxes,
+                "stitch_core": stitch_core,
+                "supplemental_detections": shared_seam_detections.get(idx),
+                "seam_context_unavailable": idx in seam_context_unavailable,
+                "screen": screen,
+            }
+            if chapter_hybrid_batch:
+                kwargs["defer_chapter_ai"] = True
             return (
                 idx,
                 self._process_page(
                     img_path,
                     processed_dir,
-                    preserve_regions=preserve_regions,
-                    existing_boxes=existing_boxes,
-                    stitch_core=stitch_core,
-                    supplemental_detections=shared_seam_detections.get(idx),
-                    seam_context_unavailable=idx in seam_context_unavailable,
-                    screen=screen,
+                    **kwargs,
                 ),
                 snapshot,
             )
@@ -715,9 +729,13 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             }
             for future in as_completed(futures):
                 idx = futures[future]
+                deferred_for_ai = False
                 try:
                     page_idx, page_data, snapshot = future.result()
-                    if self._commit_processed_page(
+                    if chapter_hybrid_batch and page_data.get("_deferred_ai"):
+                        pending_ai_pages.append((page_idx, page_data, snapshot))
+                        deferred_for_ai = True
+                    elif self._commit_processed_page(
                         chapter_id,
                         processed_dir,
                         page_idx,
@@ -736,8 +754,20 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     )
                     errors.append((idx, exc))
                 finally:
-                    if progress_callback is not None:
+                    if progress_callback is not None and not deferred_for_ai:
                         progress_callback(idx)
+
+        if pending_ai_pages:
+            self._finalize_chapter_ai_batch(
+                chapter_id,
+                processed_dir,
+                pending_ai_pages,
+                api_cfg,
+                committed_indices,
+                discarded_stale_indices,
+                errors,
+                progress_callback,
+            )
 
         failed_indices = [item[0] for item in errors]
         discarded_stale_indices = sorted(set(discarded_stale_indices))
@@ -761,6 +791,8 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 "session_lock_wait_ms",
                 "ort_global_lock_wait_ms",
                 "smart_fill_regions",
+                "telea_fast_regions",
+                "api_inpaint_regions",
             )
             inpaint_totals = {name: 0 for name in inpaint_metric_names}
             for page_index in committed_indices:
@@ -835,6 +867,147 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             )
 
         return manifest
+
+    def _finalize_chapter_ai_batch(
+        self,
+        chapter_id: str,
+        processed_dir: Path,
+        pending_ai_pages: list[tuple[int, dict, dict | None]],
+        api_cfg: dict,
+        committed_indices: list[int],
+        discarded_stale_indices: list[int],
+        errors: list[tuple[int, Exception]],
+        progress_callback: Callable[[int], None] | None,
+    ) -> None:
+        from app.image_io import write_image
+        from app.inpaint.api_inpaint import composite_api_region, inpaint_regions_via_api
+
+        # Pool complex clusters across EVERY pending page in the chapter and prioritize highest complexity.
+        global_entries: list[dict] = []
+        for slot_idx, (page_idx, page_data, _snapshot) in enumerate(pending_ai_pages):
+            for item_idx, item in enumerate(page_data.get("_deferred_ai") or []):
+                global_entries.append({
+                    "slot_idx": slot_idx,
+                    "page_idx": page_idx,
+                    "item_idx": item_idx,
+                    "score": float(item.get("score") or 0.0),
+                    "item": item,
+                })
+
+        global_entries.sort(key=lambda e: e["score"], reverse=True)
+        pack_atlas = bool(api_cfg.get("pack_atlas", True))
+        max_calls = max(1, int(api_cfg.get("max_api_calls_per_chapter", 3)))
+
+        api_outputs: list[np.ndarray | None] | None = None
+        if global_entries:
+            try:
+                regions_payload = [
+                    {"crop": e["item"]["crop"], "mask": e["item"]["local_mask"]}
+                    for e in global_entries
+                ]
+                api_outputs = inpaint_regions_via_api(
+                    regions_payload,
+                    provider_id=api_cfg.get("provider_id") or None,
+                    model=api_cfg.get("model") or None,
+                    quality=api_cfg.get("quality") or None,
+                    pack_atlas=pack_atlas,
+                    max_calls=max_calls,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Chapter {} cross-page Hybrid AI batch failed; falling back to local LaMa: {}",
+                    chapter_id,
+                    exc,
+                )
+                api_outputs = None
+
+        resolved_by_key: dict[tuple[int, int], np.ndarray | None] = {}
+        for g_idx, entry in enumerate(global_entries):
+            ai_crop = api_outputs[g_idx] if api_outputs is not None and g_idx < len(api_outputs) else None
+            resolved_by_key[(entry["slot_idx"], entry["item_idx"])] = ai_crop
+
+        for slot_idx, (page_idx, page_data, snapshot) in enumerate(pending_ai_pages):
+            deferred_items = page_data.pop("_deferred_ai", None) or []
+            img_path_str = page_data.pop("_img_path", None)
+            preserve_regions = page_data.pop("_preserve_regions", None) or []
+            try:
+                tmp_clean_val = page_data.get("tmp_clean")
+                if not tmp_clean_val:
+                    raise RuntimeError("Missing temporary clean image for deferred AI page")
+                tmp_clean_path = Path(tmp_clean_val)
+                clean_image = read_image(tmp_clean_path)
+
+                api_applied = 0
+                for item_idx, item in enumerate(deferred_items):
+                    ai_crop = resolved_by_key.get((slot_idx, item_idx))
+                    if ai_crop is not None:
+                        clean_image = composite_api_region(
+                            clean_image,
+                            ai_crop,
+                            item["local_mask"],
+                            item["crop_box"],
+                            feather=False,
+                        )
+                        api_applied += 1
+                    else:
+                        clean_image = self.inpainter._smart_paint_region(
+                            clean_image,
+                            item["local_mask"],
+                            item["crop_box"],
+                            hole=item.get("hole"),
+                        )
+
+                img_path = Path(img_path_str) if img_path_str else None
+                if img_path is not None:
+                    restore_path = self._restore_mask_path(processed_dir, img_path)
+                    if preserve_regions or restore_path.exists():
+                        orig_image = read_image(img_path)
+                        if preserve_regions:
+                            h, w = clean_image.shape[:2]
+                            for region in preserve_regions:
+                                if not isinstance(region, dict):
+                                    continue
+                                try:
+                                    rx1, rx2 = sorted((int(region.get("x1", 0)), int(region.get("x2", 0))))
+                                    ry1, ry2 = sorted((int(region.get("y1", 0)), int(region.get("y2", 0))))
+                                except (TypeError, ValueError):
+                                    continue
+                                rx1, rx2 = max(0, rx1), min(w, rx2)
+                                ry1, ry2 = max(0, ry1), min(h, ry2)
+                                if rx2 > rx1 and ry2 > ry1:
+                                    clean_image[ry1:ry2, rx1:rx2] = orig_image[ry1:ry2, rx1:rx2]
+                        if restore_path.exists():
+                            self._apply_restore_mask(clean_image, orig_image, processed_dir, img_path)
+
+                write_image(tmp_clean_path, clean_image)
+                tmp_auto_val = page_data.get("tmp_auto_clean")
+                if tmp_auto_val and Path(tmp_auto_val).exists():
+                    write_image(Path(tmp_auto_val), clean_image)
+
+                auto_metrics = page_data.setdefault("processing_metrics", {}).setdefault("auto_inpaint", {})
+                auto_metrics["api_inpaint_regions"] = int(auto_metrics.get("api_inpaint_regions", 0)) + api_applied
+
+                if self._commit_processed_page(
+                    chapter_id,
+                    processed_dir,
+                    page_idx,
+                    page_data,
+                    snapshot,
+                ):
+                    committed_indices.append(page_idx)
+                else:
+                    discarded_stale_indices.append(page_idx)
+            except Exception as exc:
+                logger.opt(exception=True).error(
+                    "Chapter {} page {} operation 'finalize_chapter_ai_batch' failed: {}",
+                    chapter_id,
+                    page_idx,
+                    exc,
+                )
+                errors.append((page_idx, exc))
+            finally:
+                if progress_callback is not None:
+                    progress_callback(page_idx)
 
     def mark_skipped(self, chapter_id: str, page_indices: list[int], skipped: bool) -> dict:
         indices = sorted({int(idx) for idx in page_indices if int(idx) >= 0})

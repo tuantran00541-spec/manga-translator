@@ -73,25 +73,59 @@ def test_complexity_score_separates_flat_bubble_from_sfx_art():
     assert api_inpaint.is_complex_for_ai(art, art_mask) is True
 
 
-def test_pack_and_unpack_single_and_2x2_atlas():
+def test_pack_and_unpack_single_2x2_and_3x3_atlas():
     c1 = np.full((180, 240, 3), (10, 40, 220), dtype=np.uint8)
     c2 = np.full((260, 140, 3), (30, 210, 50), dtype=np.uint8)
     c3 = np.full((120, 300, 3), (220, 60, 20), dtype=np.uint8)
     c4 = np.full((200, 200, 3), (180, 180, 40), dtype=np.uint8)
 
-    single_atlas, single_slots, is_atlas_single = api_inpaint.pack_regions_to_atlas([c1])
+    single_atlas, single_slots, grid_single = api_inpaint.pack_regions_to_atlas([c1])
     assert single_atlas.size == (1024, 1024)
-    assert is_atlas_single is False
+    assert grid_single == 1
     unpacked_single = api_inpaint.unpack_atlas(single_atlas, single_slots)
     assert unpacked_single[0].shape == c1.shape
 
-    grid_atlas, grid_slots, is_atlas_grid = api_inpaint.pack_regions_to_atlas([c1, c2, c3, c4])
+    grid_atlas, grid_slots, grid_2x2 = api_inpaint.pack_regions_to_atlas([c1, c2, c3, c4])
     assert grid_atlas.size == (1024, 1024)
-    assert is_atlas_grid is True
+    assert grid_2x2 == 2
     unpacked = api_inpaint.unpack_atlas(grid_atlas, grid_slots)
     assert [u.shape for u in unpacked] == [c1.shape, c2.shape, c3.shape, c4.shape]
     for orig, rec in zip((c1, c2, c3, c4), unpacked):
         assert np.max(np.abs(orig.astype(int) - rec.astype(int))) <= 2
+
+    nine_crops = [
+        np.full((140 + (i % 3) * 20, 160 + (i % 2) * 30, 3), (20 * i + 10, 255 - 20 * i, 120), dtype=np.uint8)
+        for i in range(9)
+    ]
+    atlas_3x3, slots_3x3, grid_3x3 = api_inpaint.pack_regions_to_atlas(nine_crops)
+    assert atlas_3x3.size == (1024, 1024)
+    assert grid_3x3 == 3
+    unpacked_9 = api_inpaint.unpack_atlas(atlas_3x3, slots_3x3)
+    assert [u.shape for u in unpacked_9] == [c.shape for c in nine_crops]
+    for orig, rec in zip(nine_crops, unpacked_9):
+        assert np.max(np.abs(orig.astype(int) - rec.astype(int))) <= 2
+
+
+def test_plan_atlas_batches_dynamic_3x3_and_2x2():
+    compact_regions = [{"crop": np.zeros((220, 260, 3), dtype=np.uint8)} for _ in range(9)]
+    batches = api_inpaint.plan_atlas_batches(compact_regions, pack_atlas=True, max_calls=3)
+    assert batches == [list(range(9))]
+
+    large_regions = [{"crop": np.zeros((520, 480, 3), dtype=np.uint8)} for _ in range(6)]
+    batches_large = api_inpaint.plan_atlas_batches(large_regions, pack_atlas=True, max_calls=1)
+    assert batches_large == [[0, 1, 2, 3]]
+
+    mixed = [
+        {"crop": np.zeros((500, 450, 3), dtype=np.uint8)},  # 0 large
+        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 1 compact
+        {"crop": np.zeros((500, 450, 3), dtype=np.uint8)},  # 2 large
+        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 3 compact
+        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 4 compact
+        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 5 compact
+        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 6 compact
+    ]
+    batches_mixed = api_inpaint.plan_atlas_batches(mixed, pack_atlas=True, max_calls=2)
+    assert batches_mixed == [[0, 2], [1, 3, 4, 5, 6]]
 
 
 def test_align_ai_crop_corrects_vertical_shift_and_scale_drift():
@@ -146,16 +180,17 @@ def test_inpaint_regions_via_api_packs_4_into_1_call_and_respects_budget(monkeyp
     monkeypatch.setattr(api_inpaint.requests, "post", fake_post)
 
     regions = [
-        {"crop": np.full((120, 140, 3), 100 + i * 20, dtype=np.uint8), "mask": np.full((120, 140), 255, dtype=np.uint8)}
-        for i in range(6)
+        {"crop": np.full((120, 140, 3), 100 + i * 10, dtype=np.uint8), "mask": np.full((120, 140), 255, dtype=np.uint8)}
+        for i in range(11)
     ]
     outputs = api_inpaint.inpaint_regions_via_api(regions, pack_atlas=True, max_calls=1)
     assert len(calls) == 1
     assert calls[0]["url"] == "https://gateway.example.test/v1/images/edits"
     assert calls[0]["data"]["model"] == "openai/gpt-image-2.6-flare"
     assert calls[0]["data"]["size"] == "1024x1024"
-    assert all(out is not None for out in outputs[:4])
-    assert outputs[4] is None and outputs[5] is None
+    assert "3x3 grid" in calls[0]["data"]["prompt"]
+    assert all(out is not None for out in outputs[:9])
+    assert outputs[9] is None and outputs[10] is None
 
 
 def test_hybrid_inpainter_routes_complex_to_api_and_falls_back_on_error(monkeypatch):
@@ -315,3 +350,116 @@ def test_inpaint_settings_endpoints_and_ai_repaint_route(tmp_path, monkeypatch):
         "model": "openai/gpt-image-2",
         "quality": "low",
     }
+
+
+def test_cross_page_chapter_batching_pools_6_pages_into_1_3x3_api_call(tmp_path, monkeypatch):
+    import app.pipeline as pipeline_mod
+    import app.manifest_utils as manifest_mod
+    from app.pipeline import ChapterPipeline
+
+    cid = "cafe1234"
+    raw_dir = tmp_path / "raw"
+    proc_dir = tmp_path / "processed"
+    out_dir = tmp_path / "output"
+    (raw_dir / cid).mkdir(parents=True)
+    (proc_dir / cid).mkdir(parents=True)
+    (out_dir / cid).mkdir(parents=True)
+
+    monkeypatch.setattr(pipeline_mod, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(pipeline_mod, "PROCESSED_DIR", proc_dir)
+    monkeypatch.setattr(manifest_mod, "PROCESSED_DIR", proc_dir)
+    import app.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(cfg_mod, "PROCESSED_DIR", proc_dir)
+    monkeypatch.setattr(cfg_mod, "OUTPUT_DIR", out_dir)
+
+    art, _ = _make_textured_panel(260, 280)
+    pages = []
+    for i in range(6):
+        p = raw_dir / cid / f"page_{i:03d}.png"
+        cv2.imwrite(str(p), art)
+        pages.append({
+            "original": p.as_posix(),
+            "clean": None,
+            "boxes": [],
+            "skipped": False,
+            "process_required": True,
+            "preserve_regions": [],
+        })
+    manifest_mod.save_manifest_raw(cid, {"chapter_id": cid, "pages": pages})
+
+    hybrid_cfg = {
+        "enabled": True,
+        "hybrid_auto": True,
+        "provider_id": "generic-gw",
+        "model": "openai/gpt-image-2.6-flare",
+        "quality": "low",
+        "max_api_calls_per_chapter": 1,
+        "pack_atlas": True,
+    }
+    monkeypatch.setattr(api_inpaint, "load_inpaint_settings", lambda: dict(hybrid_cfg))
+    monkeypatch.setattr("app.inpaint.lama_inpainter.load_inpaint_settings", lambda: dict(hybrid_cfg))
+
+    fake_provider = SimpleNamespace(
+        id="generic-gw",
+        label="Generic Gateway",
+        api_base="https://gateway.example.test/v1",
+        protocol="openai",
+        auth_scheme="bearer",
+    )
+    monkeypatch.setattr(
+        api_inpaint,
+        "resolve_api_inpaint_target",
+        lambda **kwargs: (fake_provider, "sk-test", "openai/gpt-image-2.6-flare", "low"),
+    )
+    monkeypatch.setattr(api_inpaint, "validate_url", lambda url: url)
+
+    http_calls = []
+
+    class FakeResp:
+        ok = True
+        status_code = 200
+        text = ""
+
+        def __init__(self, img: Image.Image):
+            self._b64 = _encode_png_b64(img)
+
+        def json(self):
+            return {"data": [{"b64_json": self._b64}]}
+
+    def fake_post(url, headers=None, data=None, files=None, timeout=None, allow_redirects=False):
+        http_calls.append(dict(data or {}))
+        sent_img = Image.open(io.BytesIO(files["image"][1])).convert("RGB")
+        return FakeResp(sent_img)
+
+    monkeypatch.setattr(api_inpaint.requests, "post", fake_post)
+
+    class StubDetector:
+        def detect(self, _img):
+            return [BubbleBox(75, 70, 185, 170, 0.95, np.full((100, 110), 255, np.uint8), safe_to_inpaint=True)]
+
+        def leftover_boxes(self, _img, _boxes):
+            return []
+
+        def last_metrics(self):
+            return {}
+
+    pipe = ChapterPipeline.__new__(ChapterPipeline)
+    pipe._detector = StubDetector()
+    inp = Inpainter()
+    lama_calls = []
+    inp._lama_fill = lambda *args, **kwargs: (lama_calls.append(1), args[0])[1]
+    pipe._inpainter = inp
+
+    progress_done = []
+    manifest = pipe.process_pages(cid, list(range(6)), workers=2, progress_callback=progress_done.append)
+
+    # All 6 pages' complex SFX regions MUST be pooled into ONE single 3x3 HTTP call!
+    assert len(http_calls) == 1
+    assert "3x3 grid" in http_calls[0]["prompt"]
+    assert lama_calls == []
+    assert sorted(progress_done) == [0, 1, 2, 3, 4, 5]
+    assert manifest["last_processing_run"]["inpaint"]["api_inpaint_regions"] == 6
+    for i in range(6):
+        assert manifest["pages"][i]["clean"] is not None
+        assert manifest["pages"][i]["processing_metrics"]["auto_inpaint"]["api_inpaint_regions"] == 1
