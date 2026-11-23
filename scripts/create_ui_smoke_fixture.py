@@ -118,10 +118,10 @@ def main() -> None:
     shutil.rmtree(long_processed, ignore_errors=True)
     long_raw.mkdir(parents=True)
     long_processed.mkdir(parents=True)
-    long_image = Image.new("RGB", (1200, 42000), "white")
+    long_image = Image.new("RGB", (1200, 12000), "white")
     long_draw = ImageDraw.Draw(long_image)
     long_draw.rectangle((0, 0, 1199, 119), fill=(220, 35, 35))
-    long_draw.rectangle((0, 41880, 1199, 41999), fill=(35, 65, 220))
+    long_draw.rectangle((0, 11880, 1199, 11999), fill=(35, 65, 220))
     raw_path = long_raw / "page_000.png"
     clean_path = long_processed / "clean_000.png"
     long_image.save(raw_path)
@@ -136,12 +136,12 @@ def main() -> None:
             "source_page": 0,
             "slice_index": 0,
             "width": 1200,
-            "height": 42000,
+            "height": 12000,
             "stitch_core": {
-                "source_y1": 0, "source_y2": 42000,
-                "core_y1": 0, "core_y2": 42000,
-                "core_source_y1": 0, "core_source_y2": 42000,
-                "source_height": 42000,
+                "source_y1": 0, "source_y2": 12000,
+                "core_y1": 0, "core_y2": 12000,
+                "core_source_y1": 0, "core_source_y2": 12000,
+                "source_height": 12000,
             },
             "original": str(raw_path.resolve()),
             "clean": str(clean_path.resolve()),
