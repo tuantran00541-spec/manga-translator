@@ -356,6 +356,8 @@ def test_m7_stop_catches_concurrent_register(tmp_path):
     s._usage_lock = threading.Lock()
     s._lock = threading.Condition()
     s._stop = False
+    s._stop_event = threading.Event()
+    s._cancel_hooks = []
     s.queue = []
     s.goal = None
     s.children = {}

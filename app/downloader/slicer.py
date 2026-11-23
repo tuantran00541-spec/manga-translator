@@ -151,9 +151,10 @@ def _find_cut_rows(
 
 
 def _content(gray: np.ndarray) -> np.ndarray:
-    """Detect pixels that stand out from their row's background (supports white, black, and colored gutters)."""
-    row_med = np.median(gray, axis=1, keepdims=True).astype(np.int16)
-    dev = np.abs(gray.astype(np.int16) - row_med)
+    """Detect pixels that stand out from their local background (supports white, black, and colored gutters)."""
+    kernel = max(3, (gray.shape[1] // 12) | 1)
+    background = cv2.blur(gray, (kernel, 1))
+    dev = np.abs(gray.astype(np.int16) - background.astype(np.int16))
     return np.where(dev > SLICE_BACKGROUND_DISTANCE, np.uint8(255), np.uint8(0))
 
 

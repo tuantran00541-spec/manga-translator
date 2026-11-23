@@ -4,7 +4,6 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 import io
 import json
-from pathlib import Path
 import threading
 from typing import Any
 
@@ -22,7 +21,6 @@ from app.inpaint.smart_fill import (
     ring_fill_color,
     smart_fill_color,
 )
-from app.logging_config import logger
 from app.secret_store import get_provider_api_key, list_provider_configs
 from app.security import validate_url
 

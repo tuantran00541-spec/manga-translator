@@ -15,6 +15,7 @@ from app.detector.boxes import BubbleBox
 from app.inpaint.api_inpaint import (
     composite_api_region,
     inpaint_regions_via_api,
+    is_complex_for_ai,
     load_inpaint_settings,
     region_complexity_score,
 )
@@ -436,7 +437,7 @@ class Inpainter:
             if use_hybrid_api and np.any(local_mask > 127):
                 cur_crop = result[cy1:cy2, cx1:cx2]
                 score = region_complexity_score(cur_crop, local_mask)
-                if score >= 0.52:
+                if is_complex_for_ai(cur_crop, local_mask):
                     ai_candidates.append({
                         "score": score,
                         "crop_box": crop_box,

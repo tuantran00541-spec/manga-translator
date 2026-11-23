@@ -138,9 +138,9 @@ def _exercise_desktop(page: Page) -> None:
     image = page.locator(".review-stitched-image")
     expect(image).to_have_attribute("data-strip-slices", "3")
     expect(image).to_have_attribute("data-source-height", "4800")
-    expect(page.get_by_role("button", name="Đã tẩy nền", exact=True)).to_be_visible()
-    expect(page.get_by_role("button", name="Có chữ", exact=True)).to_be_visible()
-    expect(page.get_by_role("button", name="Ảnh gốc", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Giữ để xem ảnh gốc", exact=False)).to_be_visible()
+    expect(page.get_by_role("button", name="Bật/tắt chữ dịch trên trang", exact=False)).to_be_visible()
+    expect(page.get_by_role("button", name="Ẩn/hiện khung vùng chữ", exact=False)).to_be_visible()
     expect(page.locator(".review-strip-meta")).to_have_count(0)
     expect(page.locator(".review-brush-bar")).to_be_hidden()
     page.locator('.review-rail-tool[data-tool="brush"]').click()
@@ -171,13 +171,14 @@ def _exercise_desktop(page: Page) -> None:
     translation = page.locator(".review-floating-inspector .translation-textarea").first
     expect(translation).to_have_value("Bong bóng thứ hai")
 
-    page.get_by_role("button", name="Ảnh gốc", exact=True).click()
+    peek = page.get_by_role("button", name="Giữ để xem ảnh gốc", exact=False)
+    peek.dispatch_event("pointerdown", {"button": 0})
     page.wait_for_function(
-        "() => document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
+        "() => document.querySelector('.review-workspace-shell')?.classList.contains('review-peek-active')"
     )
-    page.get_by_role("button", name="Đã tẩy nền", exact=True).click()
+    peek.dispatch_event("pointerup")
     page.wait_for_function(
-        "() => !document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
+        "() => !document.querySelector('.review-workspace-shell')?.classList.contains('review-peek-active')"
     )
     _wait_for_text_overlay(page)
 

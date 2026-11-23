@@ -23,9 +23,9 @@ def runtime_checks() -> None:
     expected_threads = {
         1: 1,
         2: 1,
-        4: 1,
-        8: 1,
-        12: 1,
+        4: 2,
+        8: 2,
+        12: 2,
         16: 2,
         32: 4,
     }

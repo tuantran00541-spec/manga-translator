@@ -103,7 +103,7 @@ function chooseRepaintMode() {
         aiProviderSelect.replaceChildren();
         if (!providers.length) {
           aiProviderSelect.add(new Option("Chưa cấu hình nhà cung cấp OpenAI", ""));
-          aiHint.textContent = "Hãy thêm nhà cung cấp giao thức OpenAI và khóa API trong Cài đặt → Mô hình AI.";
+          aiHint.textContent = "Hãy thêm nhà cung cấp giao thức OpenAI và khóa API trong Cài đặt, mục Mô hình AI.";
           aiHint.hidden = false;
         } else {
           aiProviderSelect.add(new Option(`Tự động (${providers[0].label})`, ""));
