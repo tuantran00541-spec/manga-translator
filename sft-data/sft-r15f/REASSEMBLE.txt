@@ -1,0 +1,5 @@
+The adapter_model.safetensors files were split into ~17MB .part files
+because the GitHub API rejects large blobs. Reassemble with:
+
+  cat pilot-out/adapter_model.safetensors.part* > pilot-out/adapter_model.safetensors
+  cat pilot-out/epoch-1/adapter_model.safetensors.part* > pilot-out/epoch-1/adapter_model.safetensors
