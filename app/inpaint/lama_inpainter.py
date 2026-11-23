@@ -18,6 +18,7 @@ from app.inpaint.smart_fill import (
     match_boundary_tone,
     quadratic_design,
     restore_ambient_grain,
+    restore_inpaint_sharpness,
     ring_fill_color,
     smart_fill_color,
     smart_fill_surface,
@@ -587,6 +588,8 @@ class Inpainter:
                     sub_img = filled[ay1:ay2, ax1:ax2].copy()
                     sub_mask = comp_mask[ay1:ay2, ax1:ax2].astype(np.uint8) * 255
                     painted_sub = self._lama_fill_single(sub_img, sub_mask)
+                    painted_sub = match_boundary_tone(sub_img, painted_sub, sub_mask)
+                    painted_sub = restore_inpaint_sharpness(sub_img, painted_sub, sub_mask)
                     sub_img[sub_mask > 127] = painted_sub[sub_mask > 127]
                     filled[ay1:ay2, ax1:ax2] = sub_img
                     did_lama = True
@@ -646,11 +649,19 @@ class Inpainter:
             return self._migan_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)
         write_mask = local_mask
         model_mask = local_mask
+        crop_gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+        crop_edges = cv2.Canny(crop_gray, SMART_FILL_CANNY_LOW, SMART_FILL_CANNY_HIGH)
+        ctx_mask = write_mask <= 127
+        ctx_edge_density = float(np.mean(crop_edges[ctx_mask] > 0)) if np.any(ctx_mask) else 0.0
+        textured_art = ctx_edge_density >= 0.035
         if hole is None:
             ys, xs = np.where(local_mask > 127)
             if len(ys):
                 side = min(int(ys.max()) - int(ys.min()) + 1, int(xs.max()) - int(xs.min()) + 1)
-                radius = int(np.clip(round(side * LAMA_MASK_DILATE_SCALE), LAMA_MASK_DILATE_MIN, LAMA_MASK_DILATE_MAX))
+                # Keep model context dilation tight over detailed artwork so nearby strokes stay
+                # visible to LaMa instead of being masked out and hallucinated from afar.
+                max_ctx_radius = min(LAMA_MASK_DILATE_MAX, 7 if textured_art else 12)
+                radius = int(np.clip(round(side * LAMA_MASK_DILATE_SCALE), LAMA_MASK_DILATE_MIN, max_ctx_radius))
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
                 model_mask = cv2.dilate(local_mask, kernel, iterations=1)
         self._ensure_session()
@@ -658,13 +669,17 @@ class Inpainter:
         crop_h, crop_w = crop.shape[:2]
         fill_mask = model_mask if hole is None else hole
 
-        # Trim dead margin outside the actual mask extent when it meaningfully shrinks LaMa pixels.
+        # Trim dead margin outside the actual mask extent when it meaningfully shrinks LaMa pixels,
+        # preserving wider structural context around detailed artwork for FFC line continuation.
         tx1, ty1, tx2, ty2 = 0, 0, crop_w, crop_h
         my, mx = np.where(model_mask > 127)
         if len(my):
             mh = int(my.max()) - int(my.min()) + 1
             mw = int(mx.max()) - int(mx.min()) + 1
-            pad = min(48, max(24, int(round(0.35 * max(mh, mw)))))
+            if textured_art:
+                pad = min(72, max(36, int(round(0.45 * max(mh, mw)))))
+            else:
+                pad = min(48, max(24, int(round(0.35 * max(mh, mw)))))
             cand_x1 = max(0, int(mx.min()) - pad)
             cand_y1 = max(0, int(my.min()) - pad)
             cand_x2 = min(crop_w, int(mx.max()) + 1 + pad)
@@ -695,10 +710,9 @@ class Inpainter:
             and max_dim > DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
             and int(np.count_nonzero(work_write > 127)) >= INPAINT_NATIVE_TILE_MASK_AREA_MIN
         ):
-            gray = cv2.cvtColor(work_crop, cv2.COLOR_BGR2GRAY) if work_crop.ndim == 3 else work_crop
-            edges = cv2.Canny(gray, SMART_FILL_CANNY_LOW, SMART_FILL_CANNY_HIGH)
+            work_edges = crop_edges[ty1:ty2, tx1:tx2]
             context = work_write <= 127
-            edge_density = float(np.mean(edges[context] > 0)) if np.any(context) else 0.0
+            edge_density = float(np.mean(work_edges[context] > 0)) if np.any(context) else 0.0
             texture_tiling = edge_density >= INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN
 
         crop_pixels = int(work_h * work_w)
@@ -723,15 +737,19 @@ class Inpainter:
             painted = crop.copy()
             painted[ty1:ty2, tx1:tx2] = work_painted
 
-        painted = match_boundary_tone(crop, painted, write_mask, hole=fill_mask)
-        painted = restore_ambient_grain(crop, painted, write_mask, crop_box, hole=fill_mask)
+        # Use `hole` (pending neighboring boxes only) rather than `fill_mask` so tone matching,
+        # sharpness restoration, ambient grain, and rim blending always sample the real untouched
+        # artwork right outside `write_mask`.
+        painted = match_boundary_tone(crop, painted, write_mask, hole=hole)
+        painted = restore_inpaint_sharpness(crop, painted, write_mask, hole=hole)
+        painted = restore_ambient_grain(crop, painted, write_mask, crop_box, hole=hole)
         return self._blend_painted(
             image,
             painted,
             write_mask,
             crop_box,
             feather,
-            hole=fill_mask,
+            hole=hole,
         )
 
     def _migan_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
@@ -829,11 +847,16 @@ class Inpainter:
         pad_bottom = canvas_h - new_h - pad_y
         pad_right = canvas_w - new_w - pad_x
 
+        border_mode = (
+            cv2.BORDER_REFLECT_101
+            if min(new_h, new_w) > max(pad_y, pad_bottom, pad_x, pad_right) + 1
+            else cv2.BORDER_REPLICATE
+        )
         canvas = cv2.copyMakeBorder(
-            crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+            crop_resized, pad_y, pad_bottom, pad_x, pad_right, border_mode
         )
         mask_canvas = cv2.copyMakeBorder(
-            mask_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+            mask_resized, pad_y, pad_bottom, pad_x, pad_right, border_mode
         )
 
         painted_full = self._run_lama(canvas, mask_canvas)
@@ -841,7 +864,7 @@ class Inpainter:
 
         if new_h == crop_h and new_w == crop_w:
             return painted_crop
-        return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=cv2.INTER_CUBIC)
+        return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=cv2.INTER_LANCZOS4)
 
     def _lama_fill_single_fixed(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         crop_h, crop_w = crop.shape[:2]
@@ -854,23 +877,28 @@ class Inpainter:
         crop_resized = cv2.resize(
             crop,
             (new_w, new_h),
-            interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
+            interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LANCZOS4,
         )
         pad_bottom = INPAINT_SIZE - new_h - pad_y
         pad_right = INPAINT_SIZE - new_w - pad_x
+        border_mode = (
+            cv2.BORDER_REFLECT_101
+            if min(new_h, new_w) > max(pad_y, pad_bottom, pad_x, pad_right) + 1
+            else cv2.BORDER_REPLICATE
+        )
         canvas = cv2.copyMakeBorder(
-            crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+            crop_resized, pad_y, pad_bottom, pad_x, pad_right, border_mode
         )
 
         mask_resized = self._resize_mask_preserve_support(local_mask, new_w, new_h)
         mask_canvas = cv2.copyMakeBorder(
-            mask_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+            mask_resized, pad_y, pad_bottom, pad_x, pad_right, border_mode
         )
 
         painted_full = self._run_lama(canvas, mask_canvas)
         painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
 
-        interpolation = cv2.INTER_AREA if scale > 1.0 else cv2.INTER_CUBIC
+        interpolation = cv2.INTER_AREA if scale > 1.0 else cv2.INTER_LANCZOS4
         return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=interpolation)
 
     def _run_lama(self, canvas: np.ndarray, mask_canvas: np.ndarray) -> np.ndarray:

@@ -34,6 +34,9 @@ from app.parameters import (
 _TONE_MATCH_MAX_SHIFT = 18.0
 _TONE_MATCH_VALID_DRIFT_MAX = 24.0
 _TONE_MATCH_MIN_SHIFT = 0.5
+_SHARPNESS_MIN_CONTEXT_ACUTANCE = 3.0
+_SHARPNESS_MIN_RATIO = 0.88
+_SHARPNESS_MAX_AMOUNT = 0.65
 _GRAIN_MIN_AMBIENT_STD = 0.75
 _GRAIN_MAX_STD = 10.0
 
@@ -223,6 +226,9 @@ def _clean_context_mask(
     k = radius_px * 2 + 1
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & ~exclude
+    if int(np.count_nonzero(ring)) < 16 and hole is not None:
+        # When `hole` expands beyond `mask_bool`, step outside `exclude` so context is still sampled.
+        ring = (cv2.dilate(exclude.astype(np.uint8), kernel) > 0) & ~exclude
     if int(np.count_nonzero(ring)) < 16:
         return ring, ring
 
@@ -243,7 +249,12 @@ def match_boundary_tone(
     local_mask: np.ndarray,
     hole: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Align per-channel brightness/color offset of neural inpaint output to clean ring."""
+    """Align spatially-varying brightness/color drift of neural inpaint to the clean surround.
+
+    Uses robust per-pixel residuals on low-gradient boundary anchors interpolated smoothly into
+    the mask via normalized Gaussian diffusion so gradients and split-lit panels blend seamlessly
+    without linework color bleeding.
+    """
     mask_bool = local_mask > 127
     if (
         not np.any(mask_bool)
@@ -257,18 +268,129 @@ def match_boundary_tone(
     if int(np.count_nonzero(smooth)) < 16:
         return painted
 
-    orig_vals = original_crop[smooth].astype(np.float32)
-    paint_vals = painted[smooth].astype(np.float32)
-    delta = np.median(orig_vals - paint_vals, axis=0)
+    orig_f = original_crop.astype(np.float32)
+    paint_f = painted.astype(np.float32)
+    residuals = orig_f[smooth] - paint_f[smooth]
+    delta = np.median(residuals, axis=0)
     peak = float(np.max(np.abs(delta)))
-    if peak < _TONE_MATCH_MIN_SHIFT or peak > _TONE_MATCH_VALID_DRIFT_MAX:
+    if peak > _TONE_MATCH_VALID_DRIFT_MAX:
         return painted
 
-    delta = np.clip(delta, -_TONE_MATCH_MAX_SHIFT, _TONE_MATCH_MAX_SHIFT)
+    # Reject outlier boundary pixels (e.g. stray ink/border strokes) before spatial interpolation.
+    inlier_dev = np.max(np.abs(residuals - delta), axis=1)
+    inlier_cap = max(8.0, float(np.percentile(inlier_dev, 80)) + 2.0)
+    local_res = np.zeros_like(orig_f)
+    weights = np.zeros(original_crop.shape[:2], dtype=np.float32)
+
+    smooth_ys, smooth_xs = np.nonzero(smooth)
+    keep = inlier_dev <= min(inlier_cap, _TONE_MATCH_VALID_DRIFT_MAX)
+    if int(np.count_nonzero(keep)) < 16:
+        keep = np.ones(len(smooth_ys), dtype=bool)
+    kept_res = np.clip(residuals[keep], -_TONE_MATCH_MAX_SHIFT, _TONE_MATCH_MAX_SHIFT)
+    max_local_shift = float(np.max(np.abs(kept_res)))
+    if max(peak, max_local_shift) < _TONE_MATCH_MIN_SHIFT:
+        return painted
+
+    local_res[smooth_ys[keep], smooth_xs[keep]] = kept_res
+    weights[smooth_ys[keep], smooth_xs[keep]] = 1.0
+
+    my, mx = np.nonzero(mask_bool)
+    span = max(1, min(int(my.max()) - int(my.min()) + 1, int(mx.max()) - int(mx.min()) + 1))
+    sigma = float(np.clip(span * 0.25, 6.0, 28.0))
+    num = cv2.GaussianBlur(local_res, (0, 0), sigmaX=sigma, sigmaY=sigma, borderType=cv2.BORDER_REPLICATE)
+    den = cv2.GaussianBlur(weights, (0, 0), sigmaX=sigma, sigmaY=sigma, borderType=cv2.BORDER_REPLICATE)
+
+    fallback = np.clip(delta, -_TONE_MATCH_MAX_SHIFT, _TONE_MATCH_MAX_SHIFT)
+    valid = den > 1e-4
+    field = np.empty_like(orig_f)
+    field[:] = fallback
+    field[valid] = num[valid] / den[valid, None]
+    # Blend gracefully toward the global median deep inside very wide holes where boundary weight fades.
+    conf = np.clip(den / max(float(np.percentile(den[smooth], 25)) * 0.5, 1e-4), 0.0, 1.0)
+    field = field * conf[:, :, None] + fallback[None, None, :] * (1.0 - conf[:, :, None])
+    field = np.clip(field, -_TONE_MATCH_MAX_SHIFT, _TONE_MATCH_MAX_SHIFT)
+
     aligned = painted.copy()
-    shifted = painted[mask_bool].astype(np.float32) + delta
+    shifted = paint_f[mask_bool] + field[mask_bool]
     aligned[mask_bool] = np.clip(np.rint(shifted), 0, 255).astype(np.uint8)
     return aligned
+
+
+def restore_inpaint_sharpness(
+    original_crop: np.ndarray,
+    painted: np.ndarray,
+    local_mask: np.ndarray,
+    hole: np.ndarray | None = None,
+) -> np.ndarray:
+    """Restore crisp luminance acutance inside neural inpaint regions over textured artwork.
+
+    Operates strictly on the Lab L-channel inside `local_mask` and only when the surrounding
+    artwork contains real structural edges that are noticeably crisper than the inpainted fill.
+    """
+    mask_bool = local_mask > 127
+    if (
+        not np.any(mask_bool)
+        or original_crop.shape != painted.shape
+        or original_crop.ndim != 3
+        or original_crop.shape[2] != 3
+    ):
+        return painted
+
+    ring, _ = _clean_context_mask(original_crop, mask_bool, radius_px=12, hole=hole)
+    if int(np.count_nonzero(ring)) < 48:
+        return painted
+
+    orig_lab = cv2.cvtColor(original_crop, cv2.COLOR_BGR2LAB)
+    paint_lab = cv2.cvtColor(painted, cv2.COLOR_BGR2LAB)
+    orig_l = orig_lab[:, :, 0].astype(np.float32)
+    paint_l = paint_lab[:, :, 0].astype(np.float32)
+
+    orig_blur = cv2.GaussianBlur(orig_l, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    paint_blur = cv2.GaussianBlur(paint_l, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    orig_detail = orig_l - orig_blur
+    paint_detail = paint_l - paint_blur
+
+    gx = cv2.Sobel(orig_l, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(orig_l, cv2.CV_32F, 0, 1, ksize=3)
+    orig_edges = ring & ((cv2.magnitude(gx, gy) / 4.0) >= 10.0)
+    if int(np.count_nonzero(orig_edges)) < 24:
+        return painted
+
+    ctx_acutance = float(np.percentile(np.abs(orig_detail[orig_edges]), 85))
+    if ctx_acutance < _SHARPNESS_MIN_CONTEXT_ACUTANCE:
+        return painted
+
+    pgx = cv2.Sobel(paint_l, cv2.CV_32F, 1, 0, ksize=3)
+    pgy = cv2.Sobel(paint_l, cv2.CV_32F, 0, 1, ksize=3)
+    paint_edges = mask_bool & ((cv2.magnitude(pgx, pgy) / 4.0) >= 6.0)
+    if int(np.count_nonzero(paint_edges)) < 12:
+        return painted
+
+    paint_acutance = float(np.percentile(np.abs(paint_detail[paint_edges]), 85))
+    if paint_acutance >= _SHARPNESS_MIN_RATIO * ctx_acutance:
+        return painted
+
+    amount = float(
+        np.clip(
+            (ctx_acutance / max(paint_acutance, 1.0) - 1.0) * 0.55,
+            0.15,
+            _SHARPNESS_MAX_AMOUNT,
+        )
+    )
+
+    # Smooth noise gate so flat shading stays clean while structural strokes sharpen cleanly.
+    abs_d = np.abs(paint_detail)
+    gate = np.clip((abs_d - 2.0) / 4.0, 0.0, 1.0)
+    l_min = float(np.percentile(orig_l[ring], 1)) - 4.0
+    l_max = float(np.percentile(orig_l[ring], 99)) + 4.0
+
+    boosted_l = np.clip(paint_l + paint_detail * (amount * gate), max(0.0, l_min), min(255.0, l_max))
+    out_lab = paint_lab.copy()
+    out_lab[:, :, 0] = np.where(mask_bool, np.clip(np.rint(boosted_l), 0, 255).astype(np.uint8), paint_lab[:, :, 0])
+    sharpened = cv2.cvtColor(out_lab, cv2.COLOR_LAB2BGR)
+    out = painted.copy()
+    out[mask_bool] = sharpened[mask_bool]
+    return out
 
 
 def restore_ambient_grain(
@@ -382,12 +504,15 @@ def blend_painted(
 
     dist = cv2.distanceTransform(mask_bool.astype(np.uint8), cv2.DIST_L2, 3)
     if float(dist.max()) >= 3.0 and original_crop.ndim == 3 and original_crop.shape == painted.shape:
-        # Soften only the outermost 1.5px rim where original pixel is already background-like,
+        # Soften only the outermost 2.5px rim where original pixel is already background-like,
         # preserving full alpha=1.0 over any stroke/fringe at the perimeter while never altering ~mask.
         alpha = mask_bool.astype(np.float32)
-        rim = mask_bool & (dist <= 1.5)
+        rim = mask_bool & (dist <= 2.5)
         if hole is not None:
-            rim &= ~(hole > 127)
+            other_holes = (hole > 127) & ~mask_bool
+            if np.any(other_holes):
+                near_other = cv2.dilate(other_holes.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+                rim &= ~near_other
         if np.any(rim):
             _, smooth = _clean_context_mask(original_crop, mask_bool, radius_px=6, hole=hole)
             if int(np.count_nonzero(smooth)) >= 16:
@@ -398,7 +523,8 @@ def blend_painted(
                 rim_tol = max(18.0, min(42.0, ctx_mad * 4.5 + 12.0))
                 diff = np.max(np.abs(orig_f - paint_f), axis=2)
                 soft = rim & (diff <= rim_tol)
-                alpha[soft] = np.clip(0.45 + 0.40 * np.clip(dist[soft] - 1.0, 0.0, 0.5) / 0.5, 0.45, 0.85)
+                t = np.clip((dist[soft] - 1.0) / 1.5, 0.0, 1.0)
+                alpha[soft] = 0.35 + 0.65 * (0.5 - 0.5 * np.cos(np.pi * t))
         alpha_3d = alpha[:, :, None]
         blended = painted.astype(np.float32) * alpha_3d + original_crop.astype(np.float32) * (1.0 - alpha_3d)
         image[cy1:cy2, cx1:cx2] = np.clip(np.rint(blended), 0, 255).astype(np.uint8)
