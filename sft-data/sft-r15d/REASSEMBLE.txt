@@ -1,7 +1,0 @@
-The two adapter_model.safetensors files (pilot-out/ and pilot-out/epoch-1/)
-are each ~51MB, above the Git Data API blob limit, so each is split into
-~17MB parts: adapter_model.safetensors.part00/.part01/.part02.
-To restore one: in its directory run
-  cat adapter_model.safetensors.part* > adapter_model.safetensors
-and verify with sha256 against the original (the pilot-report.json in the
-run artifact lists the adapter files).

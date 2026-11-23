@@ -1,0 +1,39 @@
+{
+  "pairs": 1966,
+  "train_pairs": 1919,
+  "holdout_pairs": 47,
+  "epochs": 1.0,
+  "lora_r": 16,
+  "lr": 0.0001,
+  "accum": 8,
+  "epoch_evals": [
+    {
+      "exact": 0.0,
+      "mean_sim": 0.555,
+      "samples": [
+        {
+          "target": "Nếu quân chủ không thích người thì cần gì ngài ấy phải giúp đỡ người chứ.",
+          "got": "Nếu quân chủ không thích ngươi, hắn sẽ không giúp ngươi thoát được."
+        },
+        {
+          "target": "Người muốn điều gì ở ta?",
+          "got": "Có thứ gì ngài muốn từ ta?"
+        },
+        {
+          "target": "Không. Không có bệnh nhân thì tốt hơn chứ.",
+          "got": "Không. Tốt hơn hết là không có người bệnh."
+        }
+      ],
+      "epoch": 1,
+      "opt_steps": 239
+    }
+  ],
+  "best_epoch": 1,
+  "prompts": 6,
+  "holdout_crops": 47,
+  "time_budget_stop": null,
+  "opt_steps": 239,
+  "total_seconds": 13495.4,
+  "avg_loss": 1.1208,
+  "final_lr": 0.0
+}
