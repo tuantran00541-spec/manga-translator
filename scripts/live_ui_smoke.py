@@ -446,6 +446,24 @@ def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) 
     page.wait_for_function(
         "() => { const v = document.querySelector('.review-document-viewport'); return v.scrollTop > 1000 && v.scrollTop + v.clientHeight >= v.scrollHeight - 2; }"
     )
+    print(
+        "long-bottom-debug:",
+        page.evaluate(
+            """() => {
+              const v = document.querySelector('.review-document-viewport');
+              const stage = document.querySelector('.review-stitched-zoom-stage');
+              const image = document.querySelector('.review-stitched-image');
+              const img = document.querySelector('.review-strip-slice[data-page-index="0"] img');
+              const r = (el) => { const b = el?.getBoundingClientRect(); return b ? {x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height)} : null; };
+              return JSON.stringify({
+                viewport: {scrollHeight: v.scrollHeight, clientHeight: v.clientHeight, scrollTop: v.scrollTop},
+                stage: r(stage), image: r(image), img: r(img),
+                stageOverflow: stage ? getComputedStyle(stage).overflow : null,
+                centerEl: document.elementFromPoint(Math.round(v.clientWidth / 2), Math.round(v.clientHeight - 10))?.className || null,
+              });
+            }"""
+        ),
+    )
     has_band("blue", artifacts / f"{name}-long-bottom.png")
 
 
