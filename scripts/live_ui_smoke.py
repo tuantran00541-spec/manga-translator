@@ -148,7 +148,7 @@ def _exercise_desktop(page: Page) -> None:
     expect(page.get_by_role("button", name="Làm sạch vùng", exact=True)).to_be_visible()
     page.locator('.review-rail-tool[data-tool="select"]').click()
     expect(page.locator(".review-brush-bar")).to_be_hidden()
-    expect(page.locator(".review-zoom-dock")).to_be_visible()
+    expect(page.get_by_label("Mức thu phóng")).to_be_visible()
     expect(image).to_have_attribute("data-source-width", "1200")
     first_image = page.locator('.review-strip-slice[data-page-index="0"] img')
     expect(first_image).to_have_js_property("naturalWidth", 1200)
