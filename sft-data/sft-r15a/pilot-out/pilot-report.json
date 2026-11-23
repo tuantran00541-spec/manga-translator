@@ -1,0 +1,39 @@
+{
+  "pairs": 1971,
+  "train_pairs": 1924,
+  "holdout_pairs": 47,
+  "epochs": 1.0,
+  "lora_r": 16,
+  "lr": 0.0001,
+  "accum": 8,
+  "epoch_evals": [
+    {
+      "exact": 0.021,
+      "mean_sim": 0.589,
+      "samples": [
+        {
+          "target": "Cảm giác như hắn đang trở nên vô hình như nước chỉ trong nháy mắt...!!",
+          "got": "Nó giống như, hắn đang biến mất—như nước trong một lát...!!"
+        },
+        {
+          "target": "Khá lắm, hứa phong.",
+          "got": "Ta ấn tượng, HEO BONG."
+        },
+        {
+          "target": "Đây đúng là cơ hội để học nội công tâm pháp...!",
+          "got": "Đây chính là cơ hội để ta học được hơi thở nội công...!"
+        }
+      ],
+      "epoch": 1,
+      "opt_steps": 240
+    }
+  ],
+  "best_epoch": 1,
+  "prompts": 6,
+  "holdout_crops": 47,
+  "time_budget_stop": null,
+  "opt_steps": 240,
+  "total_seconds": 10534.5,
+  "avg_loss": 1.1912,
+  "final_lr": 0.0
+}
