@@ -615,6 +615,8 @@ async function loadFonts() {
   } catch (e) {
     availableFonts = [{ id: "default", name: "Mặc định (Truyện tranh)" }];
     showToast("Không thể tải danh sách phông chữ, dùng phông mặc định.", "info");
+  } finally {
+    window.availableFonts = availableFonts;
   }
 }
 

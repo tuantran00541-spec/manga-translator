@@ -30,10 +30,12 @@ Object.defineProperty(window, "previewActivePageIndex", {
   get: () => previewActivePageIndex,
   set: (value) => { previewActivePageIndex = value; },
 });
+
 let previewZoomScale = 1.0;
 let previewDrawCleanup = null;
 let previewResizeObserver = null;
 let previewLastChapterId = null;
+let previewRailCollapsed = false;
 
 function cleanupPreviewDrawListeners() {
   previewResizeObserver?.disconnect();
@@ -44,6 +46,13 @@ function cleanupPreviewDrawListeners() {
   }
 }
 window.cleanupPreviewDrawListeners = cleanupPreviewDrawListeners;
+
+function pageStateSummary(page) {
+  if (page.skipped) return { code: "skipped", label: "Đã bỏ qua" };
+  if (page.process_required) return { code: "review", label: "Cần xử lý" };
+  if (page.preserve_regions?.length) return { code: "review", label: `${page.preserve_regions.length} vùng giữ nguyên` };
+  return { code: "ready", label: "Sẵn sàng" };
+}
 
 function renderPreview() {
   const container = document.getElementById("page-view");
@@ -66,123 +75,185 @@ function renderPreview() {
   const pages = currentManifest.pages;
   previewActivePageIndex = Math.max(0, Math.min(previewActivePageIndex, pages.length - 1));
   container.innerHTML = "";
-  container.className = "preview-workspace process-workspace";
+  container.className = "preview-workspace process-workspace koharu-process-workspace";
 
   pages.forEach((page) => {
     if (!page.preserve_regions) page.preserve_regions = [];
   });
 
-  const toolbar = document.createElement("div");
-  toolbar.id = "preview-toolbar";
-  toolbar.classList.add("process-commandbar");
+  const activeCount = pages.filter((item) => !item.skipped).length;
+  const page = pages[previewActivePageIndex];
+  const stateInfo = pageStateSummary(page);
 
-  const heading = document.createElement("div");
-  heading.className = "preview-workspace-heading";
-  const title = document.createElement("div");
-  title.className = "preview-workspace-title";
-  title.textContent = `${pages.filter((item) => !item.skipped).length}/${pages.length} lát được chọn`;
-  heading.appendChild(title);
+  const shell = document.createElement("section");
+  shell.className = `koharu-process-shell${previewRailCollapsed ? " koharu-rail-collapsed" : ""}`;
 
-  toolbar.appendChild(heading);
-  container.appendChild(toolbar);
+  // 1. Left Koharu PageRail
+  const pageRail = document.createElement("aside");
+  pageRail.className = "koharu-page-rail";
+  pageRail.setAttribute("aria-label", "Điều hướng trang xử lý");
 
-  const layout = document.createElement("div");
-  layout.className = "workbench-stage-grid process-workbench-grid";
+  const railHead = document.createElement("header");
+  railHead.className = "koharu-rail-head";
+  const railTitleWrap = document.createElement("div");
+  railTitleWrap.className = "koharu-rail-title-wrap";
+  const railTitle = document.createElement("h2");
+  railTitle.className = "koharu-rail-title";
+  railTitle.textContent = "Trang & lát";
+  const railCount = document.createElement("span");
+  railCount.className = "koharu-count-pill";
+  railCount.textContent = String(pages.length);
+  railTitleWrap.append(railTitle, railCount);
+  railHead.appendChild(railTitleWrap);
 
-  const navItems = pages.map((item, index) => ({
-    key: index,
-    label: pageLabel(pages, index),
-    image: item.original,
-    state: item.skipped ? "skipped" : (item.process_required || item.preserve_regions?.length ? "review" : "ready"),
-    stateLabel: item.skipped ? "Bỏ qua" : (item.process_required ? "Cần xử lý" : (item.preserve_regions?.length ? `${item.preserve_regions.length} vùng giữ nguyên` : "Sẵn sàng")),
-  }));
-  const navigator = window.createPageNavigator({
-    items: navItems,
-    activeIndex: previewActivePageIndex,
-    title: "Trang & lát",
-    ariaLabel: "Điều hướng trang xử lý",
-    onSelect: (index) => {
+  const railSearchWrap = document.createElement("div");
+  railSearchWrap.className = "koharu-rail-search-wrap";
+  const railFilter = document.createElement("input");
+  railFilter.type = "search";
+  railFilter.className = "ui-input koharu-rail-filter";
+  railFilter.placeholder = "Lọc trang…";
+  railFilter.setAttribute("aria-label", "Lọc danh sách trang xử lý");
+  railSearchWrap.appendChild(railFilter);
+
+  const railList = document.createElement("div");
+  railList.className = "koharu-page-list";
+
+  const cardRefs = [];
+  pages.forEach((item, index) => {
+    const info = pageStateSummary(item);
+    const labelText = pageLabel(pages, index);
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = `koharu-page-card${index === previewActivePageIndex ? " is-active" : ""}${item.skipped ? " is-skipped" : ""}`;
+    card.dataset.pageIndex = String(index);
+    card.dataset.filterText = `${labelText} ${index + 1} ${info.label}`.toLowerCase();
+
+    const thumbBox = document.createElement("span");
+    thumbBox.className = "koharu-page-thumb";
+    if (item.original) {
+      const thumbImg = document.createElement("img");
+      thumbImg.src = item.original;
+      thumbImg.alt = labelText;
+      thumbImg.loading = "lazy";
+      thumbImg.decoding = "async";
+      thumbImg.draggable = false;
+      thumbBox.appendChild(thumbImg);
+    } else {
+      thumbBox.textContent = String(index + 1);
+    }
+
+    const metaWrap = document.createElement("span");
+    metaWrap.className = "koharu-page-info";
+    const nameEl = document.createElement("strong");
+    nameEl.className = "koharu-page-name";
+    nameEl.textContent = labelText;
+    const subWrap = document.createElement("span");
+    subWrap.className = "koharu-page-meta-slot";
+    const subState = document.createElement("span");
+    subState.className = "koharu-page-sub";
+    subState.textContent = info.label;
+    subWrap.appendChild(subState);
+    if (item.width && item.height) {
+      const dims = document.createElement("span");
+      dims.className = "koharu-page-dims";
+      dims.textContent = `${item.width} × ${item.height}`;
+      subWrap.appendChild(dims);
+    }
+    metaWrap.append(nameEl, subWrap);
+
+    card.append(thumbBox, metaWrap);
+    card.addEventListener("click", () => {
       previewActivePageIndex = index;
       renderPreview();
-    },
+    });
+    railList.appendChild(card);
+    cardRefs.push(card);
   });
 
-  const workspace = document.createElement("div");
-  workspace.className = "preview-main workbench-canvas-column";
-  const surface = document.createElement("section");
-  surface.className = "preview-canvas-surface preview-card-active";
-  surface.dataset.pageIndex = previewActivePageIndex;
-  workspace.appendChild(surface);
+  railFilter.addEventListener("input", () => {
+    const q = railFilter.value.trim().toLowerCase();
+    cardRefs.forEach((card) => {
+      card.hidden = Boolean(q && !card.dataset.filterText.includes(q));
+    });
+  });
 
-  const inspector = document.createElement("aside");
-  inspector.className = "context-inspector process-inspector";
-  inspector.setAttribute("aria-label", "Thuộc tính trang xử lý");
-  const inspectorHeading = document.createElement("div");
-  inspectorHeading.className = "context-inspector-heading";
-  const inspectorEyebrow = document.createElement("span");
-  inspectorEyebrow.className = "ui-eyebrow";
-  inspectorEyebrow.textContent = "Trang đang chọn";
-  const inspectorTitle = document.createElement("strong");
-  inspectorTitle.textContent = pageLabel(pages, previewActivePageIndex);
-  inspectorHeading.append(inspectorEyebrow, inspectorTitle);
-  inspector.appendChild(inspectorHeading);
+  pageRail.append(railHead, railSearchWrap, railList);
 
-  layout.append(navigator.element, workspace, inspector);
-  container.appendChild(layout);
+  // 2. Center Koharu Canvas Pane
+  const canvasPane = document.createElement("div");
+  canvasPane.className = "koharu-canvas-pane koharu-process-canvas";
 
-  const page = pages[previewActivePageIndex];
-  renderPreviewPage(surface, page, previewActivePageIndex, pages, inspector);
+  const toolbar = document.createElement("div");
+  toolbar.id = "preview-toolbar";
+  toolbar.className = "review-stitched-toolbar review-document-toolbar review-document-toolbar-compact koharu-docbar koharu-process-topbar process-commandbar";
 
-  if (typeof setWorkflowCheckpoint === "function") {
-    setWorkflowCheckpoint("preview", previewActivePageIndex);
-  }
-}
+  const topLeft = document.createElement("div");
+  topLeft.className = "review-docbar-group review-docbar-left";
+  const topRight = document.createElement("div");
+  topRight.className = "review-docbar-group review-docbar-right";
 
-function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
-  const header = document.createElement("div");
-  header.className = "preview-card-header";
+  const railToggle = document.createElement("button");
+  railToggle.type = "button";
+  railToggle.className = `ui-btn ui-btn-ghost ui-btn-compact koharu-rail-toggle${previewRailCollapsed ? "" : " active"}`;
+  railToggle.setAttribute("aria-label", "Ẩn/hiện danh sách trang");
+  railToggle.setAttribute("aria-pressed", String(!previewRailCollapsed));
+  railToggle.title = "Ẩn / hiện cột trang bên trái";
+  railToggle.append(window.createUiIcon("panel-left"));
+  railToggle.addEventListener("click", () => {
+    previewRailCollapsed = shell.classList.toggle("koharu-rail-collapsed");
+    railToggle.classList.toggle("active", !previewRailCollapsed);
+    railToggle.setAttribute("aria-pressed", String(!previewRailCollapsed));
+  });
 
-  const labelWrap = document.createElement("div");
-  labelWrap.className = "preview-page-label-wrap";
-  const label = document.createElement("div");
-  label.className = "preview-label";
-  label.textContent = pageLabel(pages, pageIndex);
-  const status = document.createElement("span");
-  status.className = "preview-page-status";
-  status.textContent = page.skipped ? "Đã bỏ qua" : (page.process_required ? "Cần xử lý" : "Đã xử lý");
-  labelWrap.appendChild(label);
-  labelWrap.appendChild(status);
-  header.appendChild(labelWrap);
+  const sliceTitle = document.createElement("strong");
+  sliceTitle.className = "koharu-process-slice-title";
+  sliceTitle.textContent = pageLabel(pages, previewActivePageIndex);
 
-  const zoomBar = document.createElement("div");
-  zoomBar.className = "zoom-controls";
-  const zoomOutBtn = document.createElement("button");
-  zoomOutBtn.className = "ui-icon-btn ui-btn-compact zoom-btn";
-  zoomOutBtn.append(window.createUiIcon("minus"));
-  zoomOutBtn.title = "Thu nhỏ";
-  zoomOutBtn.setAttribute("aria-label", "Thu nhỏ");
-  const zoomLevelText = document.createElement("span");
-  zoomLevelText.className = "zoom-level";
-  const zoomInBtn = document.createElement("button");
-  zoomInBtn.className = "ui-icon-btn ui-btn-compact zoom-btn";
-  zoomInBtn.append(window.createUiIcon("plus"));
-  zoomInBtn.title = "Phóng to";
-  zoomInBtn.setAttribute("aria-label", "Phóng to");
-  const zoomResetBtn = document.createElement("button");
-  zoomResetBtn.className = "ui-btn ui-btn-compact zoom-btn zoom-reset";
-  zoomResetBtn.textContent = "1:1";
-  zoomResetBtn.title = "Đặt lại thu phóng";
-  zoomBar.append(zoomOutBtn, zoomLevelText, zoomInBtn, zoomResetBtn);
-  header.appendChild(zoomBar);
-  card.appendChild(header);
+  const statusPill = document.createElement("span");
+  statusPill.className = "koharu-status-pill";
+  statusPill.textContent = stateInfo.label;
+
+  topLeft.append(railToggle, sliceTitle, statusPill);
+
+  const topDrawBtn = document.createElement("button");
+  topDrawBtn.type = "button";
+  topDrawBtn.className = "ui-btn ui-btn-ghost ui-btn-compact excluded-toggle-btn";
+  topDrawBtn.append(window.createUiIcon("rect-select"));
+  const topDrawLabel = document.createElement("span");
+  topDrawLabel.textContent = "Đánh dấu vùng giữ nguyên";
+  topDrawBtn.appendChild(topDrawLabel);
+
+  const topClearBtn = document.createElement("button");
+  topClearBtn.type = "button";
+  topClearBtn.className = "ui-btn ui-btn-ghost ui-btn-compact excluded-clear-btn";
+  topClearBtn.textContent = "Xóa vùng";
+  topClearBtn.title = "Xóa toàn bộ vùng giữ nguyên của lát ảnh này";
+
+  const primaryActionBtn = document.createElement("button");
+  primaryActionBtn.type = "button";
+  primaryActionBtn.className = "ui-btn ui-btn-primary ui-btn-compact preview-primary-action";
+  primaryActionBtn.textContent = "Bắt đầu xử lý";
+  primaryActionBtn.addEventListener("click", () => {
+    if (typeof window.processSelectedPages === "function") {
+      void window.processSelectedPages();
+    }
+  });
+
+  topRight.append(topDrawBtn, topClearBtn, primaryActionBtn);
+  toolbar.append(topLeft, topRight);
 
   const viewport = document.createElement("div");
-  viewport.className = "preview-viewport";
+  viewport.className = "preview-viewport koharu-process-viewport";
+
+  const surface = document.createElement("div");
+  surface.className = "preview-canvas-surface preview-card-active koharu-process-surface";
+  surface.dataset.pageIndex = String(previewActivePageIndex);
+
   const imgWrap = document.createElement("div");
   imgWrap.className = "preview-image-wrap";
   const img = document.createElement("img");
   img.src = page.original;
-  img.alt = pageLabel(pages, pageIndex);
+  img.alt = pageLabel(pages, previewActivePageIndex);
   img.draggable = false;
 
   const overlayContainer = document.createElement("div");
@@ -190,40 +261,264 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   const drawLayer = document.createElement("div");
   drawLayer.className = "excluded-draw-layer";
   imgWrap.append(img, overlayContainer, drawLayer);
-  viewport.appendChild(imgWrap);
-  card.appendChild(viewport);
+  surface.appendChild(imgWrap);
+  viewport.appendChild(surface);
 
+  // Bottom 32px Koharu StatusBar
+  const statusBar = document.createElement("footer");
+  statusBar.className = "koharu-status-bar";
+  statusBar.setAttribute("aria-label", "Thanh trạng thái và thu phóng");
+
+  const zoomGroup = document.createElement("div");
+  zoomGroup.className = "koharu-status-zoom";
+
+  const zoomOutBtn = document.createElement("button");
+  zoomOutBtn.type = "button";
+  zoomOutBtn.className = "koharu-status-btn";
+  zoomOutBtn.setAttribute("aria-label", "Thu nhỏ");
+  zoomOutBtn.title = "Thu nhỏ";
+  zoomOutBtn.append(window.createUiIcon("minus"));
+
+  const zoomSlider = document.createElement("input");
+  zoomSlider.type = "range";
+  zoomSlider.min = "50";
+  zoomSlider.max = "400";
+  zoomSlider.step = "5";
+  zoomSlider.value = "100";
+  zoomSlider.className = "koharu-zoom-slider";
+  zoomSlider.setAttribute("aria-label", "Mức thu phóng");
+
+  const zoomInBtn = document.createElement("button");
+  zoomInBtn.type = "button";
+  zoomInBtn.className = "koharu-status-btn";
+  zoomInBtn.setAttribute("aria-label", "Phóng to");
+  zoomInBtn.title = "Phóng to";
+  zoomInBtn.append(window.createUiIcon("plus"));
+
+  const zoomLevelBtn = document.createElement("button");
+  zoomLevelBtn.type = "button";
+  zoomLevelBtn.className = "koharu-status-btn zoom-level";
+  zoomLevelBtn.textContent = "100%";
+  zoomLevelBtn.title = "Đặt lại thu phóng";
+
+  const zoomResetBtn = document.createElement("button");
+  zoomResetBtn.type = "button";
+  zoomResetBtn.className = "koharu-status-btn zoom-reset";
+  zoomResetBtn.textContent = "1:1";
+  zoomResetBtn.title = "Kích thước 100%";
+
+  zoomGroup.append(zoomOutBtn, zoomSlider, zoomInBtn, zoomLevelBtn, zoomResetBtn);
+
+  const statusSpacer = document.createElement("div");
+  statusSpacer.className = "koharu-status-spacer";
+
+  const statusInfo = document.createElement("div");
+  statusInfo.className = "koharu-status-info";
+  const selectedStat = document.createElement("span");
+  selectedStat.className = "koharu-status-stat preview-workspace-title";
+  selectedStat.textContent = `${activeCount}/${pages.length} lát được chọn`;
+  const dimsStat = document.createElement("span");
+  dimsStat.className = "koharu-status-dims";
+  dimsStat.textContent = page.width && page.height ? `${page.width} × ${page.height} px` : "";
+  statusInfo.append(selectedStat, dimsStat);
+
+  statusBar.append(zoomGroup, statusSpacer, statusInfo);
+  canvasPane.append(toolbar, viewport, statusBar);
+
+  // 3. Right Docked Koharu Sidebar
+  const inspector = document.createElement("aside");
+  inspector.className = "koharu-right-sidebar context-inspector process-inspector";
+  inspector.setAttribute("aria-label", "Thuộc tính trang xử lý");
+
+  const sidebarHead = document.createElement("div");
+  sidebarHead.className = "koharu-sidebar-single-head";
+  sidebarHead.append(window.createUiIcon("sliders", "koharu-tab-icon"));
+  const sidebarTitle = document.createElement("strong");
+  sidebarTitle.textContent = "Thuộc tính lát ảnh";
+  sidebarHead.appendChild(sidebarTitle);
+
+  const sidebarBody = document.createElement("div");
+  sidebarBody.className = "koharu-process-sidebar-body";
+
+  // Section A: Slice Status & Skip
+  const statusSec = document.createElement("section");
+  statusSec.className = "koharu-process-section";
+  const statusSecTitle = document.createElement("h3");
+  statusSecTitle.className = "koharu-section-eyebrow";
+  statusSecTitle.textContent = "Trạng thái lát";
+
+  const metaCard = document.createElement("div");
+  metaCard.className = "koharu-process-meta-card";
+  const metaName = document.createElement("strong");
+  metaName.textContent = pageLabel(pages, previewActivePageIndex);
+  const metaDims = document.createElement("span");
+  metaDims.className = "koharu-process-meta-sub";
+  metaDims.textContent = page.width && page.height
+    ? `${page.width} × ${page.height} px · ${stateInfo.label}`
+    : stateInfo.label;
+  metaCard.append(metaName, metaDims);
+
+  const skipBtn = document.createElement("button");
+  skipBtn.type = "button";
+  skipBtn.className = `ui-btn ${page.skipped ? "ui-btn-primary" : "ui-btn-ghost"} skip-btn koharu-full-btn`;
+  skipBtn.textContent = page.skipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua lát ảnh";
+  skipBtn.addEventListener("click", async () => {
+    await toggleSkip(previewActivePageIndex, surface, skipBtn);
+    renderPreview();
+  });
+
+  statusSec.append(statusSecTitle, metaCard, skipBtn);
+
+  // Section B: Preserved Regions (Koharu Layers style)
+  const regionsSec = document.createElement("section");
+  regionsSec.className = "koharu-layers-section koharu-process-regions";
+  const regionsHead = document.createElement("div");
+  regionsHead.className = "koharu-layers-head";
+  const regionsTitleWrap = document.createElement("div");
+  regionsTitleWrap.className = "koharu-layers-title-wrap";
+  regionsTitleWrap.append(window.createUiIcon("layers", "koharu-layers-icon"));
+  const regionsTitle = document.createElement("strong");
+  regionsTitle.textContent = "Vùng giữ nguyên";
+  const regionsCountPill = document.createElement("span");
+  regionsCountPill.className = "koharu-count-pill";
+  regionsCountPill.textContent = String(page.preserve_regions.length);
+  regionsTitleWrap.append(regionsTitle, regionsCountPill);
+  regionsHead.appendChild(regionsTitleWrap);
+
+  const regionsHint = document.createElement("p");
+  regionsHint.className = "koharu-process-hint";
+  regionsHint.textContent = "Khoanh những vùng tranh hoặc hiệu ứng muốn giữ nguyên không bị AI tẩy mất khi xử lý.";
+
+  const regionsTools = document.createElement("div");
+  regionsTools.className = "preview-tools koharu-process-tool-row";
+  const sideDrawBtn = document.createElement("button");
+  sideDrawBtn.type = "button";
+  sideDrawBtn.className = "ui-btn ui-btn-ghost ui-btn-compact excluded-toggle-btn";
+  sideDrawBtn.textContent = "Đánh dấu vùng";
+  const sideClearBtn = document.createElement("button");
+  sideClearBtn.type = "button";
+  sideClearBtn.className = "ui-btn ui-btn-ghost ui-btn-compact excluded-clear-btn";
+  sideClearBtn.textContent = "Xóa hết";
+  regionsTools.append(sideDrawBtn, sideClearBtn);
+
+  const regionsList = document.createElement("div");
+  regionsList.className = "koharu-layers-list";
+
+  regionsSec.append(regionsHead, regionsHint, regionsTools, regionsList);
+  sidebarBody.append(statusSec, regionsSec);
+  inspector.append(sidebarHead, sidebarBody);
+
+  shell.append(pageRail, canvasPane, inspector);
+  container.appendChild(shell);
+
+  // Zoom wiring
   previewZoomScale = 1.0;
   const updateZoom = (newScale) => {
-    previewZoomScale = Math.max(0.5, Math.min(4.0, newScale));
-    zoomLevelText.textContent = Math.round(previewZoomScale * 100) + "%";
+    previewZoomScale = Math.max(0.5, Math.min(4.0, Number(newScale) || 1));
+    const pct = Math.round(previewZoomScale * 100);
+    zoomLevelBtn.textContent = `${pct}%`;
+    zoomSlider.value = String(pct);
     imgWrap.style.transform = `scale(${previewZoomScale})`;
   };
   updateZoom(1);
+
   zoomInBtn.addEventListener("click", () => updateZoom(previewZoomScale + 0.25));
   zoomOutBtn.addEventListener("click", () => updateZoom(previewZoomScale - 0.25));
   zoomResetBtn.addEventListener("click", () => updateZoom(1));
+  zoomLevelBtn.addEventListener("click", () => updateZoom(1));
+  zoomSlider.addEventListener("input", () => updateZoom(Number(zoomSlider.value) / 100));
+
   viewport.addEventListener("wheel", (e) => {
-    if (e.ctrlKey || card.classList.contains("draw-excluded-active")) {
+    if (e.ctrlKey || surface.classList.contains("draw-excluded-active")) {
       e.preventDefault();
       updateZoom(previewZoomScale + (e.deltaY < 0 ? 0.15 : -0.15));
     }
   }, { passive: false });
 
+  // Draw-mode sync between top command bar and sidebar button
+  const setDrawActive = (active) => {
+    surface.classList.toggle("draw-excluded-active", active);
+    topDrawBtn.classList.toggle("active", active);
+    topDrawBtn.classList.toggle("ui-btn-primary", active);
+    topDrawLabel.textContent = active ? "Đang đánh dấu · Xong" : "Đánh dấu vùng giữ nguyên";
+    sideDrawBtn.classList.toggle("active", active);
+    sideDrawBtn.classList.toggle("ui-btn-primary", active);
+    sideDrawBtn.textContent = active ? "Kết thúc đánh dấu" : "Đánh dấu vùng";
+  };
+
+  const toggleDraw = () => setDrawActive(!surface.classList.contains("draw-excluded-active"));
+  topDrawBtn.addEventListener("click", toggleDraw);
+  sideDrawBtn.addEventListener("click", toggleDraw);
+
   const renderExcludedBoxes = () => {
     overlayContainer.innerHTML = "";
+    const regions = page.preserve_regions || [];
+    regionsCountPill.textContent = String(regions.length);
+    topClearBtn.disabled = regions.length === 0;
+    sideClearBtn.disabled = regions.length === 0;
+
+    if (img.naturalWidth && img.naturalHeight) {
+      dimsStat.textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
+    }
+
+    // Rebuild right-sidebar layer list
+    regionsList.replaceChildren();
+    if (!regions.length) {
+      const empty = document.createElement("div");
+      empty.className = "koharu-layers-empty";
+      empty.textContent = "Chưa có vùng giữ nguyên nào trên lát này.";
+      regionsList.appendChild(empty);
+    } else {
+      regions.forEach((region, rIdx) => {
+        const w = Math.max(0, Math.round((region.x2 || 0) - (region.x1 || 0)));
+        const h = Math.max(0, Math.round((region.y2 || 0) - (region.y1 || 0)));
+        const row = document.createElement("div");
+        row.className = "koharu-layer-row";
+
+        const main = document.createElement("div");
+        main.className = "koharu-layer-main";
+        main.append(window.createUiIcon("rect-select", "koharu-layer-kind-icon"));
+        const copy = document.createElement("span");
+        copy.className = "koharu-layer-copy";
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "koharu-layer-name";
+        nameSpan.textContent = `Vùng giữ nguyên ${rIdx + 1}`;
+        const subSpan = document.createElement("span");
+        subSpan.className = "koharu-layer-sub";
+        subSpan.textContent = `${w} × ${h} px · (${region.x1}, ${region.y1})`;
+        copy.append(nameSpan, subSpan);
+        main.appendChild(copy);
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "koharu-layer-del";
+        del.title = "Xóa vùng giữ nguyên này";
+        del.setAttribute("aria-label", `Xóa vùng giữ nguyên ${rIdx + 1}`);
+        del.append(window.createUiIcon("trash"));
+        del.addEventListener("click", () => {
+          page.preserve_regions.splice(rIdx, 1);
+          void savePreserveRegions(previewActivePageIndex, page.preserve_regions);
+          renderExcludedBoxes();
+        });
+
+        row.append(main, del);
+        regionsList.appendChild(row);
+      });
+    }
+
     if (!img.naturalWidth || !img.clientWidth) return;
     const scaleX = img.clientWidth / img.naturalWidth;
     const scaleY = img.clientHeight / img.naturalHeight;
-    (page.preserve_regions || []).forEach((region, rIdx) => {
+    regions.forEach((region, rIdx) => {
       const boxEl = document.createElement("div");
       boxEl.className = "excluded-region-box";
-      boxEl.style.left = region.x1 * scaleX + "px";
-      boxEl.style.top = region.y1 * scaleY + "px";
-      boxEl.style.width = (region.x2 - region.x1) * scaleX + "px";
-      boxEl.style.height = (region.y2 - region.y1) * scaleY + "px";
+      boxEl.style.left = `${region.x1 * scaleX}px`;
+      boxEl.style.top = `${region.y1 * scaleY}px`;
+      boxEl.style.width = `${(region.x2 - region.x1) * scaleX}px`;
+      boxEl.style.height = `${(region.y2 - region.y1) * scaleY}px`;
 
       const delBtn = document.createElement("button");
+      delBtn.type = "button";
       delBtn.className = "ui-icon-btn ui-btn-compact ui-btn-danger excluded-region-del";
       delBtn.append(window.createUiIcon("trash"));
       delBtn.title = "Xóa vùng giữ nguyên này";
@@ -231,40 +526,26 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
       delBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         page.preserve_regions.splice(rIdx, 1);
-        void savePreserveRegions(pageIndex, page.preserve_regions);
+        void savePreserveRegions(previewActivePageIndex, page.preserve_regions);
         renderExcludedBoxes();
       });
       boxEl.appendChild(delBtn);
       overlayContainer.appendChild(boxEl);
     });
   };
+
+  const clearAllRegions = () => {
+    page.preserve_regions = [];
+    void savePreserveRegions(previewActivePageIndex, page.preserve_regions);
+    renderExcludedBoxes();
+  };
+  topClearBtn.addEventListener("click", clearAllRegions);
+  sideClearBtn.addEventListener("click", clearAllRegions);
+
   if (img.complete && img.naturalWidth > 0) renderExcludedBoxes();
   else img.onload = renderExcludedBoxes;
 
-  const tools = document.createElement("div");
-  tools.className = "preview-tools";
-  const drawToggleBtn = document.createElement("button");
-  drawToggleBtn.className = "ui-btn ui-btn-ghost excluded-toggle-btn";
-  drawToggleBtn.textContent = "Đánh dấu vùng giữ nguyên";
-  const clearBtn = document.createElement("button");
-  clearBtn.className = "ui-btn ui-btn-ghost excluded-clear-btn";
-  clearBtn.textContent = "Xóa vùng giữ nguyên";
-  clearBtn.title = "Xóa toàn bộ vùng giữ nguyên của lát ảnh này";
-
-  drawToggleBtn.addEventListener("click", () => {
-    const active = card.classList.toggle("draw-excluded-active");
-    drawToggleBtn.textContent = active ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng giữ nguyên";
-    drawToggleBtn.classList.toggle("active", active);
-    drawToggleBtn.classList.toggle("ui-btn-danger", active);
-  });
-  clearBtn.addEventListener("click", () => {
-    page.preserve_regions = [];
-    void savePreserveRegions(pageIndex, page.preserve_regions);
-    renderExcludedBoxes();
-  });
-  tools.append(drawToggleBtn, clearBtn);
-  (inspector || card).appendChild(tools);
-
+  // Preserve region drawing interaction
   let isDragging = false;
   let startPos = null;
   let tempDrawBox = null;
@@ -285,9 +566,58 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
     }
   };
 
+  const updateTempDrawBox = (x, y) => {
+    if (!tempDrawBox || !startPos) return;
+    const left = Math.min(startPos.x, x);
+    const top = Math.min(startPos.y, y);
+    tempDrawBox.style.left = `${left}px`;
+    tempDrawBox.style.top = `${top}px`;
+    tempDrawBox.style.width = `${Math.abs(x - startPos.x)}px`;
+    tempDrawBox.style.height = `${Math.abs(y - startPos.y)}px`;
+  };
+
+  const onMouseMove = (e) => {
+    if (!isDragging || !tempDrawBox) return;
+    const rect = imgWrap.getBoundingClientRect();
+    updateTempDrawBox(
+      (e.clientX - rect.left) / previewZoomScale,
+      (e.clientY - rect.top) / previewZoomScale,
+    );
+  };
+
+  const onMouseUp = () => {
+    if (!isDragging || !tempDrawBox) {
+      stopDrawing();
+      return;
+    }
+    removeDrawListeners();
+    isDragging = false;
+    const left = parseFloat(tempDrawBox.style.left) || 0;
+    const top = parseFloat(tempDrawBox.style.top) || 0;
+    const w = parseFloat(tempDrawBox.style.width) || 0;
+    const h = parseFloat(tempDrawBox.style.height) || 0;
+    tempDrawBox.remove();
+    tempDrawBox = null;
+    startPos = null;
+    previewDrawCleanup = null;
+
+    if (w < 5 || h < 5 || !img.clientWidth || !img.clientHeight) return;
+
+    const scaleX = img.naturalWidth / img.clientWidth;
+    const scaleY = img.naturalHeight / img.clientHeight;
+    page.preserve_regions.push({
+      x1: Math.round(left * scaleX),
+      y1: Math.round(top * scaleY),
+      x2: Math.round((left + w) * scaleX),
+      y2: Math.round((top + h) * scaleY),
+    });
+    void savePreserveRegions(previewActivePageIndex, page.preserve_regions);
+    renderExcludedBoxes();
+  };
+
   drawLayer.style.touchAction = "none";
   drawLayer.addEventListener("pointerdown", (e) => {
-    if (!card.classList.contains("draw-excluded-active")) return;
+    if (!surface.classList.contains("draw-excluded-active")) return;
     e.preventDefault();
     stopDrawing();
 
@@ -308,55 +638,6 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
     previewDrawCleanup = stopDrawing;
   });
 
-  const updateTempDrawBox = (x, y) => {
-    if (!tempDrawBox || !startPos) return;
-    const left = Math.min(startPos.x, x);
-    const top = Math.min(startPos.y, y);
-    tempDrawBox.style.left = left + "px";
-    tempDrawBox.style.top = top + "px";
-    tempDrawBox.style.width = Math.abs(x - startPos.x) + "px";
-    tempDrawBox.style.height = Math.abs(y - startPos.y) + "px";
-  };
-
-  const onMouseMove = (e) => {
-    if (!isDragging || !tempDrawBox) return;
-    const rect = imgWrap.getBoundingClientRect();
-    updateTempDrawBox(
-      (e.clientX - rect.left) / previewZoomScale,
-      (e.clientY - rect.top) / previewZoomScale
-    );
-  };
-
-  const onMouseUp = () => {
-    if (!isDragging || !tempDrawBox) {
-      stopDrawing();
-      return;
-    }
-    removeDrawListeners();
-    isDragging = false;
-    const left = parseFloat(tempDrawBox.style.left) || 0;
-    const top = parseFloat(tempDrawBox.style.top) || 0;
-    const w = parseFloat(tempDrawBox.style.width) || 0;
-    const h = parseFloat(tempDrawBox.style.height) || 0;
-    tempDrawBox.remove();
-    tempDrawBox = null;
-    startPos = null;
-    previewDrawCleanup = null;
-
-    if (w < 5 || h < 5) return;
-
-    const scaleX = img.naturalWidth / img.clientWidth;
-    const scaleY = img.naturalHeight / img.clientHeight;
-    page.preserve_regions.push({
-      x1: Math.round(left * scaleX),
-      y1: Math.round(top * scaleY),
-      x2: Math.round((left + w) * scaleX),
-      y2: Math.round((top + h) * scaleY)
-    });
-    void savePreserveRegions(pageIndex, page.preserve_regions);
-    renderExcludedBoxes();
-  };
-
   previewDrawCleanup = stopDrawing;
 
   if (typeof ResizeObserver === "function") {
@@ -371,18 +652,12 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
     previewResizeObserver.observe(img);
   }
 
-  const footer = document.createElement("div");
-  footer.className = "preview-card-footer";
-  const skipBtn = document.createElement("button");
-  skipBtn.className = "ui-btn ui-btn-ghost skip-btn";
-  skipBtn.textContent = page.skipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua lát ảnh";
-  skipBtn.addEventListener("click", async () => {
-    await toggleSkip(pageIndex, card, skipBtn);
-    status.textContent = page.skipped ? "Đã bỏ qua" : (page.process_required ? "Cần xử lý" : "Đã xử lý");
-    renderPreview();
-  });
-  footer.appendChild(skipBtn);
-  (inspector || card).appendChild(footer);
+  // Ensure active card is visible in left rail
+  cardRefs[previewActivePageIndex]?.scrollIntoView({ block: "nearest" });
+
+  if (typeof setWorkflowCheckpoint === "function") {
+    setWorkflowCheckpoint("preview", previewActivePageIndex);
+  }
 }
 
 function isPreviewEditingText() {

@@ -1,9 +1,12 @@
-import { clearSelection, ownedObjects, renderOverlays, selectObject, sourceRegion } from "./overlays.js";
+import { clearSelection, getSelectedTargets, ownedObjects, renderOverlays, selectObject, sourceRegion, startInlineTextEdit } from "./overlays.js";
 import { state } from "./state.js";
 
 const SHORTCUT_HELP = [
   ["A / D", "Lát trước / lát sau"],
   ["Alt + mũi tên lên / xuống", "Vùng chữ trước / sau"],
+  ["Nhấn đúp vùng chữ", "Sửa bản dịch trực tiếp trên trang"],
+  ["Shift + click / Kéo khung", "Chọn nhiều vùng chữ để kéo hoặc sửa hàng loạt"],
+  ["Ctrl + A", "Chọn toàn bộ vùng chữ trên lát đang xem"],
   ["Mũi tên / Shift + mũi tên", "Vi chỉnh vị trí vùng đang chọn (1px / 10px)"],
   ["Ctrl + D", "Nhân đôi vùng chữ đang chọn"],
   ["Enter", "Sửa bản dịch của vùng đang chọn"],
@@ -13,9 +16,11 @@ const SHORTCUT_HELP = [
   ["Ctrl + F / Ctrl + H", "Soát chữ: tìm / thay thế"],
   ["\\ (giữ)", "Xem nhanh ảnh gốc để đối chiếu"],
   ["Q / T", "Ẩn/hiện khung vùng chữ · Bật/tắt xem trước chữ"],
-  ["1 – 9", "Áp kiểu chữ mẫu cho vùng đang chọn"],
-  ["Delete", "Xóa vùng đang chọn"],
-  ["V R O B E I H Z", "Chọn, chữ nhật, elip, cọ, tẩy, hút màu, bàn tay, thu phóng"],
+  ["1 – 9", "Áp kiểu chữ mẫu cho các vùng đang chọn"],
+  ["[ / ] hoặc Alt + cuộn", "Giảm / tăng cỡ đầu cọ"],
+  ["Space / Chuột giữa", "Giữ để kéo trang tự do"],
+  ["Delete", "Xóa các vùng đang chọn"],
+  ["V R O J B E I H Z", "Chọn, chữ nhật, elip, xóa nhanh, cọ, tẩy, hút màu, bàn tay, thu phóng"],
   ["?", "Mở / đóng bảng phím tắt"],
 ];
 
@@ -59,11 +64,13 @@ async function ensureCleanView(shell, pageIndex, id) {
 }
 
 
-export async function goTo(shell, pageIndex, id, { focusTranslation = false } = {}) {
+export async function goTo(shell, pageIndex, id, { focusTranslation = false, inlineEdit = false } = {}) {
   if (!(await ensureCleanView(shell, pageIndex, id))) return false;
   selectObject(shell, pageIndex, id);
   overlayFor(shell, pageIndex, id)?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-  if (focusTranslation) {
+  if (inlineEdit) {
+    startInlineTextEdit(shell, pageIndex, id);
+  } else if (focusTranslation) {
     const field = shell.querySelector(".review-floating-inspector .translation-textarea");
     if (field) {
       field.focus();
@@ -105,16 +112,23 @@ function stepSlice(shell, delta) {
 
 function applyPresetKey(shell, digit) {
   const preset = window.stylePresets?.list()?.[digit - 1];
-  const id = window.editorState?.selectedTextObjectId;
-  const pageIndex = Number(window.editorState?.activePageIndex);
-  if (!id) return;
+  const targets = getSelectedTargets(shell);
+  if (!targets.length) return;
   if (!preset) {
     window.showToast?.(`Chưa có kiểu chữ mẫu số ${digit}. Lưu kiểu mẫu trong mục Kiểu chữ.`, "info");
     return;
   }
-  if (window.stylePresets.applyPreset(preset, [{ pageIndex, id }])) {
-    window.renderEditorPanel?.(pageIndex);
-    window.showToast?.(`Đã áp kiểu "${preset.name}".`, "success");
+  const applied = window.stylePresets.applyPreset(
+    preset,
+    targets.map((t) => ({ pageIndex: t.pageIndex, id: t.id })),
+  );
+  if (applied) {
+    window.renderEditorPanel?.(targets[0].pageIndex);
+    shell._syncContextBar?.();
+    window.showToast?.(
+      applied > 1 ? `Đã áp kiểu "${preset.name}" cho ${applied} vùng.` : `Đã áp kiểu "${preset.name}".`,
+      "success",
+    );
   }
 }
 
@@ -145,9 +159,10 @@ function mountHelp(shell, signal) {
 }
 
 function mountProofPanel(shell, signal) {
+  const dockedHost = shell._storyHost || null;
   const panel = document.createElement("aside");
-  panel.className = "review-proof-panel";
-  panel.hidden = true;
+  panel.className = dockedHost ? "review-proof-panel koharu-docked-proof" : "review-proof-panel";
+  panel.hidden = !dockedHost;
   panel.setAttribute("aria-label", "Soát chữ toàn chương");
 
   const header = document.createElement("div");
@@ -224,7 +239,8 @@ function mountProofPanel(shell, signal) {
   const list = document.createElement("ul");
   list.className = "review-proof-list";
   panel.append(header, search, replaceRow, tools, list);
-  shell.appendChild(panel);
+  (dockedHost || shell).appendChild(panel);
+  if (dockedHost) close.hidden = true;
 
   const checked = new Set();
   const rowKey = (pageIndex, id) => `${pageIndex}:${id}`;
@@ -357,6 +373,16 @@ function mountProofPanel(shell, signal) {
   };
 
   const setOpen = (open, focus = "find") => {
+    if (dockedHost) {
+      shell._showRightTab?.(open ? "story" : "props");
+      panel.hidden = false;
+      if (!open) return;
+      if (focus === "replace") setReplaceOpen(true);
+      window.stylePresets?.load();
+      rebuild();
+      (focus === "replace" ? replaceInput : find).focus();
+      return;
+    }
     panel.hidden = !open;
     shell.classList.toggle("review-proof-open", open);
     toggle.setAttribute("aria-pressed", String(open));
@@ -367,6 +393,7 @@ function mountProofPanel(shell, signal) {
     rebuild();
     (focus === "replace" ? replaceInput : find).focus();
   };
+  shell._rebuildProofPanel = rebuild;
 
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -501,7 +528,12 @@ export function installProofing(shell, signal) {
   help.title = "Phím tắt (?)";
   help.setAttribute("aria-label", "Phím tắt");
   help.addEventListener("click", helpDialog.toggle, { signal });
-  left?.append(...mountHistoryButtons(signal), proof.toggle, help);
+  if (shell._storyHost) {
+    left?.append(...mountHistoryButtons(signal), help);
+  } else {
+    left?.append(...mountHistoryButtons(signal), proof.toggle, help);
+  }
+  shell._stepObjectFromCanvas = (delta, options) => stepObject(shell, delta, options);
   const viewport = shell.querySelector(".review-document-viewport");
   if (viewport) viewport.tabIndex = -1;
   const onCanvas = (target) => target === document.body || target === document.documentElement || Boolean(target?.closest?.(".review-document-viewport"));

@@ -67,6 +67,28 @@ def test_editor_upgrade_controls_and_shortcuts_are_wired():
         "review-live-preview-off",
         "ArrowLeft",
         "duplicateTextObject",
+        "mountContextTypeBar",
+        "review-brush-cursor",
+        "runBrushRepaint",
     ):
         assert token in stitch_index
     assert "review-overlay-preview" in stitch_overlays
+    assert "startInlineTextEdit" in stitch_overlays
+    assert "review-marquee-box" in stitch_overlays
+    assert "selectMany" in stitch_overlays
+    assert '"remove"' in stitch_tools
+    assert "review-rail-brush-tip" in stitch_tools
+    context_bar = (JS / "review-stitch" / "context-bar.js").read_text(encoding="utf-8")
+    assert "review-context-typebar" in context_bar
+    assert "editorHistory.batch" in context_bar
+
+    studio_chrome = (JS / "review-stitch" / "studio-chrome.js").read_text(encoding="utf-8")
+    preview = (JS / "preview.js").read_text(encoding="utf-8")
+    for token in ("koharu-page-rail", "koharu-layers-section", "koharu-status-bar"):
+        assert token in studio_chrome
+    assert "koharu-studio-shell" in stitch_index
+    assert "koharu-right-sidebar" in stitch_index
+    assert "review-view-switch" not in stitch_index
+    assert "/api/fonts/" in stitch_overlays
+    assert "koharu-process-shell" in preview
+    assert "koharu-status-bar" in preview

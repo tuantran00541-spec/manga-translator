@@ -326,7 +326,7 @@
   .review-single-document .review-stitched-image>.stitched-brush-chunk{position:absolute;z-index:5;left:0;display:block;width:100%;height:auto;opacity:.45;pointer-events:none}
   .review-text-object-overlay{z-index:12;overflow:visible;border:1.5px solid var(--text-primary);outline:1.5px solid var(--surface-panel);background:transparent;pointer-events:auto}
   .review-text-object-overlay.is-untranslated{border-style:dashed;border-color:var(--warning)}
-  .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-style:solid;border-width:2.5px;outline:2px solid var(--surface-panel);background:var(--selection)}
+  .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-style:solid;border-width:2px;border-color:var(--text-primary);outline:2px solid var(--surface-panel);outline-offset:1px;box-shadow:0 0 0 4px var(--text-primary);background:var(--selection)}
   .review-text-object-overlay.tool-muted{opacity:.42;pointer-events:none}
   .review-overlay-preview{position:absolute;inset:0;display:flex;padding:4px 6px;overflow:hidden;pointer-events:none;user-select:none}
   .review-overlay-preview-text{display:inline-block;max-width:100%;line-height:1.18;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
@@ -335,7 +335,32 @@
   .review-peek-active .review-text-object-overlay{opacity:0;pointer-events:none}
   .review-text-drawing{position:absolute;z-index:20;border:1.5px dashed var(--text-primary);background:transparent;pointer-events:none}.review-text-drawing.ellipse{border-radius:999px}
   .review-document-viewport[data-active-tool="hand"]{cursor:grab}.review-document-viewport[data-active-tool="hand"].is-panning{cursor:grabbing}.review-document-viewport[data-active-tool="zoom"]{cursor:zoom-in}
-  .review-stitched-image[data-active-tool="rectangle"],.review-stitched-image[data-active-tool="ellipse"],.review-stitched-image[data-active-tool="brush"],.review-stitched-image[data-active-tool="eraser"],.review-stitched-image[data-active-tool="eyedropper"]{cursor:crosshair}
+  .review-stitched-image[data-active-tool="rectangle"],.review-stitched-image[data-active-tool="ellipse"],.review-stitched-image[data-active-tool="eyedropper"]{cursor:crosshair}
+  .review-stitched-image[data-active-tool="brush"],.review-stitched-image[data-active-tool="remove"],.review-stitched-image[data-active-tool="eraser"]{cursor:none}
+  .review-rail-footer{display:flex;width:100%;flex-direction:column;align-items:center;margin-top:4px;padding-top:4px;border-top:1px solid var(--border-subtle)}
+  .review-rail-brush-tip{display:flex;width:36px;flex-direction:column;align-items:center;gap:2px;padding:4px 0;border:1px solid transparent;border-radius:var(--radius-xs);background:transparent;color:var(--text-secondary);font-size:10px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;cursor:pointer}
+  .review-rail-brush-tip:hover,.review-rail-brush-tip:focus-visible{outline:0;border-color:var(--border-strong);background:var(--surface-raised);color:var(--text-primary)}
+  .review-rail-brush-dot-box{display:grid;width:18px;height:18px;place-items:center}
+  .review-rail-brush-dot{display:block;border-radius:50%;background:currentColor}
+  .review-brush-cursor{position:absolute;z-index:calc(var(--z-panel) + 25);border:1.5px solid var(--text-primary);outline:1px solid var(--surface-panel);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}
+  .review-brush-cursor[hidden]{display:none}
+  .review-brush-cursor.is-eraser{border-style:dashed}
+  .review-brush-cursor.is-remove{border-width:2px}
+  .review-marquee-box{position:absolute;z-index:22;border:1.5px dashed var(--text-primary);background:var(--selection);pointer-events:none}
+  .review-inline-editor{position:absolute;inset:0;z-index:15;width:100%;height:100%;padding:4px 6px;border:0;outline:0;background:var(--surface-panel);color:var(--text-primary);font-family:inherit;line-height:1.2;resize:none;overflow:auto}
+  .review-context-typebar{position:absolute;z-index:calc(var(--z-panel) + 14);display:flex;max-width:calc(100% - 76px);align-items:center;flex-wrap:wrap;gap:4px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--surface-panel);box-shadow:var(--shadow-float)}
+  .review-context-typebar[hidden]{display:none}
+  .review-ctx-count{display:inline-flex;align-items:center;height:24px;padding:0 7px;border-radius:999px;background:var(--accent);color:var(--accent-contrast);font-size:10.5px;font-weight:700;white-space:nowrap}
+  .review-ctx-font{width:128px;min-height:26px;height:26px;padding:0 6px;font-size:11.5px}
+  .review-ctx-size-group,.review-ctx-align-group,.review-ctx-colors{display:inline-flex;align-items:center;gap:2px}
+  .review-ctx-size-input{width:50px;min-height:26px;height:26px;padding:0 4px;text-align:center;font-size:11.5px;font-variant-numeric:tabular-nums;appearance:textfield}
+  .review-ctx-size-input::-webkit-inner-spin-button,.review-ctx-size-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+  .review-ctx-icon-btn{display:inline-grid;width:26px;min-height:26px;height:26px;padding:0;place-items:center;border-radius:var(--radius-xs)}
+  .review-ctx-icon-btn>.ui-icon{width:14px;height:14px}
+  .review-ctx-pill{min-height:26px;height:26px;padding:0 7px;border-radius:var(--radius-xs);font-size:10.5px;font-weight:650}
+  .review-context-typebar :is(.review-ctx-icon-btn,.review-ctx-pill).active{border-color:var(--accent);background:var(--accent);color:var(--accent-contrast)}
+  .review-ctx-sep{width:1px;height:18px;margin:0 2px;background:var(--border-subtle)}
+  .review-ctx-color,.review-ctx-stroke{width:22px;height:22px}
   .review-view-helpers{display:inline-flex;align-items:center;gap:2px;margin-left:2px;padding-left:4px;border-left:1px solid var(--border-subtle)}
   .review-docbar-left .review-helper-btn{display:inline-flex;width:30px;height:30px;min-height:30px;padding:0;align-items:center;justify-content:center}
   .review-docbar-left .review-helper-btn>.ui-icon{width:16px;height:16px;flex:0 0 16px}
@@ -749,5 +774,996 @@
     .agent-bar .agent-pick > span { max-width: 140px; }
     .agent-user { max-width: 92%; }
     .agent-starters, .agent-skill-list { grid-template-columns: 1fr; }
+  }
+
+  /* =========================================================================
+     Koharu-Inspired 3-Pane Studio Workbench (Editor & Processing Screens)
+     Strictly monochrome tokens only — no raw color literals.
+     ========================================================================= */
+
+  body[data-app-stage="preview"] {
+    --app-header-height: 0px;
+    --sticky-header-offset: 0px;
+  }
+  body[data-app-stage="preview"] .app-main {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  body[data-app-stage="preview"] .app-header {
+    display: none;
+  }
+
+  .koharu-process-workspace {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface-panel);
+  }
+
+  .review-canvas-only .review-document-shell.koharu-studio-shell,
+  .review-single-document .review-document-shell.koharu-studio-shell,
+  .koharu-process-shell {
+    position: relative;
+    display: grid;
+    grid-template-columns: 204px minmax(0, 1fr) 332px;
+    grid-template-rows: minmax(0, 1fr);
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface-panel);
+    transition: grid-template-columns var(--motion-normal);
+  }
+
+  .review-canvas-only .review-document-shell.koharu-studio-shell.koharu-rail-collapsed,
+  .review-single-document .review-document-shell.koharu-studio-shell.koharu-rail-collapsed,
+  .koharu-process-shell.koharu-rail-collapsed {
+    grid-template-columns: 0px minmax(0, 1fr) 332px;
+  }
+
+  /* Left PageRail */
+  .koharu-page-rail {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface-panel);
+    border-right: 1px solid var(--border-subtle);
+  }
+  .koharu-rail-collapsed .koharu-page-rail {
+    border-right: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .koharu-rail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 12px 6px;
+  }
+  .koharu-rail-title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .koharu-rail-title {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+  .koharu-count-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+  .koharu-rail-search-wrap {
+    padding: 4px 10px 8px;
+  }
+  .koharu-rail-filter {
+    min-height: 30px;
+    height: 30px;
+    padding: 0 10px;
+    border-color: var(--border-subtle);
+    border-radius: 9px;
+    background: var(--surface-app);
+    font-size: 12px;
+  }
+  .koharu-rail-filter:focus-visible {
+    outline: none;
+    border-color: var(--focus-ring);
+  }
+  .koharu-page-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-height: 0;
+    padding: 2px 10px 14px;
+    overflow-y: auto;
+  }
+  .koharu-page-card {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 6px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  }
+  .koharu-page-card:hover {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .koharu-page-card.is-active {
+    border-color: var(--border-strong);
+    background: var(--surface-app);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-quiet);
+  }
+  .koharu-page-card.is-skipped {
+    opacity: 0.52;
+  }
+  .koharu-page-thumb {
+    display: grid;
+    width: 44px;
+    height: 58px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    background: var(--surface-raised);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .koharu-page-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .koharu-page-info {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .koharu-page-name {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .koharu-page-meta-slot {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .koharu-page-progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .koharu-progress-ring {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 13px;
+    transform: rotate(-90deg);
+  }
+  .koharu-ring-track {
+    stroke: var(--border-strong);
+  }
+  .koharu-ring-fill {
+    stroke: var(--text-primary);
+    stroke-linecap: round;
+  }
+  .koharu-page-sub,
+  .koharu-page-dims {
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Center Koharu Canvas Pane */
+  .koharu-canvas-pane {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto 0 auto minmax(0, 1fr) 32px;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    margin-top: 0;
+    border-top: 1px solid var(--border-subtle);
+    border-left: 1px solid var(--border-subtle);
+    border-top-left-radius: 16px;
+    background: var(--surface-canvas-deep);
+    box-shadow: var(--shadow-quiet);
+  }
+  .koharu-process-canvas {
+    grid-template-rows: auto minmax(0, 1fr) 32px;
+  }
+  .koharu-canvas-pane > .koharu-docbar {
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    min-height: 44px;
+    padding: 6px 12px;
+    gap: 6px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    border-top-left-radius: 16px;
+    background: var(--surface-app);
+  }
+  .koharu-canvas-pane > .review-stitched-meta { grid-row: 2; }
+  .koharu-canvas-pane > .review-stitched-warning { grid-row: 3; }
+  .koharu-canvas-pane > .review-document-viewport {
+    grid-row: 4;
+    padding: 20px 24px 32px 68px;
+    background: var(--surface-canvas-deep);
+  }
+  .koharu-process-canvas > .koharu-process-viewport {
+    grid-row: 2;
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 22px 24px 36px;
+    background: var(--surface-canvas-deep);
+    text-align: center;
+  }
+  .koharu-canvas-pane > .koharu-status-bar {
+    grid-row: -2 / -1;
+  }
+
+  .koharu-docbar .ui-btn {
+    min-height: 30px;
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .koharu-docbar .koharu-rail-toggle {
+    display: inline-grid;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    place-items: center;
+    border-color: transparent;
+    border-radius: 8px;
+  }
+  .koharu-docbar .koharu-rail-toggle.active {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .koharu-docbar .review-view-switch {
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 9px;
+    background: var(--surface-panel);
+  }
+  .koharu-docbar .review-view-switch .ui-btn {
+    min-height: 24px;
+    height: 24px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 7px;
+    font-size: 11.5px;
+  }
+  .koharu-docbar .review-helper-btn,
+  .koharu-docbar .review-undo-btn,
+  .koharu-docbar .review-redo-btn,
+  .koharu-docbar .review-help-btn,
+  .koharu-docbar .review-more-toggle {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+    border-radius: 8px;
+  }
+
+  .koharu-process-slice-title {
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .koharu-status-pill {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    background: var(--surface-panel);
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .koharu-process-topbar .excluded-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .koharu-process-topbar .excluded-toggle-btn .ui-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* Clean centered manga page presentation in both workspaces */
+  .koharu-studio-shell .review-stitched-image {
+    border-radius: 4px;
+    box-shadow: var(--shadow-lift);
+  }
+  .koharu-process-surface {
+    display: inline-block;
+    width: auto;
+    max-width: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    box-shadow: var(--shadow-lift);
+  }
+  .koharu-process-surface .preview-image-wrap img {
+    display: block;
+    max-width: min(100%, 860px);
+    height: auto;
+    border-radius: 4px;
+  }
+
+  /* Koharu Floating ToolRail Capsule inside CanvasPane */
+  .koharu-canvas-pane .review-tool-rail {
+    top: calc(var(--review-docbar-height, 44px) + 14px);
+    left: 12px;
+    width: 44px;
+    max-height: calc(100% - var(--review-docbar-height, 44px) - 56px);
+    padding: 5px 4px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    background: var(--surface-app);
+    box-shadow: var(--shadow-lift);
+    overflow: visible;
+  }
+  .koharu-canvas-pane .review-tool-group {
+    gap: 3px;
+  }
+  .koharu-canvas-pane .review-rail-tool {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 0;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    transition: background var(--motion-fast), color var(--motion-fast);
+  }
+  .koharu-canvas-pane .review-rail-tool:hover,
+  .koharu-canvas-pane .review-rail-tool:focus-visible {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+  .koharu-canvas-pane .review-rail-tool.active {
+    background: var(--accent);
+    color: var(--accent-contrast);
+  }
+  .koharu-canvas-pane .review-rail-tool > .ui-icon {
+    width: 17px;
+    height: 17px;
+  }
+  .koharu-canvas-pane .review-tool-tooltip {
+    left: 46px;
+    border-radius: 10px;
+    box-shadow: var(--shadow-lift);
+  }
+  .koharu-canvas-pane .review-brush-bar {
+    top: calc(var(--review-docbar-height, 44px) + 14px);
+    left: 66px;
+    padding: 5px 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    background: var(--surface-app);
+    box-shadow: var(--shadow-lift);
+  }
+  .koharu-canvas-pane .review-context-typebar {
+    padding: 5px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background: var(--surface-app);
+    box-shadow: var(--shadow-lift);
+  }
+
+  /* Bottom 32px Koharu StatusBar */
+  .koharu-status-bar {
+    position: relative;
+    z-index: calc(var(--z-panel) + 2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 32px;
+    padding: 0 12px;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--surface-app);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .koharu-status-zoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .koharu-status-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: 600 11px/1 var(--font-ui);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background var(--motion-fast), color var(--motion-fast);
+  }
+  .koharu-status-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+  .koharu-status-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .koharu-status-btn > .ui-icon {
+    width: 13px;
+    height: 13px;
+  }
+  .koharu-zoom-slider {
+    width: 96px;
+    height: 4px;
+    margin: 0 2px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .koharu-status-spacer {
+    flex: 1 1 auto;
+  }
+  .koharu-status-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .koharu-status-stat {
+    color: var(--text-secondary);
+    font-weight: 550;
+    white-space: nowrap;
+  }
+  .koharu-status-dims {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+
+  /* Right Docked Koharu Sidebar */
+  .koharu-right-sidebar {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    border-left: 1px solid var(--border-subtle);
+    background: var(--surface-panel);
+  }
+  .koharu-sidebar-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-panel);
+  }
+  .koharu-sidebar-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  }
+  .koharu-sidebar-tab:hover {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .koharu-sidebar-tab.is-active {
+    border-color: var(--border-subtle);
+    background: var(--surface-app);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-quiet);
+  }
+  .koharu-tab-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+  }
+  .koharu-sidebar-single-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-panel);
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+
+  .koharu-props-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    background: var(--surface-panel);
+  }
+  .koharu-story-pane {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface-panel);
+  }
+
+  /* Docked Inspector inside Koharu RightSidebar */
+  .review-floating-inspector.koharu-docked-inspector {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    z-index: auto;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    flex: 0 0 auto;
+  }
+  .koharu-docked-inspector .review-floating-inspector-header {
+    min-height: 34px;
+    padding: 4px 10px 4px 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: transparent;
+  }
+  .koharu-docked-inspector .review-floating-inspector-header strong {
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-weight: 750;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .koharu-docked-inspector .translation-panel-host {
+    padding: 0;
+    overflow: visible;
+    background: transparent;
+  }
+  .koharu-docked-inspector .text-editor-panel {
+    height: auto;
+    max-height: none;
+    grid-template-rows: auto auto;
+  }
+  .koharu-docked-inspector .text-editor-sections {
+    overflow: visible;
+    padding: 2px 14px 6px;
+  }
+  .koharu-docked-inspector .inspector-section > summary {
+    padding: 9px 0;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-weight: 750;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .koharu-docked-inspector .text-editor-section-body {
+    gap: 8px;
+    padding: 0 0 12px;
+  }
+  .koharu-docked-inspector .text-editor-section-body :is(.ui-input, .ui-select, .ui-textarea) {
+    border-color: var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-app);
+  }
+  .koharu-docked-inspector .text-editor-section-body :is(.ui-input, .ui-select, .ui-textarea):focus-visible {
+    border-color: var(--focus-ring);
+  }
+  .koharu-docked-inspector .text-object-actions {
+    position: static;
+    padding: 8px 14px 12px;
+    border-top: 1px solid var(--border-subtle);
+    background: transparent;
+  }
+  .koharu-docked-inspector .text-object-action-btn {
+    border-radius: 8px;
+  }
+  .koharu-docked-inspector .editor-page-summary {
+    padding: 12px 14px 14px;
+    border-bottom: 0;
+  }
+  .koharu-docked-inspector .editor-page-summary h3 {
+    margin: 0 0 4px;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-weight: 750;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .koharu-docked-inspector .editor-page-status {
+    margin: 0 0 10px;
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .koharu-docked-inspector .text-editor-empty {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--surface-app);
+  }
+
+  /* Koharu Layers Panel inside RightSidebar */
+  .koharu-layers-section {
+    display: grid;
+    gap: 8px;
+    padding: 12px 12px 16px;
+    flex: 1 0 auto;
+    align-content: start;
+  }
+  .koharu-layers-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 2px;
+  }
+  .koharu-layers-title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .koharu-layers-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+  }
+  .koharu-layers-scope {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 550;
+  }
+  .koharu-layers-list {
+    display: grid;
+    gap: 3px;
+  }
+  .koharu-layers-empty {
+    padding: 10px 12px;
+    border: 1px dashed var(--border-subtle);
+    border-radius: 10px;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    text-align: center;
+  }
+  .koharu-layer-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 3px 4px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  }
+  .koharu-layer-row:hover {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .koharu-layer-row.is-selected,
+  .koharu-layer-row.is-active {
+    border-color: var(--border-strong);
+    background: var(--surface-app);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-quiet);
+  }
+  .koharu-layer-main {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 6px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .koharu-layer-kind-icon {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    color: var(--text-muted);
+  }
+  .koharu-layer-row.is-selected .koharu-layer-kind-icon,
+  .koharu-layer-row.is-active .koharu-layer-kind-icon {
+    color: var(--text-primary);
+  }
+  .koharu-layer-copy {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .koharu-layer-name {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .koharu-layer-sub {
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .koharu-layer-del {
+    display: inline-grid;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
+  }
+  .koharu-layer-row:hover .koharu-layer-del,
+  .koharu-layer-del:focus-visible {
+    opacity: 1;
+  }
+  .koharu-layer-del:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+  .koharu-layer-del > .ui-icon {
+    width: 13px;
+    height: 13px;
+  }
+  .koharu-base-layers {
+    display: grid;
+    gap: 3px;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .koharu-layer-base {
+    padding: 7px 10px;
+    gap: 8px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .koharu-layer-eye {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    color: var(--text-muted);
+    opacity: 0.45;
+  }
+  .koharu-layer-base.is-active .koharu-layer-eye {
+    color: var(--text-primary);
+    opacity: 1;
+  }
+
+  /* Docked Proofing ("Soát chữ") Panel inside RightSidebar */
+  .review-proof-panel.koharu-docked-proof {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    z-index: auto;
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .koharu-docked-proof .review-proof-header {
+    padding: 6px 12px;
+  }
+  .koharu-docked-proof .review-proof-search,
+  .koharu-docked-proof .review-proof-replace,
+  .koharu-docked-proof .review-proof-tools {
+    padding-inline: 12px;
+  }
+  .koharu-docked-proof .review-proof-row {
+    padding: 8px 12px;
+  }
+
+  /* Processing Screen Sidebar Details */
+  .koharu-process-sidebar-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .koharu-process-section {
+    display: grid;
+    gap: 10px;
+    padding: 14px 14px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .koharu-section-eyebrow {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-weight: 750;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .koharu-process-meta-card {
+    display: grid;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--surface-app);
+  }
+  .koharu-process-meta-card strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .koharu-process-meta-sub {
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .koharu-full-btn {
+    width: 100%;
+    min-height: 34px;
+    border-radius: 9px;
+    font-size: 12px;
+  }
+  .koharu-process-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .koharu-process-tool-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+  .koharu-process-tool-row .ui-btn {
+    min-height: 30px;
+    height: 30px;
+    border-radius: 8px;
+    font-size: 11.5px;
+  }
+
+  /* Responsive adjustments for Koharu 3-Pane Studio */
+  @media (max-width: 1160px) {
+    .review-canvas-only .review-document-shell.koharu-studio-shell,
+    .review-single-document .review-document-shell.koharu-studio-shell,
+    .koharu-process-shell {
+      grid-template-columns: 172px minmax(0, 1fr) 292px;
+    }
+    .review-canvas-only .review-document-shell.koharu-studio-shell.koharu-rail-collapsed,
+    .review-single-document .review-document-shell.koharu-studio-shell.koharu-rail-collapsed,
+    .koharu-process-shell.koharu-rail-collapsed {
+      grid-template-columns: 0px minmax(0, 1fr) 292px;
+    }
+  }
+  @media (max-width: 900px) {
+    .review-canvas-only .review-document-shell.koharu-studio-shell,
+    .review-single-document .review-document-shell.koharu-studio-shell,
+    .koharu-process-shell {
+      grid-template-columns: 0px minmax(0, 1fr) 276px;
+    }
+    .koharu-page-rail {
+      border-right: 0;
+    }
+  }
+  @media (max-width: 720px) {
+    .review-canvas-only .review-document-shell.koharu-studio-shell,
+    .review-single-document .review-document-shell.koharu-studio-shell,
+    .koharu-process-shell {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(220px, 42%);
+    }
+    .koharu-page-rail {
+      display: none;
+    }
+    .koharu-canvas-pane {
+      margin-top: 0;
+      border-top-left-radius: 0;
+      border-left: 0;
+    }
+    .koharu-right-sidebar {
+      border-left: 0;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .koharu-zoom-slider {
+      width: 64px;
+    }
   }
 }

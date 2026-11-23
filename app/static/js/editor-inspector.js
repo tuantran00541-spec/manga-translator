@@ -75,7 +75,7 @@ function renderEditorPanel(pageIndex) {
   const textBody = buildPanelSection(sections, "Nội dung chữ", true);
   textBody.append(ocrLabel, trLabel);
 
-  const typographyBody = buildPanelSection(sections, "Kiểu chữ", false);
+  const typographyBody = buildPanelSection(sections, "Kiểu chữ", true);
   window.stylePresets?.buildSection(typographyBody, obj, pageIndex);
   buildTextSection(typographyBody, panel, obj, pageIndex);
 

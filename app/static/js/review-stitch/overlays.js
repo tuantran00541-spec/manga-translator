@@ -1,4 +1,4 @@
-import { MIN_BOX, chapterKey, isAutoSynced, markAutoSynced, state } from "./state.js";
+import { MIN_BOX, chapterKey, isAutoSynced, markAutoSynced, parseSelectionKey, selectionKey, state } from "./state.js";
 import { setTool, syncTool } from "./tools.js";
 
 export function descriptorFor(shell, pageIndex) {
@@ -31,6 +31,31 @@ function _hexLuminance(color) {
   const g = parseInt(m[1].slice(2, 4), 16);
   const b = parseInt(m[1].slice(4, 6), 16);
   return (r * 299 + g * 587 + b * 114) / 1000;
+}
+
+const _loadedWebFonts = new Map();
+
+function _webFontFamily(fontId) {
+  const cleanId = String(fontId || "default").trim() || "default";
+  const safe = cleanId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `mt_font_${safe}`;
+}
+
+function _ensureWebFont(fontId) {
+  const cleanId = String(fontId || "default").trim() || "default";
+  const family = _webFontFamily(cleanId);
+  if (typeof FontFace !== "function" || !document.fonts) return family;
+  if (_loadedWebFonts.has(family)) return family;
+  const url = `/api/fonts/${encodeURIComponent(cleanId)}/file`;
+  const face = new FontFace(family, `url("${url}")`);
+  const promise = face.load()
+    .then((loaded) => {
+      document.fonts.add(loaded);
+      return family;
+    })
+    .catch(() => null);
+  _loadedWebFonts.set(family, promise);
+  return family;
 }
 
 function _renderOverlayPreview(overlay, obj, width, height) {
@@ -70,6 +95,12 @@ function _renderOverlayPreview(overlay, obj, width, height) {
     const cr = Math.max(0, Number(style.cornerRadius || 0));
     preview.style.borderRadius = cr > 0 ? `${cr}px` : "0px";
   }
+
+  const resolvedFontId = typeof window.shownFontId === "function"
+    ? window.shownFontId(obj)
+    : (obj.style?.font && obj.style.font !== "auto" ? obj.style.font : "default");
+  const webFamily = _ensureWebFont(resolvedFontId);
+  span.style.fontFamily = `"${webFamily}", "Comic Neue", var(--font-ui)`;
 
   const fixedSize = Number(style.fontSize);
   const autoSize = Math.max(11, Math.min(34, Math.round(Math.min(height * 0.34, Math.sqrt((width * height) / Math.max(8, text.length * 1.4))))));
@@ -164,29 +195,182 @@ export function installOverlaySync() {
   };
 }
 
-export function selectObject(shell, pageIndex, id) {
-  if (!window.editorState) return;
-  window.editorState.activePageIndex = Number(pageIndex);
-  window.editorState.selectedTextObjectId = id;
-  shell.querySelectorAll(".review-text-object-overlay").forEach((el) => el.classList.toggle("selected", Number(el.dataset.pageIndex) === Number(pageIndex) && el.dataset.objectId === String(id)));
+export function getSelectedTargets(shell) {
+  const out = [];
+  const seen = new Set();
+  for (const key of state.selectedKeys || []) {
+    const parsed = parseSelectionKey(key);
+    if (!parsed) continue;
+    const obj = window.findTextObject?.(parsed.pageIndex, parsed.id);
+    const desc = descriptorFor(shell, parsed.pageIndex);
+    if (!obj?.region || !desc) continue;
+    const k = selectionKey(parsed.pageIndex, parsed.id);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ pageIndex: parsed.pageIndex, id: parsed.id, obj, desc });
+  }
+  if (!out.length && window.editorState?.selectedTextObjectId) {
+    const pageIndex = Number(window.editorState.activePageIndex || 0);
+    const id = window.editorState.selectedTextObjectId;
+    const obj = window.findTextObject?.(pageIndex, id);
+    const desc = descriptorFor(shell, pageIndex);
+    if (obj?.region && desc) out.push({ pageIndex, id, obj, desc });
+  }
+  return out;
+}
+
+function _syncSelectionHighlight(shell) {
+  const keys = state.selectedKeys;
+  shell.querySelectorAll(".review-text-object-overlay").forEach((el) => {
+    const k = selectionKey(el.dataset.pageIndex, el.dataset.objectId);
+    el.classList.toggle("selected", keys.has(k));
+  });
+}
+
+export function selectMany(shell, items) {
+  state.selectedKeys.clear();
+  const valid = [];
+  for (const item of items || []) {
+    if (!item || item.id == null) continue;
+    const pageIndex = Number(item.pageIndex);
+    const obj = window.findTextObject?.(pageIndex, item.id);
+    if (!obj) continue;
+    state.selectedKeys.add(selectionKey(pageIndex, item.id));
+    valid.push({ pageIndex, id: item.id });
+  }
+  if (!valid.length) return clearSelection(shell);
+  const primary = valid[0];
+  if (window.editorState) {
+    window.editorState.activePageIndex = primary.pageIndex;
+    window.editorState.selectedTextObjectId = primary.id;
+  }
+  _syncSelectionHighlight(shell);
   const floating = shell._floatingInspector || shell.querySelector(".review-floating-inspector");
   if (floating) {
     floating.hidden = false;
     floating.classList.add("is-open");
   }
-  window.renderEditorPanel?.(Number(pageIndex));
+  window.renderEditorPanel?.(primary.pageIndex);
+  shell._syncContextBar?.();
+  shell._refreshLayers?.();
+}
+
+export function selectObject(shell, pageIndex, id, { additive = false, toggle = false } = {}) {
+  if (!window.editorState) return;
+  const idx = Number(pageIndex);
+  const key = selectionKey(idx, id);
+  if (toggle && state.selectedKeys.has(key)) {
+    state.selectedKeys.delete(key);
+    if (!state.selectedKeys.size) return clearSelection(shell);
+    const remaining = parseSelectionKey([...state.selectedKeys][0]);
+    if (remaining) {
+      window.editorState.activePageIndex = remaining.pageIndex;
+      window.editorState.selectedTextObjectId = remaining.id;
+      _syncSelectionHighlight(shell);
+      window.renderEditorPanel?.(remaining.pageIndex);
+      shell._syncContextBar?.();
+      shell._refreshLayers?.();
+    }
+    return;
+  }
+  if (!additive) state.selectedKeys.clear();
+  state.selectedKeys.add(key);
+  window.editorState.activePageIndex = idx;
+  window.editorState.selectedTextObjectId = id;
+  _syncSelectionHighlight(shell);
+  const floating = shell._floatingInspector || shell.querySelector(".review-floating-inspector");
+  if (floating) {
+    floating.hidden = false;
+    floating.classList.add("is-open");
+  }
+  window.renderEditorPanel?.(idx);
+  shell._syncContextBar?.();
+  shell._refreshLayers?.();
 }
 
 export function clearSelection(shell) {
+  state.selectedKeys.clear();
   if (window.editorState) window.editorState.selectedTextObjectId = null;
   shell.querySelectorAll(".review-text-object-overlay").forEach((el) => el.classList.remove("selected"));
   const floating = shell._floatingInspector || shell.querySelector(".review-floating-inspector");
-  if (floating) {
+  if (floating && !floating.classList.contains("koharu-docked-inspector")) {
     floating.classList.remove("is-open");
     floating.hidden = true;
   }
   const panel = shell.querySelector(".translation-panel-host");
-  if (panel) panel.innerHTML = '<div class="ui-empty-state">Chọn một vùng chữ trên trang để chỉnh sửa.</div>';
+  if (panel) panel.innerHTML = '<div class="ui-empty-state koharu-empty-props">Chọn một vùng chữ trên trang hoặc trong danh sách Lớp chữ để chỉnh sửa.</div>';
+  shell._syncContextBar?.();
+  shell._refreshLayers?.();
+}
+
+export function startInlineTextEdit(shell, pageIndex, id) {
+  if (state.variant !== "clean") return false;
+  const idx = Number(pageIndex);
+  const obj = window.findTextObject?.(idx, id);
+  const overlay = shell.querySelector(
+    `.review-text-object-overlay[data-page-index="${idx}"][data-object-id="${CSS.escape(String(id))}"]`,
+  );
+  if (!obj || !overlay) return false;
+  if (overlay.querySelector(".review-inline-editor")) return true;
+
+  selectObject(shell, idx, id);
+  window.editorHistory?.watch(idx, obj);
+
+  const preview = overlay.querySelector(".review-overlay-preview");
+  if (preview) preview.hidden = true;
+  overlay.classList.add("is-inline-editing");
+
+  const ta = document.createElement("textarea");
+  ta.className = "review-inline-editor";
+  ta.value = obj.translation || "";
+  ta.placeholder = "Nhập bản dịch…";
+  ta.setAttribute("aria-label", "Sửa bản dịch trực tiếp trên trang");
+  const style = obj.style || {};
+  ta.style.textAlign = style.horizontalAlign || "center";
+  ta.style.fontWeight = style.bold === true ? "700" : "500";
+  const fixedSize = Number(style.fontSize);
+  if (Number.isFinite(fixedSize) && fixedSize > 0) ta.style.fontSize = `${fixedSize}px`;
+
+  let closed = false;
+  const finish = ({ restoreFocus = false } = {}) => {
+    if (closed) return;
+    closed = true;
+    ta.remove();
+    overlay.classList.remove("is-inline-editing");
+    if (preview) preview.hidden = false;
+    syncOverlay(shell, idx, id);
+    window.renderEditorPanel?.(idx);
+    shell._syncContextBar?.();
+    if (restoreFocus) shell.querySelector(".review-document-viewport")?.focus({ preventScroll: true });
+  };
+
+  ta.addEventListener("pointerdown", (e) => e.stopPropagation());
+  ta.addEventListener("click", (e) => e.stopPropagation());
+  ta.addEventListener("dblclick", (e) => e.stopPropagation());
+  ta.addEventListener("input", () => {
+    obj.translation = ta.value;
+    window.scheduleTextObjectPersist?.(idx, id);
+    const panelTa = shell.querySelector(`.review-floating-inspector .translation-textarea[data-text-object-id="${CSS.escape(String(id))}"]`);
+    if (panelTa && panelTa.value !== ta.value) panelTa.value = ta.value;
+  });
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      finish({ restoreFocus: true });
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      finish({ restoreFocus: false });
+      shell._stepObjectFromCanvas?.(e.shiftKey ? -1 : 1, { inlineEdit: true });
+    }
+  });
+  ta.addEventListener("blur", () => finish({ restoreFocus: false }));
+
+  overlay.appendChild(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  return true;
 }
 
 export function overlayMode(event, overlay) {
@@ -209,38 +393,77 @@ export function installTransform(shell, overlay, desc, pageIndex, obj, signal) {
   const image = shell.querySelector(".review-stitched-image");
   overlay.addEventListener("pointerdown", (event) => {
     if (state.variant !== "clean" || state.tool !== "select" || event.button !== 0) return;
-    event.preventDefault(); event.stopPropagation(); selectObject(shell, pageIndex, obj.id);
+    if (event.target.closest(".review-inline-editor")) return;
+    event.preventDefault(); event.stopPropagation();
+    const key = selectionKey(pageIndex, obj.id);
+    if (event.shiftKey) {
+      selectObject(shell, pageIndex, obj.id, { additive: true, toggle: true });
+      return;
+    }
+    if (!state.selectedKeys.has(key)) {
+      selectObject(shell, pageIndex, obj.id);
+    }
     const rect = image.getBoundingClientRect(), W = Number(image.dataset.sourceWidth || 0), H = Number(image.dataset.sourceHeight || 0);
     if (!rect.width || !rect.height || !W || !H) return;
-    drag = { mode: overlayMode(event, overlay), x: (event.clientX - rect.left) * W / rect.width, y: (event.clientY - rect.top) * H / rect.height, original: { ...obj.region } };
+    const targets = getSelectedTargets(shell);
+    const mode = targets.length > 1 ? "move" : overlayMode(event, overlay);
+    drag = {
+      mode,
+      x: (event.clientX - rect.left) * W / rect.width,
+      y: (event.clientY - rect.top) * H / rect.height,
+      items: targets.map((t) => ({ ...t, original: { ...t.obj.region } })),
+    };
     overlay.classList.add("transforming"); overlay.setPointerCapture?.(event.pointerId);
   }, { signal });
   overlay.addEventListener("pointermove", (event) => {
-    if (!drag) { if (state.tool === "select") { overlay.style.cursor = cursor(overlayMode(event, overlay)); } return; }
+    if (!drag) {
+      if (state.tool === "select") {
+        overlay.style.cursor = state.selectedKeys.size > 1 ? "move" : cursor(overlayMode(event, overlay));
+      }
+      return;
+    }
     const rect = image.getBoundingClientRect(), W0 = Number(image.dataset.sourceWidth || 0), H0 = Number(image.dataset.sourceHeight || 0);
     if (!rect.width || !rect.height || !W0 || !H0) return;
     const x = (event.clientX - rect.left) * W0 / rect.width, y = (event.clientY - rect.top) * H0 / rect.height, dx = x - drag.x, dy = y - drag.y;
-    const o = drag.original, W = desc.img.naturalWidth, minY = desc.localY1, maxY = desc.localY2, clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    let { x1, y1, x2, y2 } = o;
-    if (drag.mode === "move") {
-      const w = o.x2 - o.x1, h = o.y2 - o.y1;
-      x1 = clamp(o.x1 + dx, 0, Math.max(0, W - w)); y1 = clamp(o.y1 + dy, minY, Math.max(minY, maxY - h)); x2 = x1 + w; y2 = y1 + h;
-    } else {
-      if (drag.mode.includes("w")) x1 = clamp(o.x1 + dx, 0, o.x2 - MIN_BOX);
-      if (drag.mode.includes("e")) x2 = clamp(o.x2 + dx, o.x1 + MIN_BOX, W);
-      if (drag.mode.includes("n")) y1 = clamp(o.y1 + dy, minY, o.y2 - MIN_BOX);
-      if (drag.mode.includes("s")) y2 = clamp(o.y2 + dy, o.y1 + MIN_BOX, maxY);
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    for (const item of drag.items) {
+      const o = item.original, W = item.desc.img.naturalWidth, minY = item.desc.localY1, maxY = item.desc.localY2;
+      let { x1, y1, x2, y2 } = o;
+      if (drag.mode === "move") {
+        const w = o.x2 - o.x1, h = o.y2 - o.y1;
+        x1 = clamp(o.x1 + dx, 0, Math.max(0, W - w)); y1 = clamp(o.y1 + dy, minY, Math.max(minY, maxY - h)); x2 = x1 + w; y2 = y1 + h;
+      } else {
+        if (drag.mode.includes("w")) x1 = clamp(o.x1 + dx, 0, o.x2 - MIN_BOX);
+        if (drag.mode.includes("e")) x2 = clamp(o.x2 + dx, o.x1 + MIN_BOX, W);
+        if (drag.mode.includes("n")) y1 = clamp(o.y1 + dy, minY, o.y2 - MIN_BOX);
+        if (drag.mode.includes("s")) y2 = clamp(o.y2 + dy, o.y1 + MIN_BOX, maxY);
+      }
+      item.obj.region = { x1: Math.round(x1), y1: Math.round(y1), x2: Math.round(x2), y2: Math.round(y2) };
+      syncOverlay(shell, item.pageIndex, item.id);
     }
-    obj.region = { x1: Math.round(x1), y1: Math.round(y1), x2: Math.round(x2), y2: Math.round(y2) };
-    syncOverlay(shell, pageIndex, obj.id);
+    shell._syncContextBar?.();
   }, { signal });
   const end = () => {
     if (!drag) return;
-    const o = drag.original; drag = null; overlay.classList.remove("transforming");
-    const r = obj.region;
-    if (r.x1 !== o.x1 || r.y1 !== o.y1 || r.x2 !== o.x2 || r.y2 !== o.y2) {
-      window.scheduleGeomPersist?.(pageIndex, obj.id);
+    const moved = drag.items; drag = null; overlay.classList.remove("transforming");
+    const changed = moved.filter((item) => {
+      const r = item.obj.region, o = item.original;
+      return r.x1 !== o.x1 || r.y1 !== o.y1 || r.x2 !== o.x2 || r.y2 !== o.y2;
+    });
+    if (!changed.length) return;
+    if (changed.length > 1 && window.editorHistory) {
+      const finals = changed.map((item) => ({ ...item.obj.region }));
+      changed.forEach((item) => { item.obj.region = { ...item.original }; });
+      window.editorHistory.batch(changed.map((i) => ({ pageIndex: i.pageIndex, id: i.id })), () => {
+        changed.forEach((item, idx) => {
+          item.obj.region = finals[idx];
+          window.scheduleGeomPersist?.(item.pageIndex, item.id);
+        });
+      });
+    } else {
+      changed.forEach((item) => window.scheduleGeomPersist?.(item.pageIndex, item.id));
     }
+    shell._syncContextBar?.();
   };
   overlay.addEventListener("pointerup", end, { signal }); overlay.addEventListener("pointercancel", end, { signal });
 }
@@ -251,9 +474,18 @@ export function createInlineEditor(shell, desc, pageIndex, obj, signal) {
   overlay.dataset.pageIndex = String(pageIndex);
   overlay.dataset.objectId = String(obj.id);
   overlay.addEventListener("click", (event) => {
+    if (event.target.closest(".review-inline-editor")) return;
     event.preventDefault();
     event.stopPropagation();
-    selectObject(shell, pageIndex, obj.id);
+    if (!event.shiftKey && !state.selectedKeys.has(selectionKey(pageIndex, obj.id))) {
+      selectObject(shell, pageIndex, obj.id);
+    }
+  }, { signal });
+  overlay.addEventListener("dblclick", (event) => {
+    if (state.variant !== "clean" || state.tool !== "select") return;
+    event.preventDefault();
+    event.stopPropagation();
+    startInlineTextEdit(shell, pageIndex, obj.id);
   }, { signal });
   shell.querySelector(".review-stitched-image")?.appendChild(overlay);
   syncOverlay(shell, pageIndex, obj.id);
@@ -262,10 +494,18 @@ export function createInlineEditor(shell, desc, pageIndex, obj, signal) {
 
 export function renderOverlays(shell, signal) {
   const image = shell.querySelector(".review-stitched-image"); if (!image) return;
-  image.querySelectorAll(".review-text-object-overlay,.review-text-drawing").forEach((n) => n.remove());
-  if (state.variant !== "clean") return;
+  image.querySelectorAll(".review-text-object-overlay,.review-text-drawing,.review-marquee-box").forEach((n) => n.remove());
+  if (state.variant !== "clean") {
+    shell._refreshLayers?.();
+    shell._syncStatusBar?.();
+    return;
+  }
   for (const { desc, pageIndex, obj } of ownedObjects(shell)) createInlineEditor(shell, desc, pageIndex, obj, signal);
+  _syncSelectionHighlight(shell);
   syncTool(shell);
+  shell._syncContextBar?.();
+  shell._refreshLayers?.();
+  shell._syncStatusBar?.();
 }
 
 export function restoreWorkspaceState(shell) {
@@ -359,20 +599,60 @@ export function sourcePoint(image, event) {
 }
 
 export function installTextDrawing(shell, signal) {
-  const image = shell.querySelector(".review-stitched-image"); let drawing = null;
+  const image = shell.querySelector(".review-stitched-image");
+  let drawing = null;
+  let marquee = null;
+  let suppressNextEmptyClick = false;
   const update = (p) => {
     if (!drawing || !p) return;
     const x1 = Math.min(drawing.start.x, p.x), y1 = Math.min(drawing.start.y, p.y), x2 = Math.max(drawing.start.x, p.x), y2 = Math.max(drawing.start.y, p.y);
     Object.assign(drawing.preview.style, { left: `${x1}px`, top: `${y1}px`, width: `${x2 - x1}px`, height: `${y2 - y1}px` }); drawing.last = p;
   };
+  const updateMarquee = (p) => {
+    if (!marquee || !p) return;
+    const x1 = Math.min(marquee.start.x, p.x), y1 = Math.min(marquee.start.y, p.y), x2 = Math.max(marquee.start.x, p.x), y2 = Math.max(marquee.start.y, p.y);
+    Object.assign(marquee.box.style, { left: `${x1}px`, top: `${y1}px`, width: `${x2 - x1}px`, height: `${y2 - y1}px` });
+    marquee.last = p;
+    if (x2 - x1 >= 6 || y2 - y1 >= 6) marquee.moved = true;
+  };
   image.addEventListener("pointerdown", (e) => {
-    if (state.variant !== "clean" || !["rectangle", "ellipse"].includes(state.tool) || e.button !== 0 || e.target.closest(".review-text-object-overlay")) return;
+    if (state.variant !== "clean" || e.button !== 0 || e.target.closest(".review-text-object-overlay")) return;
+    if (state.tool === "select") {
+      const p = sourcePoint(image, e); if (!p) return;
+      const box = document.createElement("div");
+      box.className = "review-marquee-box";
+      image.appendChild(box);
+      marquee = { start: p, last: p, box, additive: e.shiftKey, moved: false };
+      image.setPointerCapture?.(e.pointerId);
+      updateMarquee(p);
+      return;
+    }
+    if (!["rectangle", "ellipse"].includes(state.tool)) return;
     const p = sourcePoint(image, e); if (!p) { return; } e.preventDefault();
     const preview = document.createElement("div"); preview.className = `text-object-overlay drawing review-text-drawing${state.tool === "ellipse" ? " ellipse" : ""}`; image.appendChild(preview);
     drawing = { tool: state.tool, start: p, last: p, preview }; image.setPointerCapture?.(e.pointerId); update(p);
   }, { signal });
-  image.addEventListener("pointermove", (e) => { if (drawing) update(sourcePoint(image, e)); }, { signal });
+  image.addEventListener("pointermove", (e) => {
+    if (drawing) update(sourcePoint(image, e));
+    else if (marquee) updateMarquee(sourcePoint(image, e));
+  }, { signal });
   const finish = async () => {
+    if (marquee) {
+      const m = marquee; marquee = null; m.box.remove();
+      if (!m.moved) return;
+      suppressNextEmptyClick = true;
+      const x1 = Math.min(m.start.x, m.last.x), y1 = Math.min(m.start.y, m.last.y), x2 = Math.max(m.start.x, m.last.x), y2 = Math.max(m.start.y, m.last.y);
+      const hits = [];
+      if (m.additive) {
+        for (const t of getSelectedTargets(shell)) hits.push({ pageIndex: t.pageIndex, id: t.id });
+      }
+      for (const { desc, pageIndex, obj } of ownedObjects(shell)) {
+        const r = sourceRegion(desc, obj.region);
+        if (r.x2 >= x1 && r.x1 <= x2 && r.y2 >= y1 && r.y1 <= y2) hits.push({ pageIndex, id: obj.id });
+      }
+      selectMany(shell, hits);
+      return;
+    }
     if (!drawing) return;
     const d = drawing; drawing = null; d.preview.remove();
     const x1 = Math.round(Math.min(d.start.x, d.last.x)), y1 = Math.round(Math.min(d.start.y, d.last.y)), x2 = Math.round(Math.max(d.start.x, d.last.x)), y2 = Math.round(Math.max(d.start.y, d.last.y));
@@ -391,35 +671,42 @@ export function installTextDrawing(shell, signal) {
     } catch (err) { window.showToast?.("Không thể tạo vùng chữ: " + err.message, "error"); }
   };
   window.addEventListener("pointerup", finish, { signal }); window.addEventListener("pointercancel", finish, { signal });
-  image.addEventListener("click", (e) => { if (state.tool === "select" && !e.target.closest(".review-text-object-overlay")) clearSelection(shell); }, { signal });
+  image.addEventListener("click", (e) => {
+    if (suppressNextEmptyClick) { suppressNextEmptyClick = false; return; }
+    if (state.tool === "select" && !e.target.closest(".review-text-object-overlay")) clearSelection(shell);
+  }, { signal });
 }
 
 export function mountTextInspector(workspace, shell, signal) {
+  const dockedHost = shell._propsHost || null;
   const floating = document.createElement("aside");
-  floating.className = "review-floating-inspector";
-  floating.hidden = true;
+  floating.className = dockedHost
+    ? "review-floating-inspector koharu-docked-inspector is-open"
+    : "review-floating-inspector";
+  floating.hidden = !dockedHost;
   floating.setAttribute("aria-label", "Thuộc tính vùng chữ");
 
-  const header = document.createElement("div");
-  header.className = "review-floating-inspector-header";
-  const title = document.createElement("strong");
-  title.textContent = "Văn bản";
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "ui-icon-btn ui-btn-ghost ui-btn-compact";
-  close.setAttribute("aria-label", "Đóng thuộc tính");
-  close.append(window.createUiIcon("close"));
-  header.append(title, close);
+  if (!dockedHost) {
+    const header = document.createElement("div");
+    header.className = "review-floating-inspector-header";
+    const title = document.createElement("strong");
+    title.textContent = "Văn bản";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "ui-icon-btn ui-btn-ghost ui-btn-compact";
+    close.setAttribute("aria-label", "Đóng thuộc tính");
+    close.append(window.createUiIcon("close"));
+    header.append(title, close);
+    floating.append(header);
+    close.addEventListener("click", () => clearSelection(shell), { signal });
+  }
 
   const host = document.createElement("section");
   host.className = "translation-panel-host review-text-inspector-host";
   host.setAttribute("aria-label", "Chỉnh sửa chữ gốc, bản dịch và kiểu chữ");
-  host.innerHTML = '<div class="ui-empty-state">Chọn một vùng chữ trên ảnh để chỉnh sửa.</div>';
+  host.innerHTML = '<div class="ui-empty-state koharu-empty-props">Chọn một vùng chữ trên trang hoặc trong danh sách Lớp chữ để chỉnh sửa.</div>';
 
-  floating.append(header, host);
-  shell.appendChild(floating);
+  floating.append(host);
+  (dockedHost || shell).appendChild(floating);
   shell._floatingInspector = floating;
-
-  close.addEventListener("click", () => clearSelection(shell), { signal });
-
 }

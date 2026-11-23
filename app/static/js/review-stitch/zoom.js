@@ -31,6 +31,9 @@ export function applyZoom(shell, focus = null) {
     label.textContent = state.fitWidth ? `${Math.round(scale * 100)}%` : `${state.zoom}%`;
     label.title = state.fitWidth ? "Đang vừa khung" : "Bấm để vừa khung";
   }
+  shell._syncContextBar?.();
+  shell._syncBrushCursorSize?.();
+  shell._syncStatusBar?.();
 }
 
 export function scrollToReviewPage(shell, pageIndex) {
