@@ -12,6 +12,12 @@ from app.config import (
     MIGAN_MODEL_URL,
 )
 from app.detector.boxes import BubbleBox
+from app.inpaint.api_inpaint import (
+    composite_api_region,
+    inpaint_regions_via_api,
+    load_inpaint_settings,
+    region_complexity_score,
+)
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
 from app.inpaint.smart_fill import (
     blend_painted,
@@ -142,6 +148,8 @@ class Inpainter:
             "skipped_clusters": 0,
             "split_clusters": 0,
             "smart_fill_regions": 0,
+            "telea_fast_regions": 0,
+            "api_inpaint_regions": 0,
             "lama_regions": 0,
             "lama_model_runs": 0,
             "lama_model_ms": 0,
@@ -395,6 +403,10 @@ class Inpainter:
             clusters.extend(parts)
         self._metrics_local.value["clusters"] = len(clusters)
 
+        api_cfg = load_inpaint_settings()
+        use_hybrid_api = bool(api_cfg.get("enabled") and api_cfg.get("hybrid_auto"))
+        ai_candidates: list[dict] = []
+
         pending = {id(b) for cluster in clusters for b in cluster}
         for cluster in clusters:
             pending.difference_update(id(b) for b in cluster)
@@ -418,8 +430,80 @@ class Inpainter:
 
             if cluster and all(getattr(b, "mask_source", "") == "border_protected_display" for b in cluster):
                 result = self._paint_border_protected_display(result, local_mask, crop_box)
-            else:
-                result = self._smart_paint_region(result, local_mask, crop_box, hole=hole)
+                continue
+
+            if use_hybrid_api and np.any(local_mask > 127):
+                cur_crop = result[cy1:cy2, cx1:cx2]
+                score = region_complexity_score(cur_crop, local_mask)
+                if score >= 0.52:
+                    ai_candidates.append({
+                        "score": score,
+                        "crop_box": crop_box,
+                        "local_mask": local_mask,
+                        "hole": hole,
+                    })
+                    continue
+
+            result = self._smart_paint_region(result, local_mask, crop_box, hole=hole)
+
+        if ai_candidates:
+            ai_candidates.sort(key=lambda item: item["score"], reverse=True)
+            pack_atlas = bool(api_cfg.get("pack_atlas", True))
+            max_calls = max(1, int(api_cfg.get("max_api_calls_per_chapter", 3)))
+            max_regions = max_calls * (4 if pack_atlas else 1)
+            selected = ai_candidates[:max_regions]
+            overflow = ai_candidates[max_regions:]
+
+            api_outputs: list[np.ndarray | None] | None = None
+            try:
+                regions_payload = [
+                    {
+                        "crop": result[
+                            item["crop_box"][1]:item["crop_box"][3],
+                            item["crop_box"][0]:item["crop_box"][2],
+                        ].copy(),
+                        "mask": item["local_mask"],
+                    }
+                    for item in selected
+                ]
+                api_outputs = inpaint_regions_via_api(
+                    regions_payload,
+                    provider_id=api_cfg.get("provider_id") or None,
+                    model=api_cfg.get("model") or None,
+                    quality=api_cfg.get("quality") or None,
+                    pack_atlas=pack_atlas,
+                    max_calls=max_calls,
+                )
+            except Exception as exc:
+                logger.warning("Hybrid API inpaint failed; falling back to local LaMa: {}", exc)
+                api_outputs = None
+
+            for idx, item in enumerate(selected):
+                ai_crop = api_outputs[idx] if api_outputs is not None and idx < len(api_outputs) else None
+                if ai_crop is not None:
+                    result = composite_api_region(
+                        result,
+                        ai_crop,
+                        item["local_mask"],
+                        item["crop_box"],
+                        feather=False,
+                    )
+                    self._metric_add("api_inpaint_regions")
+                else:
+                    result = self._smart_paint_region(
+                        result,
+                        item["local_mask"],
+                        item["crop_box"],
+                        hole=item["hole"],
+                    )
+
+            for item in overflow:
+                result = self._smart_paint_region(
+                    result,
+                    item["local_mask"],
+                    item["crop_box"],
+                    hole=item["hole"],
+                )
 
         return result
 
@@ -496,6 +580,106 @@ class Inpainter:
                 feather=True,
                 force_lama=force_lama,
             )
+
+        return result
+
+    def inpaint_mask_via_api(
+        self,
+        image: np.ndarray,
+        mask: np.ndarray,
+        *,
+        provider_id: str | None = None,
+        model: str | None = None,
+        quality: str | None = None,
+        pack_atlas: bool = True,
+    ) -> np.ndarray:
+        """Redraw user-brushed mask components via the configured AI image-edit API."""
+        self._begin_metrics()
+        if mask is None or not np.any(mask > 127):
+            return image.copy()
+
+        binary_mask = (mask > 127).astype(np.uint8) * 255
+        num_labels, labels, stats, _centroids = cv2.connectedComponentsWithStats(binary_mask, connectivity=8)
+        self._metrics_local.value["mask_components"] = max(0, int(num_labels) - 1)
+
+        result = image.copy()
+        h, w = image.shape[:2]
+        entries: list[dict] = []
+
+        for label in range(1, num_labels):
+            x, y, bbox_w, bbox_h, area = (int(v) for v in stats[label])
+            if area <= 0 or bbox_w <= 0 or bbox_h <= 0:
+                continue
+
+            scale = max(1, min(bbox_w, bbox_h))
+            kernel_size = int(
+                np.clip(
+                    round(scale * MANUAL_DILATION_SCALE) * 2 + 1,
+                    MANUAL_MIN_DILATION,
+                    MANUAL_MAX_DILATION,
+                )
+            )
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+
+            radius = kernel_size // 2
+            rx1 = max(0, x - radius)
+            ry1 = max(0, y - radius)
+            rx2 = min(w, x + bbox_w + radius)
+            ry2 = min(h, y + bbox_h + radius)
+            component_roi = (labels[ry1:ry2, rx1:rx2] == label).astype(np.uint8) * 255
+            if not np.any(component_roi > 127):
+                continue
+            dilated_roi = cv2.dilate(component_roi, kernel, iterations=1)
+
+            dys, dxs = np.where(dilated_roi > 127)
+            if len(dys) == 0:
+                continue
+            gx1 = rx1 + int(dxs.min())
+            gy1 = ry1 + int(dys.min())
+            gx2 = rx1 + int(dxs.max())
+            gy2 = ry1 + int(dys.max())
+            crop_box = compute_manual_crop_region(gx1, gy1, gx2, gy2, w, h)
+            cx1, cy1, cx2, cy2 = crop_box
+
+            local_mask = np.zeros((cy2 - cy1, cx2 - cx1), dtype=np.uint8)
+            ix1 = max(cx1, rx1)
+            iy1 = max(cy1, ry1)
+            ix2 = min(cx2, rx2)
+            iy2 = min(cy2, ry2)
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+            local_mask[iy1 - cy1:iy2 - cy1, ix1 - cx1:ix2 - cx1] = (
+                dilated_roi[iy1 - ry1:iy2 - ry1, ix1 - rx1:ix2 - rx1]
+            )
+            entries.append({
+                "crop": result[cy1:cy2, cx1:cx2].copy(),
+                "mask": local_mask,
+                "crop_box": crop_box,
+            })
+
+        if not entries:
+            return result
+
+        api_outputs = inpaint_regions_via_api(
+            entries,
+            provider_id=provider_id,
+            model=model,
+            quality=quality,
+            pack_atlas=pack_atlas,
+        )
+        for entry, ai_crop in zip(entries, api_outputs):
+            if ai_crop is None:
+                raise RuntimeError("AI không trả về kết quả cho vùng đã chọn.")
+            result = composite_api_region(
+                result,
+                ai_crop,
+                entry["mask"],
+                entry["crop_box"],
+                feather=True,
+            )
+            self._metric_add("api_inpaint_regions")
 
         return result
 
@@ -639,6 +823,24 @@ class Inpainter:
                 filled[mask_bool] = fill_color
             filled = restore_ambient_grain(crop, filled, local_mask, crop_box, hole=hole)
             return self._blend_painted(image, filled, local_mask, crop_box, feather, hole=hole)
+
+        # Fast CPU bypass: tiny isolated specks (<= 180px) on low-edge backgrounds don't need
+        # a full 512x512 LaMa ONNX forward pass; OpenCV Telea finishes in <0.5ms cleanly.
+        if not force_lama and hole is None:
+            mask_area = int(np.count_nonzero(mask_bool))
+            if 0 < mask_area <= 180:
+                crop_gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+                ctx_mask = ~mask_bool
+                if np.any(ctx_mask):
+                    crop_edges = cv2.Canny(crop_gray, SMART_FILL_CANNY_LOW, SMART_FILL_CANNY_HIGH)
+                    ctx_edge_density = float(np.mean(crop_edges[ctx_mask] > 0))
+                    if ctx_edge_density < 0.08:
+                        self._metric_add("telea_fast_regions")
+                        telea_mask = mask_bool.astype(np.uint8) * 255
+                        painted = cv2.inpaint(crop, telea_mask, 3, cv2.INPAINT_TELEA)
+                        painted = match_boundary_tone(crop, painted, local_mask)
+                        painted = restore_ambient_grain(crop, painted, local_mask, crop_box)
+                        return self._blend_painted(image, painted, local_mask, crop_box, feather)
 
         self._metric_add("lama_regions")
         return self._lama_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)

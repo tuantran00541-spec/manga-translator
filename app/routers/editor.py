@@ -4,9 +4,15 @@ import cv2
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 import app.config as _app_config
 from app.config import BASE_DIR
 from app.dependencies import pipeline
+from app.inpaint.api_inpaint import (
+    list_configured_image_providers,
+    load_inpaint_settings,
+    save_inpaint_settings,
+)
 from app.logging_config import logger
 from app.manifest_utils import atomic_replace, get_manifest_lock, get_page_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.image_io import read_image
@@ -319,11 +325,14 @@ async def repaint_mask(
     chapter_id: str = Form(...),
     page_index: int = Form(...),
     mode: str = Form("standard"),
+    provider_id: str = Form(""),
+    model: str = Form(""),
+    quality: str = Form(""),
     mask: UploadFile = File(...),
 ) -> dict:
     validate_chapter_id(chapter_id)
     mode = str(mode).strip().lower()
-    if mode not in {"standard", "lama", "restore"}:
+    if mode not in {"standard", "lama", "ai", "restore"}:
         raise HTTPException(400, "Invalid repaint mode")
     manifest_raw = load_manifest_raw(chapter_id)
     pages = manifest_raw.get("pages", [])
@@ -358,6 +367,16 @@ async def repaint_mask(
     try:
         if mode == "restore":
             manifest = await run_in_threadpool(pipeline.restore_mask, chapter_id, page_index, mask_array)
+        elif mode == "ai":
+            manifest = await run_in_threadpool(
+                pipeline.repaint_mask_ai,
+                chapter_id,
+                page_index,
+                mask_array,
+                provider_id=provider_id.strip() or None,
+                model=model.strip() or None,
+                quality=quality.strip() or None,
+            )
         else:
             manifest = await run_in_threadpool(
                 pipeline.repaint_mask,
@@ -579,3 +598,31 @@ def put_style_presets(req: StylePresetsRequest) -> dict:
         tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
         atomic_replace(tmp, STYLE_PRESETS_PATH)
     return payload
+
+
+class InpaintSettingsUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    provider_id: str | None = None
+    model: str | None = None
+    quality: str | None = None
+    hybrid_auto: bool | None = None
+    max_api_calls_per_chapter: int | None = None
+    pack_atlas: bool | None = None
+
+
+@router.get("/inpaint/settings")
+def get_inpaint_settings() -> dict:
+    return {
+        **load_inpaint_settings(),
+        "providers": list_configured_image_providers(),
+    }
+
+
+@router.put("/inpaint/settings")
+def put_inpaint_settings(req: InpaintSettingsUpdateRequest) -> dict:
+    updates = req.model_dump(exclude_none=True)
+    saved = save_inpaint_settings(updates)
+    return {
+        **saved,
+        "providers": list_configured_image_providers(),
+    }

@@ -186,11 +186,162 @@
       if (e.detail?.lang && langSelect.value !== e.detail.lang) langSelect.value = e.detail.lang;
     });
 
+    const inpaintSection = el("div", "settings-block settings-inpaint-block");
+    const inpaintHead = el("div", "settings-inpaint-head");
+    inpaintHead.append(
+      el("strong", "settings-row-title", "Tẩy nền bằng AI (Hybrid API)"),
+      el("span", "settings-inpaint-status", ""),
+    );
+    const inpaintStatusEl = inpaintHead.lastChild;
+    const inpaintDesc = el(
+      "p",
+      "settings-row-desc",
+      "Giữ ~85% khung thoại phẳng chạy Smart Fill cục bộ miễn phí (<2ms); chỉ gom các vùng SFX/tranh phức tạp thành lưới 2×2 gửi tới nhà cung cấp AI giao thức OpenAI bạn đã cấu hình.",
+    );
+
+    const inpaintProvider = el("select", "ui-select");
+    inpaintProvider.setAttribute("aria-label", "Nhà cung cấp tẩy nền AI");
+    const inpaintModelListId = `inpaint-models-${Math.random().toString(36).slice(2, 8)}`;
+    const inpaintModelList = document.createElement("datalist");
+    inpaintModelList.id = inpaintModelListId;
+    const inpaintModel = input("openai/gpt-image-2.6-flare", "Mô hình tẩy nền AI");
+    inpaintModel.setAttribute("list", inpaintModelListId);
+    const inpaintQuality = el("select", "ui-select");
+    inpaintQuality.setAttribute("aria-label", "Chất lượng tẩy nền AI");
+    [
+      ["low", "Tiết kiệm (low — khuyến nghị)"],
+      ["medium", "Cân bằng (medium)"],
+      ["high", "Chi tiết cao (high)"],
+    ].forEach(([v, l]) => inpaintQuality.add(new Option(l, v)));
+
+    const inpaintMaxCalls = input("3", "Giới hạn lượt API mỗi chương", "number", "ui-input");
+    inpaintMaxCalls.min = "1";
+    inpaintMaxCalls.max = "20";
+    inpaintMaxCalls.step = "1";
+
+    const makeCheckbox = (labelText) => {
+      const wrap = el("label", "settings-inpaint-check");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      wrap.append(box, el("span", "", labelText));
+      return { wrap, box };
+    };
+    const hybridToggle = makeCheckbox("Bật Hybrid tự động khi xử lý chương (tự gửi vùng SFX khó cho AI)");
+    const atlasToggle = makeCheckbox("Gom lưới 2×2 (nhồi 4 vùng khó vào 1 ảnh 1024×1024 để giảm 4× chi phí)");
+
+    const inpaintGrid = el("div", "settings-inpaint-grid");
+    const miniField = (labelText, control) => {
+      const f = el("label", "settings-inpaint-field");
+      f.append(el("span", "settings-field-label", labelText), control);
+      return f;
+    };
+    inpaintGrid.append(
+      miniField("Nhà cung cấp AI", inpaintProvider),
+      miniField("Mô hình ảnh", inpaintModel),
+      miniField("Chất lượng", inpaintQuality),
+      miniField("Tối đa lượt API / chương", inpaintMaxCalls),
+    );
+    inpaintSection.append(inpaintHead, inpaintDesc, inpaintGrid, inpaintModelList, hybridToggle.wrap, atlasToggle.wrap);
+
+    let inpaintReady = false;
+    const refreshInpaintModelHints = async (pid) => {
+      inpaintModelList.replaceChildren();
+      if (!pid) return;
+      try {
+        const res = await fetch(`/api/visual_qc/providers/${encodeURIComponent(pid)}/models`);
+        const data = await res.json().catch(() => ({}));
+        const all = Array.isArray(data.models) ? data.models : [];
+        const imgModels = all.filter((m) => /image|imagen|flux|kontext|dall-e|gpt-image/i.test(String(m)));
+        (imgModels.length ? imgModels : all.slice(0, 30)).slice(0, 40).forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m;
+          inpaintModelList.append(opt);
+        });
+      } catch (_err) {
+        // Ignore model-hint fetch errors.
+      }
+    };
+
+    const loadInpaintSettingsUI = async () => {
+      try {
+        const res = await fetch("/api/inpaint/settings");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const providers = Array.isArray(data.providers) ? data.providers : [];
+        inpaintProvider.replaceChildren();
+        if (!providers.length) {
+          inpaintProvider.add(new Option("Chưa có nhà cung cấp OpenAI nào có khóa API", ""));
+        } else {
+          inpaintProvider.add(new Option(`Tự động (${providers[0].label})`, ""));
+          for (const p of providers) {
+            inpaintProvider.add(new Option(p.label || p.id, p.id));
+          }
+          if (data.provider_id && providers.some((p) => p.id === data.provider_id)) {
+            inpaintProvider.value = data.provider_id;
+          }
+        }
+        inpaintModel.value = data.model || "openai/gpt-image-2.6-flare";
+        inpaintQuality.value = ["low", "medium", "high"].includes(data.quality) ? data.quality : "low";
+        inpaintMaxCalls.value = String(data.max_api_calls_per_chapter ?? 3);
+        hybridToggle.box.checked = Boolean(data.enabled && data.hybrid_auto);
+        atlasToggle.box.checked = data.pack_atlas !== false;
+        inpaintReady = true;
+        void refreshInpaintModelHints(inpaintProvider.value || providers[0]?.id || "");
+      } catch (_err) {
+        // Leave defaults if unavailable.
+      }
+    };
+
+    let saveInpaintTimer = null;
+    const persistInpaintSettings = async () => {
+      if (!inpaintReady) return;
+      inpaintStatusEl.textContent = "Đang lưu…";
+      const hybridOn = Boolean(hybridToggle.box.checked);
+      const cap = Math.max(1, Math.min(20, Number(inpaintMaxCalls.value) || 3));
+      inpaintMaxCalls.value = String(cap);
+      try {
+        const res = await fetch("/api/inpaint/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enabled: hybridOn,
+            hybrid_auto: hybridOn,
+            provider_id: inpaintProvider.value || "",
+            model: inpaintModel.value.trim() || "openai/gpt-image-2.6-flare",
+            quality: ["low", "medium", "high"].includes(inpaintQuality.value) ? inpaintQuality.value : "low",
+            max_api_calls_per_chapter: cap,
+            pack_atlas: Boolean(atlasToggle.box.checked),
+          }),
+        });
+        inpaintStatusEl.textContent = res.ok ? "Đã lưu" : "Lỗi lưu";
+      } catch (_err) {
+        inpaintStatusEl.textContent = "Lỗi kết nối";
+      }
+    };
+    const scheduleSaveInpaint = () => {
+      clearTimeout(saveInpaintTimer);
+      saveInpaintTimer = setTimeout(() => { void persistInpaintSettings(); }, 250);
+    };
+    inpaintProvider.addEventListener("change", () => {
+      void refreshInpaintModelHints(inpaintProvider.value);
+      void persistInpaintSettings();
+    });
+    inpaintQuality.addEventListener("change", () => { void persistInpaintSettings(); });
+    hybridToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
+    atlasToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
+    inpaintMaxCalls.addEventListener("change", () => { void persistInpaintSettings(); });
+    inpaintModel.addEventListener("input", scheduleSaveInpaint);
+    inpaintModel.addEventListener("change", () => { void persistInpaintSettings(); });
+    document.addEventListener("ai-providers-updated", () => { void loadInpaintSettingsUI(); });
+    tabGeneralBtn.addEventListener("click", () => { void loadInpaintSettingsUI(); });
+    void loadInpaintSettingsUI();
+
     generalPanel.append(
       settingRow("Ngôn ngữ ứng dụng", "Chọn ngôn ngữ hiển thị toàn bộ giao diện ứng dụng", langSelect),
       settingRow("Quyền hạn thực thi", "Chọn chế độ phê duyệt mặc định cho phiên làm việc mới", permSelect),
       settingRow("Phạm vi truy cập tệp (Sandbox)", "Giới hạn thư mục mà các lệnh được phép ghi", sandboxSelect),
       themeSection,
+      inpaintSection,
       settingRow("Tự động thu gọn bước chạy", "Chọn thời điểm tự đóng chi tiết công cụ trong Chaos", collapseSelect),
       settingRow("Hiệu năng và mức sử dụng", "Mức độ hiển thị thông tin token, bộ nhớ đệm và thời gian thực thi", perfSelect),
     );

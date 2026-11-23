@@ -224,6 +224,134 @@ class PipelineMasksMixin:
                     self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
+    def repaint_mask_ai(
+        self,
+        chapter_id: str,
+        page_index: int,
+        mask: np.ndarray,
+        *,
+        provider_id: str | None = None,
+        model: str | None = None,
+        quality: str | None = None,
+    ) -> dict:
+        from app.inpaint.api_inpaint import load_inpaint_settings
+
+        processed_dir = _processed_dir_root() / chapter_id
+        settings = load_inpaint_settings()
+
+        with _ed("get_page_lock", get_page_lock)(chapter_id, page_index):
+            with _ed("get_manifest_lock", get_manifest_lock)(chapter_id):
+                manifest = _ed("load_manifest_raw", load_manifest_raw)(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+                page = manifest["pages"][page_index]
+                if page.get("skipped"):
+                    raise ValueError("Cannot repaint a skipped page; unskip it first")
+                if page.get("process_required"):
+                    raise ValueError("Cannot repaint a page that requires processing")
+                img_path = validate_managed_path(page["original"], _raw_dir_root() / chapter_id)
+                preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
+                clean_posix = page.get("clean")
+
+            original = _ed("read_image", read_image)(img_path)
+            img_h, img_w = original.shape[:2]
+            bin_mask = (
+                (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+                if mask is not None
+                else None
+            )
+            if bin_mask is None or not np.any(bin_mask):
+                raise ValueError("Repaint mask is empty")
+            if bin_mask.shape[:2] != (img_h, img_w):
+                raise ValueError(
+                    "Repaint mask dimensions "
+                    f"{bin_mask.shape[:2]} must exactly match page dimensions "
+                    f"{(img_h, img_w)}"
+                )
+            bin_mask = _ed("subtract_regions_from_mask", subtract_regions_from_mask)(bin_mask, preserve_regions)
+            if bin_mask is None or not np.any(bin_mask):
+                raise ValueError("Repaint mask falls entirely inside a preserve region")
+
+            clean_path = validate_managed_path(clean_posix, processed_dir) if clean_posix else None
+            if clean_path is not None and clean_path.exists():
+                base_clean = _ed("read_image", read_image)(clean_path)
+                if base_clean.shape[:2] != (img_h, img_w):
+                    base_clean = original.copy()
+            else:
+                base_clean = original.copy()
+
+            restore_path = self._restore_mask_path(processed_dir, img_path)
+            with self._page_artifact_transaction(
+                processed_dir,
+                img_path,
+                page_index,
+                target_clean_revision,
+                [restore_path],
+            ) as artifact_tx:
+                auto_clean_path = self._auto_clean_path(processed_dir, img_path)
+                if not auto_clean_path.exists():
+                    try:
+                        self._write_auto_clean_cache(processed_dir, img_path, base_clean)
+                    except Exception as exc:
+                        logger.warning("Could not seed auto-clean cache before AI repaint: {}", exc)
+
+                restore = self._read_manual_mask(restore_path, (img_h, img_w))
+                if restore is not None:
+                    restore[bin_mask > MANUAL_MASK_THRESHOLD] = 0
+                    if np.any(restore):
+                        _ed("write_image", write_image)(restore_path, restore)
+                    else:
+                        restore_path.unlink()
+
+                updated_clean = self.inpainter.inpaint_mask_via_api(
+                    base_clean,
+                    bin_mask,
+                    provider_id=provider_id,
+                    model=model,
+                    quality=quality,
+                    pack_atlas=bool(settings.get("pack_atlas", True)),
+                )
+                for region in preserve_regions or []:
+                    if not isinstance(region, dict):
+                        continue
+                    try:
+                        rx1, rx2 = sorted((int(region.get("x1", 0)), int(region.get("x2", 0))))
+                        ry1, ry2 = sorted((int(region.get("y1", 0)), int(region.get("y2", 0))))
+                    except (TypeError, ValueError):
+                        continue
+                    rx1, rx2 = max(0, rx1), min(img_w, rx2)
+                    ry1, ry2 = max(0, ry1), min(img_h, ry2)
+                    if rx2 > rx1 and ry2 > ry1:
+                        updated_clean[ry1:ry2, rx1:rx2] = original[ry1:ry2, rx1:rx2]
+
+                final_clean_path = processed_dir / f"clean_{img_path.name}"
+                tmp_clean_path = (
+                    processed_dir
+                    / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+                )
+                _ed("write_image", write_image)(tmp_clean_path, updated_clean)
+                _ed("atomic_replace", atomic_replace)(tmp_clean_path, final_clean_path)
+
+                with _ed("get_manifest_lock", get_manifest_lock)(chapter_id):
+                    manifest = _ed("load_manifest_raw", load_manifest_raw)(chapter_id)
+                    if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                        raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+                    target_page = manifest["pages"][page_index]
+                    target_page["clean"] = final_clean_path.as_posix()
+                    target_page["manual_ai_applied"] = True
+                    clean_revision = _ed("bump_page_revision", bump_page_revision)(
+                        target_page, "clean_revision"
+                    )
+                    if clean_revision != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during AI repaint")
+                    _ed("invalidate_page_render", invalidate_page_render)(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
+                    _ed("save_manifest_raw", save_manifest_raw)(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
+
     def restore_mask(self, chapter_id: str, page_index: int, mask: np.ndarray) -> dict:
         processed_dir = _processed_dir_root() / chapter_id
 
@@ -344,6 +472,7 @@ class PipelineMasksMixin:
                     target_page = manifest["pages"][page_index]
                     target_page.pop("manual_mask", None)
                     target_page.pop("manual_lama_mask", None)
+                    target_page.pop("manual_ai_applied", None)
                     target_page.pop("restore_mask", None)
                     target_page["clean"] = clean_path_posix
                     clean_revision = _ed("bump_page_revision", bump_page_revision)(

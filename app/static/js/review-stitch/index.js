@@ -652,10 +652,21 @@ export function mount(workspace) {
   }, { signal });
   image.addEventListener("pointerleave", () => { eyedropperBadge.hidden = true; brushCursor.hidden = true; }, { signal });
 
-  const runBrushRepaint = async (mode) => {
+  const runBrushRepaint = async (choice) => {
+    const opts = typeof choice === "string" ? { mode: choice } : (choice || { mode: "standard" });
+    const mode = opts.mode || "standard";
     const chapterId = window.currentChapterId, chunks = shell._brushChunks || [];
     if (!chapterId || !chunks.some((c) => c.dirty && chunkHasPaint(c))) return false;
-    busy(true, mode === "lama" ? "LaMa đang xử lý…" : mode === "restore" ? "Đang khôi phục…" : "Đang làm sạch nhanh…");
+    busy(
+      true,
+      mode === "ai"
+        ? "AI đang vẽ lại…"
+        : mode === "lama"
+          ? "LaMa đang xử lý…"
+          : mode === "restore"
+            ? "Đang khôi phục…"
+            : "Đang làm sạch nhanh…",
+    );
     try {
       let affected = 0;
       for (const desc of shell._descriptors || []) {
@@ -663,12 +674,26 @@ export function mount(workspace) {
         const fullY2 = fullY1 + desc.img.naturalHeight;
         if (!(shell._brushChunks || []).some((c) => chunkHasPaint(c, fullY1, fullY2))) continue;
         const mask = document.createElement("canvas"); mask.width = desc.img.naturalWidth; mask.height = desc.img.naturalHeight; drawBrushMask(mask.getContext("2d"), chunks, desc, mask.width);
-        const form = new FormData(); form.append("chapter_id", chapterId); form.append("page_index", desc.item.canonicalIndex); form.append("mode", mode); form.append("mask", await canvasBlob(mask), "mask.png");
+        const form = new FormData();
+        form.append("chapter_id", chapterId);
+        form.append("page_index", desc.item.canonicalIndex);
+        form.append("mode", mode);
+        if (mode === "ai") {
+          if (opts.providerId) form.append("provider_id", opts.providerId);
+          if (opts.model) form.append("model", opts.model);
+          if (opts.quality) form.append("quality", opts.quality);
+        }
+        form.append("mask", await canvasBlob(mask), "mask.png");
         const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
         if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) { window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; } affected++;
       }
       for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey());
-      window.showToast?.(affected ? (mode === "restore" ? "Đã khôi phục ảnh gốc ở các vùng được đánh dấu." : "Đã làm sạch các vùng được đánh dấu.") : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info");
+      const doneMsg = mode === "restore"
+        ? "Đã khôi phục ảnh gốc ở các vùng được đánh dấu."
+        : mode === "ai"
+          ? "AI đã vẽ lại các vùng được đánh dấu."
+          : "Đã làm sạch các vùng được đánh dấu.";
+      window.showToast?.(affected ? doneMsg : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info");
       rerender();
       return affected > 0;
     } catch (err) {
@@ -779,7 +804,7 @@ export function mount(workspace) {
   undoRepaint.addEventListener("click", async () => {
     const chapterId = window.currentChapterId, pageIndex = Number(workspace.dataset.reviewCanonicalIndex), page = window.currentManifest?.pages?.[pageIndex];
     if (!chapterId || !page) return;
-    if (!page.manual_mask && !page.manual_lama_mask) return window.showToast?.(`Lát ${pageIndex + 1} chưa có vùng nào làm sạch bằng cọ.`, "info");
+    if (!page.manual_mask && !page.manual_lama_mask && !page.manual_ai_applied) return window.showToast?.(`Lát ${pageIndex + 1} chưa có vùng nào làm sạch bằng cọ.`, "info");
     if (!window.confirm(`Bỏ mọi vùng đã làm sạch bằng cọ trên lát ${pageIndex + 1}? Lát sẽ trở về kết quả xử lý tự động.`)) return;
     busy(true, "Đang khôi phục…");
     try {
