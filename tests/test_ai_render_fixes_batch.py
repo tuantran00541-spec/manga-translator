@@ -564,5 +564,7 @@ def test_vision_salvage_entries_preserves_metadata_and_language_filters_protect_
     assert _line_is_english("Were you talking to me?") is True
     assert _line_is_english("GO TO ME") is True
 
-    assert _line_is_bare_scream("ÁÁÁÁ!!!") is True
+    assert _line_is_bare_scream("AAAAA!!!") is True
+    assert _line_is_bare_scream("ÁÁÁÁ!!!") is False
+    assert _line_is_bare_scream("ỨỨỨ!") is False
     assert _line_is_bare_scream("ừừừ") is False

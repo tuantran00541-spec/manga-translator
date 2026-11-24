@@ -393,16 +393,14 @@ def _strip_diacritics(text: str) -> str:
 
 def _line_is_bare_scream(line: str) -> bool:
     raw_line = line
+    if _has_non_ascii_letter(raw_line):
+        return False
     line = _strip_diacritics(line)
     words = _ascii_words(line)
     if len(words) != 1:
         return False
     word = words[0]
     if len(word) < 3 or len(set(word)) != 1:
-        return False
-    if _has_non_ascii_letter(line):
-        return False
-    if _has_non_ascii_letter(raw_line) and not word.isupper():
         return False
     rest = _normalize_for_script_check(line).replace(word, "", 1)
     return all(not char.isalnum() for char in rest)
@@ -461,10 +459,23 @@ def _filter_foreign_lines(value: str, source: str) -> str:
     return "\n".join(kept)
 
 
-def _memory_name_is_english(entry: dict, key: str) -> bool:
-    fields = ("name",) if key == "characters" else ("from", "to")
-    return any(isinstance(entry, dict) and _untranslated_english(entry.get(field) or "")
-               for field in fields)
+_ENGLISH_PRONOUNS = frozenset(
+    "i me my mine myself you your yours yourself we us our ours ourselves "
+    "he him his she her hers they them their sir ma'am madam mister miss".split()
+)
+
+
+def _address_pronoun_is_english(entry: dict) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    for field in ("self", "other"):
+        raw = str(entry.get(field) or "").strip()
+        if not raw or _has_non_ascii_letter(raw):
+            continue
+        words = [w.lower() for w in _letter_words(_normalize_for_script_check(raw))]
+        if words and (all(w in _ENGLISH_PRONOUNS for w in words) or _untranslated_english(raw)):
+            return True
+    return False
 
 
 def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
@@ -494,11 +505,17 @@ def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[V
                 entry = {**entry, "translated_text": kept[entry_id]}
             updated.append(entry)
         data["translations"] = updated
-    for key in ("characters", "address"):
-        if isinstance(data.get(key), list):
-            data[key] = [entry for entry in data[key]
-                         if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))
-                         and not _memory_name_is_english(entry, key)]
+    if isinstance(data.get("characters"), list):
+        data["characters"] = [
+            entry for entry in data["characters"]
+            if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))
+        ]
+    if isinstance(data.get("address"), list):
+        data["address"] = [
+            entry for entry in data["address"]
+            if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))
+            and not _address_pronoun_is_english(entry)
+        ]
     if foreign or kept:
         result = replace(result, translations={key: ("" if key in foreign else kept.get(key, value))
                                                for key, value in result.translations.items()})
@@ -606,20 +623,29 @@ class VisionPageTranslator:
             translate_provider, translate_model, translate_api_key,
         )
 
-    def detect_setting(self, original_path: Path, api_key: str) -> str | None:
-        image = _read_image(Path(original_path))
+    def detect_setting(self, original_paths: Path | str | list[Path] | tuple[Path, ...], api_key: str) -> str | None:
+        if isinstance(original_paths, (str, Path)):
+            paths = [Path(original_paths)]
+        else:
+            paths = [Path(p) for p in list(original_paths)[:3]]
+        if not paths:
+            return None
+        loaded = [_read_image(p) for p in paths]
+        images = [("page", loaded[0])] if len(loaded) == 1 else [
+            (f"SLICE {idx}", img) for idx, img in enumerate(loaded, start=1)
+        ]
         setting = None
         for budget in (4096, 8192):
             try:
                 result = request_vision_json(self.provider, self.model, api_key, setting_question(),
-                                             [("page", image)], max_tokens=budget, reasoning_effort="low",
+                                             images, max_tokens=budget, reasoning_effort="low",
                                              stage="setting")
             except RuntimeError:
                 continue
             setting = parse_setting((result.data or {}).get("setting"))
             if setting:
                 break
-        logger.info("Chapter setting detected: {}", setting or "unknown (general register)")
+        logger.info("Chapter setting detected ({} slice(s)): {}", len(images), setting or "unknown (general register)")
         return setting
 
     def translate_page(
@@ -918,8 +944,8 @@ class VisionPageTranslator:
     def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):
         payload = {
             "model": self.model, "store": False,
+            "system_instruction": system,
             "input": [
-                {"type": "text", "text": system},
                 {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
                 {"type": "image", "data": marked, "mime_type": "image/jpeg"},
                 {"type": "text", "text": prompt},

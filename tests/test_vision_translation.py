@@ -418,7 +418,9 @@ def test_a_bare_scream_is_treated_as_untranslated():
 
     assert _bare_scream("AAAAA!!!")
     assert _bare_scream("HHHHH...")
-    assert _bare_scream("ÁÁÁÁ!!!")
+    assert not _bare_scream("ÁÁÁÁ!!!")
+    assert not _bare_scream("ỨỨỨ!")
+    assert not _bare_scream("ỐỐỐ!")
     assert not _bare_scream("HAHA!")
     assert not _bare_scream("A!")
     assert not _bare_scream("AA!")
@@ -462,11 +464,12 @@ def test_mixed_vietnamese_and_english_splits_instead_of_passing():
     assert filtered("MM!") == ("MM!", "MM!")
     assert filtered("ENDB") == ("ENDB", "ENDB")
     assert filtered("GAME OVER") == ("GAME OVER", "GAME OVER")
-    assert filtered("ÁÁÁÁA!!!") == ("", None)
+    assert filtered("ÁÁÁÁ!!!") == ("ÁÁÁÁ!!!", "ÁÁÁÁ!!!")
+    assert filtered("ỨỨỨ!") == ("ỨỨỨ!", "ỨỨỨ!")
     assert filtered("Đúng vậy\nGAME OVER") == ("Đúng vậy\nGAME OVER", "Đúng vậy\nGAME OVER")
 
 
-def test_a_diacritic_scream_beside_a_vietnamese_line_drops_only_the_scream():
+def test_a_diacritic_scream_beside_a_vietnamese_line_is_preserved():
     from app.translation.vision import _drop_foreign_script
 
     def filtered(value):
@@ -476,22 +479,59 @@ def test_a_diacritic_scream_beside_a_vietnamese_line_drops_only_the_scream():
         entry = kept_data["translations"][0] if kept_data["translations"] else None
         return kept.translations["a"], entry["translated_text"] if entry else None
 
-    assert filtered("Đúng vậy\nÁÁÁÁA!!!") == ("Đúng vậy", "Đúng vậy")
-    assert filtered("ÁÁÁÁA!!!\nĐi thôi") == ("Đi thôi", "Đi thôi")
+    assert filtered("Đúng vậy\nÁÁÁÁ!!!") == ("Đúng vậy\nÁÁÁÁ!!!", "Đúng vậy\nÁÁÁÁ!!!")
+    assert filtered("ỨỨỨ!\nĐi thôi") == ("ỨỨỨ!\nĐi thôi", "ỨỨỨ!\nĐi thôi")
+    assert filtered("Đúng vậy\nAAAAA!!!") == ("Đúng vậy", "Đúng vậy")
 
 
-def test_english_names_are_dropped_from_memory_not_learned(tmp_path, monkeypatch):
+def test_english_pronouns_are_dropped_from_memory_while_descriptors_stay(tmp_path, monkeypatch):
     from app.translation.vision import _drop_foreign_script
 
     result = VisionTranslationResult({"a": "Chào"}, "m", {}, None)
     data = {"translations": [{"id": "a", "translated_text": "Chào"}],
-            "characters": [{"name": "Senior Brother", "note": "x"},
-                           {"name": "Minh", "note": "y"}],
+            "characters": [{"name": "Senior Brother", "note": "sư huynh áo đen"},
+                           {"name": "Old Father", "note": "cha già"},
+                           {"name": "Minh", "note": "y"},
+                           {"name": "김철수", "note": "korean leak"}],
             "address": [{"from": "Senior Brother", "to": "Little Sister", "self": "I", "other": "You"},
+                        {"from": "Senior Brother", "to": "Old Father", "self": "con", "other": "cha"},
                         {"from": "Minh", "to": "Lan", "self": "em", "other": "anh"}]}
     _kept, kept_data = _drop_foreign_script(result, data)
-    assert [entry["name"] for entry in kept_data["characters"]] == ["Minh"]
-    assert [(entry["from"], entry["to"]) for entry in kept_data["address"]] == [("Minh", "Lan")]
+    assert [entry["name"] for entry in kept_data["characters"]] == ["Senior Brother", "Old Father", "Minh"]
+    assert [(entry["from"], entry["to"]) for entry in kept_data["address"]] == [
+        ("Senior Brother", "Old Father"),
+        ("Minh", "Lan"),
+    ]
+
+
+def test_gemini_translation_sends_system_instruction_top_level(monkeypatch):
+    seen = {}
+
+    class FakeResp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "steps": [{"type": "model_output", "content": [
+                    {"type": "text", "text": '{"translations":[{"id":"1","translated_text":"Xin chào"}]}'}
+                ]}],
+                "usage": {},
+            }
+
+        def close(self):
+            pass
+
+    def fake_proxy_post(**kwargs):
+        seen["payload"] = kwargs["payload"]
+        return FakeResp(), False, None
+
+    monkeypatch.setattr("app.translation.vision.api_proxy.proxy_post", fake_proxy_post)
+    translator = VisionPageTranslator(PROVIDERS["gemini"], "gemini-3.7-flash")
+    result, _data = translator._gemini("SYS_RULES", "USER_PROMPT", "AAAA", api_key="key", ids={"1"}, max_tokens=2048)
+    assert result.translations == {"1": "Xin chào"}
+    assert seen["payload"]["system_instruction"] == "SYS_RULES"
+    assert all(part.get("text") != "SYS_RULES" for part in seen["payload"]["input"])
 
 
 def test_other_gates_also_judge_per_line_not_per_value():

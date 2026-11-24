@@ -626,10 +626,23 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         if indices and not manifest.get("setting"):
             try:
                 from app.translation.vision import VisionPageTranslator
-                original = validate_managed_path(manifest["pages"][indices[0]]["original"],
-                                                 RAW_DIR / self.job.chapter_id)
+                pages = manifest.get("pages") or []
+                with_text = [
+                    idx for idx in indices
+                    if idx < len(pages) and (pages[idx].get("text_objects") or pages[idx].get("boxes"))
+                ]
+                pool = with_text or list(indices)
+                if len(pool) <= 3:
+                    sample_indices = pool
+                else:
+                    picks = [pool[0], pool[min(2, max(1, len(pool) // 3))], pool[len(pool) // 2]]
+                    sample_indices = list(dict.fromkeys(picks))[:3]
+                originals = [
+                    validate_managed_path(pages[idx]["original"], RAW_DIR / self.job.chapter_id)
+                    for idx in sample_indices
+                ]
                 probe = VisionPageTranslator(self.provider, self.settings.model)
-                setting = await asyncio.to_thread(probe.detect_setting, original, self.api_key)
+                setting = await asyncio.to_thread(probe.detect_setting, originals, self.api_key)
                 if setting:
                     with get_manifest_lock(self.job.chapter_id):
                         stored = load_manifest_raw(self.job.chapter_id)

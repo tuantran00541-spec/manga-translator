@@ -113,3 +113,28 @@ def test_detect_setting_retries_when_reasoning_truncates_the_json(monkeypatch):
     monkeypatch.setattr(vision, "_read_image", lambda p: np.zeros((8, 8, 3), dtype=np.uint8))
     assert translator.detect_setting("page.png", "key") == "murim"
     assert len(calls) == 2 and calls[1] > calls[0], "a truncated answer must retry with more headroom"
+
+
+def test_detect_setting_samples_multiple_slices(monkeypatch):
+    from app.translation import vision
+    import numpy as np
+
+    class Result:
+        data = {"setting": "cultivation"}
+
+    seen = {}
+
+    def fake(provider, model, api_key, prompt, images, **kw):
+        seen["images"] = images
+        return Result()
+
+    monkeypatch.setattr(vision, "request_vision_json", fake)
+    monkeypatch.setattr(vision, "_read_image", lambda p: np.zeros((8, 8, 3), dtype=np.uint8))
+
+    class Provider:
+        label = "x"
+        supports_visual_qc = True
+
+    translator = vision.VisionPageTranslator(Provider(), "m")
+    assert translator.detect_setting(["p1.png", "p2.png", "p3.png", "p4.png"], "key") == "cultivation"
+    assert [label for label, _ in seen["images"]] == ["SLICE 1", "SLICE 2", "SLICE 3"]

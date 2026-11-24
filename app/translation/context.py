@@ -92,7 +92,7 @@ def parse_setting(value) -> str | None:
 def setting_question() -> str:
     options = "\n".join(f"- {key}: {desc}" for key, desc in SETTING_DESCRIPTIONS.items())
     return (
-        "Look at the page and classify the story's primary setting for Vietnamese dialogue register.\n"
+        "Look at the page(s) and classify the story's primary setting for Vietnamese dialogue register.\n"
         "Tie-breaker for hybrid genres: choose the world governing how characters address each other "
         '(e.g. murim + system -> "murim"; cultivation + system -> "cultivation"; '
         'modern city + dungeon/tower/hunter -> "game"; western fantasy + system -> "western").\n'
