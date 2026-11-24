@@ -481,7 +481,11 @@ def test_a_diacritic_scream_beside_a_vietnamese_line_is_preserved():
 
     assert filtered("Đúng vậy\nÁÁÁÁ!!!") == ("Đúng vậy\nÁÁÁÁ!!!", "Đúng vậy\nÁÁÁÁ!!!")
     assert filtered("ỨỨỨ!\nĐi thôi") == ("ỨỨỨ!\nĐi thôi", "ỨỨỨ!\nĐi thôi")
-    assert filtered("Đúng vậy\nAAAAA!!!") == ("Đúng vậy", "Đúng vậy")
+    assert filtered("KUAAAAAAAH") == ("KUAAAAAAAH", "KUAAAAAAAH")
+    assert filtered("UGHH!") == ("UGHH!", "UGHH!")
+    assert filtered("UM...") == ("UM...", "UM...")
+    assert filtered("AAAAA!!!") == ("AAAAA!!!", "AAAAA!!!")
+    assert filtered("Đúng vậy\nAAAAA!!!") == ("Đúng vậy\nAAAAA!!!", "Đúng vậy\nAAAAA!!!")
 
 
 def test_english_pronouns_are_dropped_from_memory_while_descriptors_stay(tmp_path, monkeypatch):
@@ -551,7 +555,7 @@ def test_other_gates_also_judge_per_line_not_per_value():
         return kept.translations["a"]
 
     assert filtered("Chào\n1/10") == "Chào"
-    assert filtered("Chào\nAAAAA!!!") == "Chào"
+    assert filtered("Chào\nAAAAA!!!") == "Chào\nAAAAA!!!"
     assert filtered("BÙM\nFFR", "푸르륵") == "BÙM"
     assert filtered("FFR", "푸르륵") == ""
     assert filtered("FFR") == "FFR"

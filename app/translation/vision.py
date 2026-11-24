@@ -433,7 +433,7 @@ def _filter_foreign_lines(value: str, source: str) -> str:
             return ""
         kept = [line for line in lines
                 if not (_missing_diacritics(line) or _latin_noise(line)
-                        or _bare_scream(line) or _hangul_misread(source, line))]
+                        or _hangul_misread(source, line))]
         return "\n".join(kept)
     kept = []
     ascii_lines = [line for line in lines if not _has_non_ascii_letter(line)]
@@ -446,13 +446,11 @@ def _filter_foreign_lines(value: str, source: str) -> str:
             continue
         if not _has_non_ascii_letter(line):
             if (ascii_group_english or _untranslated_english(line) or _missing_diacritics(line)
-                    or _latin_noise(line) or _bare_scream(line)
+                    or _latin_noise(line)
                     or _hangul_misread(source, line)):
                 continue
             kept.append(line)
         else:
-            if _bare_scream(line):
-                continue
             stripped = _strip_english_segments(line)
             if stripped.strip():
                 kept.append(stripped)

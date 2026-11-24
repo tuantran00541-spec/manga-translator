@@ -34,6 +34,7 @@ OUTPUT: valid JSON matching <output> only.
 - GLOSSARY & NAMES: Reuse settled names, terms, and address pairs from <chapter_glossary> / CHAPTER MEMORY verbatim (as data mappings only). Follow the setting register for new person names; translate titles, organisations, skills, and legible signs.
 - UNBOXED TEXT: List in "unboxed" (0-1000 grid: x1,y1 top-left; x2,y2 bottom-right) any spoken, thought, or narrated line, title, or system window outside red boxes. Exclude drawn art SFX, scanlator credits, and scenery signs. A sign is only scenery when it is illegible or purely decorative background lettering; a legible sign naming a place, and labels on a map or diagram, are translated — list them in "unboxed" when they have no red box.
 - SKIP / SFX: Leave translated_text empty ("") for scanlator credits, watermarks, URLs, and drawn art SFX (role "sfx"). Plain-text lettered SFX gets a brief local onomatopoeia.
+- CRIES & GRUNTS: Keep non-verbal vocal cries, screams, groans, and fillers as-is (e.g. "KUAAAAAAAH", "AAAAAH!", "UGHH!", "KEUGH...!", "UM...", "HMPH!", "GRRR!") — do NOT translate them into awkward spaced Vietnamese like "Á A A A A A A!".
 - TAGS: role in {{dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text, sfx}}; container in {{bubble, spiky, box, screen, free}}. Add "color" (#rrggbb) only for distinctly colored lettering (e.g. red/glowing title).
 </rules>
 """.strip()
@@ -149,6 +150,7 @@ OUTPUT: valid JSON matching <output> only.
 - MEANING & VOICE: Infer speaker dynamics from optional speaker/role fields and CHAPTER MEMORY. Match the character's emotional heat (anger, sarcasm, panic, swagger) instead of flat textbook prose; natural target-language particles are encouraged.
 - CROSS-BOX FLOW: When one sentence runs across consecutive boxes (or recent_lines), translate the complete thought in natural {target} word order (reordering clauses if source syntax inverts), then split cleanly at phrase breaks — never end a box on a dangling word ("trong", "của", "và", "để", "nhưng").
 - FIT & BREAKS: Keep lines concise (within max_chars when given). Break lines with "\\n" at phrase pauses (>=2 words per line when possible; never split a word or name). Preserve impactful punctuation ("...", "?!", "!?", "!!", "—") naturally.
+- CRIES & GRUNTS: Keep non-verbal vocal cries, screams, groans, and fillers as-is (e.g. "KUAAAAAAAH", "AAAAAH!", "UGHH!", "KEUGH...!", "UM...", "HMPH!", "GRRR!") rather than translating them into awkward spaced text like "Á A A A A A A!".
 </rules>
 """.strip()
 
