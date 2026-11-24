@@ -35,7 +35,12 @@ class AgentLoopMixin:
     """Prompt assembly, model turn execution, compaction, and agent loop."""
 
     def system_prompt(self) -> str:
-        base = SYSTEM_PROMPT if self.depth else LEAN_PROMPT
+        if self.depth:
+            agent_obj = self.agent or agents.BUILTIN["explore"]
+            is_ro = agent_obj.tools is not None and not (agent_obj.tools & {"edit_file", "write_file", "run_command"})
+            base = READ_ONLY_SYSTEM_PROMPT if is_ro else SYSTEM_PROMPT
+        else:
+            base = LEAN_PROMPT
         parts = [base.format(root=self.workspace.root, system=platform.system(),
                                       sandbox=self.workspace.policy.describe(self.workspace.root))]
         if self._pinned is None:
