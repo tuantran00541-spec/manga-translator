@@ -15,7 +15,7 @@ from app.export_pages import FORMATS, ExportOptions, finish_page
 from app.logging_config import logger
 from app.manifest_utils import atomic_replace, get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.routers.image import _current_rendered_path, _fallback_page_path
-from app.routers.render_commit import render_page
+from app.routers.render_commit import layout_conflict_reviews, render_page
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id, validate_image_size
 from app.text_objects import ensure_page_text_objects
@@ -529,6 +529,8 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
                 })
 
     latest = load_manifest_raw(chapter_id)
+    layout_reviews = layout_conflict_reviews(latest)
+    review_list.extend(layout_reviews)
     result = urlify_manifest(latest)
     result["chapter_render"] = {
         "rendered": rendered,
@@ -538,6 +540,7 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
         "restored_regions": restored_regions,
         "restore_failures": restore_failures,
         "review_list": review_list,
+        "layout_conflicts": len(layout_reviews),
         "download_url": f"/api/export/{chapter_id}.zip" + ("?force=true" if force else ""),
         "editorial_preflight": preflight,
     }

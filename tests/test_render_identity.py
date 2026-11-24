@@ -31,12 +31,22 @@ def test_signature_covers_the_objects_render_inputs(tmp_path):
         ("typography_role", "shout"),
         ("role", "narration"),
         ("container", "spiky"),
+        ("origin", "manual"),
         ("ocr_text_region", {"x1": 0, "y1": 0, "x2": 9, "y2": 9}),
     ):
         obj[field] = value
         after = render_input_signature(manifest, 0)
         assert after != before, f"{field} must invalidate the render"
         before = after
+
+
+def test_moving_the_stitch_core_invalidates_the_render(tmp_path):
+    manifest = _manifest(tmp_path, [{"stitch_core": {
+        "source_y1": 50, "core_source_y1": 52, "core_source_y2": 68,
+    }}])
+    before = render_input_signature(manifest, 0)
+    manifest["pages"][0]["stitch_core"]["core_source_y1"] = 58
+    assert render_input_signature(manifest, 0) != before
 
 
 def _two_page_chapter() -> list[dict]:

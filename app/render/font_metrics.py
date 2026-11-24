@@ -130,7 +130,7 @@ def _contrast(a, b) -> float:
 
 
 def _light_background_grey(image: Image.Image, box) -> float:
-    grey = np.asarray(image.convert("L").crop(tuple(int(v) for v in box)))
+    grey = np.asarray(image.crop(tuple(int(v) for v in box)).convert("L"))
     if grey.size == 0:
         return 255.0
     return float(np.percentile(grey, 75))
@@ -205,7 +205,7 @@ def _calc_line_height(draw, font, stroke_w: int = 0) -> int:
 
 def _line_start_x(
     draw, line, font, *, x1, pad, box_w, h_align, centred, curved,
-    line_centres, draw_spans, i, line_count,
+    line_centres, draw_spans, i, line_count, stroke_w=0, bold_extra=0,
 ):
     line_w = draw.textbbox((0, 0), line, font=font)[2]
     if h_align == "left":
@@ -216,6 +216,9 @@ def _line_start_x(
         start_x = x1 + pad + int(line_centres[i] - line_w / 2)
         if draw_spans is not None and i < len(draw_spans):
             lo, hi = draw_spans[i]
-            return max(x1 + pad + lo, min(start_x, x1 + pad + max(lo, hi - line_w))), line_w
+            gx1, _, gx2, _ = draw.textbbox((0, 0), line, font=font, stroke_width=stroke_w)
+            gx2 += bold_extra
+            start_x = x1 + pad + int(line_centres[i] - (gx1 + gx2) / 2)
+            return max(x1 + pad + lo - gx1, min(start_x, x1 + pad + hi - gx2)), line_w
         return max(x1 + pad, min(start_x, x1 + pad + max(0, box_w - line_w))), line_w
     return x1 + pad + max(0, (box_w - line_w) // 2), line_w

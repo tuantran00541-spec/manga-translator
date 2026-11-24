@@ -450,7 +450,9 @@ function buildChapterExportButton() {
       anchor.click();
       anchor.remove();
       if (typeof window.showToast === "function") {
-        window.showToast(`Đã kết xuất ${data.chapter_render?.rendered || 0} trang.`, "info");
+        const conflicts = Number(data.chapter_render?.layout_conflicts) || 0;
+        const review = conflicts ? ` Còn ${conflicts} vùng chữ chồng nhau cần xem lại.` : "";
+        window.showToast(`Đã kết xuất ${data.chapter_render?.rendered || 0} trang.${review}`, "info");
       }
     } catch (err) {
       if (chapterId === window.currentChapterId && typeof window.showToast === "function") {

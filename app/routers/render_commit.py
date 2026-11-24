@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import uuid
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -23,6 +24,15 @@ from app.security import validate_chapter_id, validate_managed_path
 from app.region_policy import geometry_center_in_regions, page_preserve_regions, text_object_in_preserve_region
 
 router = APIRouter(prefix="/api", tags=["render"])
+
+
+def layout_conflict_reviews(manifest: dict) -> list[dict]:
+    return [
+        {"page": index + 1, "id": str(oid), "reason": "Vùng chữ chồng với vùng khác, cần chỉnh bố cục."}
+        for index, page in enumerate(manifest.get("pages", []))
+        if isinstance(page, dict) and page.get("rendered") and not page.get("skipped")
+        for oid in page.get("render_layout_conflicts") or []
+    ]
 
 
 def _request_style_maps(req: RenderRequest) -> dict[str, dict]:
@@ -66,6 +76,7 @@ def _render_snapshot(
     drafts: dict,
     styles: dict[str, dict],
     size_bands: dict | None = None,
+    layout_conflicts: list[str] | None = None,
 ) -> tuple[int, list[str]]:
     text_objects = page.get("text_objects") or []
     if text_objects:
@@ -86,6 +97,18 @@ def _render_snapshot(
         sy1 = int(core.get("source_y1") or 0)
         core_y1 = int(core["core_source_y1"]) - sy1 if "core_source_y1" in core else 0
         core_y2 = int(core["core_source_y2"]) - sy1 if "core_source_y2" in core else image.height
+
+        @lru_cache(maxsize=1)
+        def load_source_image():
+            if not page.get("clean") or not page.get("original"):
+                return None
+            try:
+                source_path = validate_managed_path(page["original"], _app_config.RAW_DIR / req.chapter_id)
+                with Image.open(source_path) as original:
+                    return original.convert("RGB") if original.size == image.size else None
+            except (HTTPException, OSError):
+                return None
+
         rendered_count = render_text_objects(
             image,
             req,
@@ -104,12 +127,15 @@ def _render_snapshot(
             verdicts=verdicts,
             core_y1=core_y1,
             core_y2=core_y2,
+            source_image_loader=load_source_image,
         )
         skipped = [
             str(v["id"])
             for v in verdicts
             if v.get("review") and v.get("guard") in ("below_readable_floor", "below_source_floor")
         ]
+        if layout_conflicts is not None:
+            layout_conflicts.extend(str(v["id"]) for v in verdicts if v.get("guard") == "skipped_collision")
         return rendered_count, skipped
     legacy_page = copy.deepcopy(page)
     preserve_regions = page_preserve_regions(page)
@@ -221,6 +247,7 @@ def _commit_render(
     tmp_path: Path,
     final_path: Path,
     skipped_objects: list[str] | None = None,
+    layout_conflicts: list[str] | None = None,
 ) -> tuple[bool, int | None]:
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
@@ -247,6 +274,10 @@ def _commit_render(
                 page["render_skipped_objects"] = [str(oid) for oid in skipped_objects]
             else:
                 page.pop("render_skipped_objects", None)
+            if layout_conflicts:
+                page["render_layout_conflicts"] = list(layout_conflicts)
+            else:
+                page.pop("render_layout_conflicts", None)
             stamp_render_artifact(page, input_signature=final_signature, output_path=final_path)
             save_manifest_raw(req.chapter_id, manifest)
         publish_then_commit(tmp_path, final_path, commit_manifest)
@@ -310,7 +341,9 @@ def render_page(req: RenderRequest) -> dict:
         raise HTTPException(500, "Cannot open base image") from exc
 
     styles = _request_style_maps(req)
-    rendered_count, skipped_objects = _render_snapshot(image, req, page, drafts, styles, size_bands=size_bands)
+    layout_conflicts: list[str] = []
+    rendered_count, skipped_objects = _render_snapshot(
+        image, req, page, drafts, styles, size_bands=size_bands, layout_conflicts=layout_conflicts)
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -325,6 +358,7 @@ def render_page(req: RenderRequest) -> dict:
             tmp_path,
             final_path,
             skipped_objects=skipped_objects,
+            layout_conflicts=layout_conflicts,
         )
     except HTTPException:
         raise
@@ -358,9 +392,13 @@ def render_page(req: RenderRequest) -> dict:
         rendered_count,
         render_revision,
     )
-    return {
+    result = {
         "output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered",
         "committed": True,
         "render_revision": render_revision,
         "skipped_objects": skipped_objects,
+        "layout_conflicts": layout_conflicts,
     }
+    if layout_conflicts:
+        result["warning"] = f"Còn {len(layout_conflicts)} vùng chữ chồng nhau cần xem lại."
+    return result

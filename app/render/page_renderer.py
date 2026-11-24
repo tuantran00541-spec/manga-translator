@@ -1,3 +1,5 @@
+import re
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -5,7 +7,10 @@ from PIL import Image
 from fastapi import HTTPException
 
 from app.logging_config import logger
-from app.detector.bubble_mask import clip_bubble_mask, shift_bubble_mask
+from app.detector.bubble_mask import clip_bubble_mask, find_waist, mask_row_spans, shift_bubble_mask
+from app.render.font_metrics import parse_color
+from app.render.source_size import source_cap_px
+from app.render.text_fitting import _derived_mask, _mask_has_narrow_waist, _recover_bubble_mask
 from app.render.text_renderer import render_text_in_box
 from app.schemas import RenderRequest
 from app.translation.vision import PLACEHOLDER_TRANSLATIONS, collapse_repeated_lines
@@ -65,14 +70,14 @@ def _rank_renders(rendered: list) -> list:
                        and not stats_of(item).get("below_share")
                        and not stats_of(item).get("spills_letter_box")]
     pool.sort(key=lambda item: (bool(stats_of(item).get("spills_letter_box")),
-                                bool(stats_of(item).get("below_share")), item[0],
+                                bool(stats_of(item).get("below_share")),
+                                stats_of(item).get("layout_score", float("inf")), item[0],
                                 -(stats_of(item).get("size") or 0), item[1]))
     return pool
 
 
 def _ink_mask(base: Image.Image, candidate: Image.Image):
-    return (np.abs(np.asarray(candidate).astype(int)
-                   - np.asarray(base).astype(int)).max(axis=2) > 0)
+    return np.any(np.asarray(candidate) != np.asarray(base), axis=2)
 
 
 def _mask_bbox(mask):
@@ -82,8 +87,47 @@ def _mask_bbox(mask):
     return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
 
+def _paste_ink(image, candidate, mask, box):
+    if box is not None:
+        x1, y1, x2, y2 = box
+        image.paste(candidate.crop(box), box, Image.fromarray(mask[y1:y2, x1:x2]))
+
+
+def _boxes_overlap(a, b):
+    return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
+
+
+def _bubble_outline(mask, region):
+    if not isinstance(mask, dict) or mask.get("kind") != "bubble":
+        return None
+    try:
+        x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if _boxes_overlap((x1, y1, x2, y2), region):
+        return (x1, y1, x2, y2)
+    return None
+
+
 INK_GAP = 4
 INK_SHIFT_CAP = 64
+
+
+def _fit_around_ink(base, text, box, style, placed_boxes, placed_mask):
+    if str(style["bg_color"] or "").lower() not in ("", "none", "transparent"):
+        return None
+    reserved = tuple((x1 - INK_GAP, y1 - INK_GAP, x2 + INK_GAP, y2 + INK_GAP)
+                     for x1, y1, x2, y2 in placed_boxes)
+    stats = {"attempt_box": box}
+    try:
+        candidate = _render_in_region(base.copy(), text, box, stats=stats, reserved_boxes=reserved, **style)
+    except ValueError:
+        return None
+    mask = _ink_mask(base, candidate)
+    ink = _mask_bbox(mask)
+    if ink is None or np.any(mask & placed_mask):
+        return None
+    return candidate, mask, ink, stats
 
 
 def _clearing_shift(cand_box, placed_boxes, height: int, frame=None, anchor_box=None,
@@ -179,6 +223,9 @@ def _stats_verdict_fields(stats: dict, frame, attempt: int) -> dict:
         "below_share": bool(stats.get("below_share")),
         "spills_letter_box": bool(stats.get("spills_letter_box")),
         "fill_fallback": stats.get("fill_fallback"),
+        "edge_clearance": stats.get("edge_clearance"),
+        "layout_score": stats.get("layout_score"),
+        "preferred_size": stats.get("preferred_size"),
     }
 
 
@@ -210,6 +257,123 @@ def _render_region_for_text_object(obj: dict) -> dict:
     ):
         return ocr_region
     return region
+
+
+def _uses_auto_geometry(obj: dict) -> bool:
+    return bool(obj.get("auto_generated") and obj.get("region") == obj.get("auto_geometry")
+                and not obj.get("seam_owner"))
+
+
+def _reflow_dialogue(text: str) -> str:
+    paragraphs = re.split(r"\n[ \t]*\n", text.replace("\r\n", "\n"))
+    return "\n\n".join(" ".join(paragraph.split()) for paragraph in paragraphs if paragraph.strip())
+
+
+def _object_translation(req, obj):
+    return style_get(req.translations, obj.get("id")) or obj.get("translation", "")
+
+
+def _same_lettering_style(obj, other, style_maps):
+    fields = ("style", "container", "typography_role", "speaker", "enlarge")
+    if (any(obj.get(field) != other.get(field) for field in fields)
+            or any(style_get(m, obj["id"]) != style_get(m, other["id"]) for m in style_maps)):
+        return False
+    profiles = (obj.get("ocr_color_profile"), other.get("ocr_color_profile"))
+    a, b = [profile if isinstance(profile, dict) else {} for profile in profiles]
+    if any(a.get(key) != b.get(key) for key in ("gradient", "stroke_color", "glow_color")):
+        return False
+    ac = (parse_color(obj.get("lettering_color"), default=None)
+          or parse_color(obj.get("ocr_text_color") or a.get("fill"), default=None))
+    bc = (parse_color(other.get("lettering_color"), default=None)
+          or parse_color(other.get("ocr_text_color") or b.get("fill"), default=None))
+    return ac is None or bc is None or max(abs(x - y) for x, y in zip(ac, bc)) <= 24
+
+
+def _fragment_outline(image, first, second, source_image_loader):
+    obj, a, am, text = first
+    _, b, bm, other_text = second
+    min_height = min(a[3] - a[1], b[3] - b[1])
+    y_overlap = min(a[3], b[3]) - max(a[1], b[1])
+    union = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+    if am is not None and bm is not None and y_overlap >= 0.65 * min_height:
+        left, right = sorted((a, b))
+        ma, mb = sorted((am, bm))
+        if (len(text.split()) > 4 or len(other_text.split()) > 4
+                or not -0.1 * min_height <= right[0] - left[2] <= 0.6 * min_height
+                or abs(ma[2] - mb[0]) > 4 or max(abs(ma[1] - mb[1]), abs(ma[3] - mb[3])) > 8):
+            return None
+        mask = _derived_mask(image, union, union)
+        outline = (ma[0], min(ma[1], mb[1]), mb[2], max(ma[3], mb[3]))
+        if mask["kind"] != "bubble" or _frame_iou(mask["bbox"], outline) < 0.85 or find_waist(mask):
+            return None
+        cx1, cx2 = (left[0] + left[2]) // 2, (right[0] + right[2]) // 2
+        cy = (max(a[1], b[1]) + min(a[3], b[3])) // 2
+        if any(lo <= cx1 < cx2 < hi for lo, hi in mask_row_spans(mask, cy)):
+            return mask, union, a == left
+    elif am is not None and bm is None:
+        x_overlap = min(a[2], b[2]) - max(a[0], b[0])
+        if (not -0.15 * min_height <= b[1] - a[3] <= 0.5 * min_height
+                or x_overlap < 0.65 * min(a[2] - a[0], b[2] - b[0])
+                or not am[1] <= (b[1] + b[3]) // 2 < am[3]
+                or _mask_has_narrow_waist(obj["bubble_mask"])):
+            return None
+        src = source_image_loader() if source_image_loader is not None else None
+        recovered = _recover_bubble_mask(src or image, b, b)
+        if recovered is not None and _frame_iou(recovered["bbox"], am) >= 0.9:
+            return obj["bubble_mask"], union, True
+    return None
+
+
+def _paired_fragments(image, req, objects, style_maps, source_image_loader):
+    candidates = []
+    for obj in objects:
+        oid = obj.get("id")
+        mask = obj.get("bubble_mask")
+        translation = _object_translation(req, obj)
+        region = obj.get("letter_bounds")
+        if not _valid_region(region):
+            region = obj.get("region")
+        if (not oid or not _uses_auto_geometry(obj) or not _valid_region(region)
+                or obj.get("font_selection_mode") == "user"
+                or str(obj.get("container") or "").lower() not in ("bubble", "spiky")
+                or obj.get("typography_role") not in (None, "", "dialogue", "thought", "whisper", "shout", "dark_threat")
+                or translation != obj.get("auto_translation") or not translation
+                or len(translation) > 150
+                or translation.strip().lower() in PLACEHOLDER_TRANSLATIONS):
+            continue
+        text = _reflow_dialogue(translation)
+        if not text or "\n" in text:
+            continue
+        bounds = tuple(int(region[key]) for key in ("x1", "y1", "x2", "y2"))
+        if not (0 <= bounds[1] < bounds[3] <= image.height):
+            continue
+        outline = _bubble_outline(mask, bounds)
+        candidates.append((obj, bounds, outline, text))
+
+    pairs = {}
+    paired = set()
+    for i, first in enumerate(candidates):
+        obj, _, _, text = first
+        oid = obj["id"]
+        if oid in paired:
+            continue
+        for second in candidates[i + 1:]:
+            other, _, _, other_text = second
+            other_id = other["id"]
+            if other_id in paired or text == other_text or not _same_lettering_style(obj, other, style_maps):
+                continue
+            proof = _fragment_outline(image, first, second, source_image_loader)
+            if proof is None:
+                continue
+            combined, union, in_reading_order = proof
+            region = dict(zip(("x1", "y1", "x2", "y2"), union))
+            words = f"{text} {other_text}" if in_reading_order else f"{other_text} {text}"
+            merged = {**obj, "region": region, "letter_bounds": region, "letters_mask": None,
+                      "bubble_mask": combined, "translation": words}
+            pairs[oid] = (merged, other_id)
+            paired.update((oid, other_id))
+            break
+    return pairs
 
 
 LETTER_MARGIN = 0.15
@@ -417,6 +581,7 @@ def render_boxes_legacy(
                 bg_color=bg_c,
                 corner_radius=r_val,
                 color_profile=legacy_profile,
+                adapt_contrast=_is_auto_style(box_color),
             )
             rendered_count += 1
         except Exception as e:
@@ -453,6 +618,7 @@ def render_text_objects(
     core_y2: int | None = None,
     verdicts: list | None = None,
     size_bands: dict | None = None,
+    source_image_loader=None,
 ) -> int:
     rendered_count = 0
     img_w, img_h = image.size
@@ -469,13 +635,25 @@ def render_text_objects(
         except (KeyError, TypeError, ValueError):
             return (framed, 0, 0)
 
-    for obj in sorted(text_objects, key=_order_key):
+    objects = sorted(text_objects, key=_order_key)
+    clean = image.copy() if len(objects) > 1 else image
+    style_maps = (colors_dict, fonts_dict, font_sizes_dict, bolds_dict, stroke_w_dict, stroke_c_dict,
+                  bg_colors_dict, radii_dict, horizontal_aligns_dict, vertical_aligns_dict)
+    pairs = _paired_fragments(image, req, objects, style_maps, source_image_loader)
+    consumed = set()
+    pending = deque(objects)
+    while pending:
+        original = obj = pending.popleft()
         oid = obj.get("id")
-        if not oid:
+        if not oid or oid in consumed:
             continue
-        translation = style_get(req.translations, oid)
-        if translation is None or translation == "":
-            translation = obj.get("translation", "")
+        pair = pairs.pop(oid, None)
+        if pair:
+            obj, other_id = pair
+            translation = obj["translation"]
+        else:
+            translation = _object_translation(req, obj)
+        auto_text = bool(obj.get("auto_translation") and translation == obj["auto_translation"])
         translation = collapse_repeated_lines(translation)
         if not (translation or "").strip() or str(translation).strip().lower() in PLACEHOLDER_TRANSLATIONS:
             continue
@@ -559,6 +737,7 @@ def render_text_objects(
         box_font = style_get(fonts_dict, oid)
         if box_font is None:
             box_font = obj_style.get("font", "default")
+        container = str(obj.get("container") or "").lower()
         effective_source_cap = obj.get("source_cap_px")
         role_key = str(obj.get("typography_role") or "").lower()
         if effective_source_cap is None and isinstance(size_bands, dict) and role_key in size_bands:
@@ -567,6 +746,17 @@ def render_text_objects(
                 from app.render.size_bands import BAND_LO_FACTOR
 
                 effective_source_cap = round(float(band[0]) / BAND_LO_FACTOR)
+        requested_size = style_get(font_sizes_dict, oid, obj_style.get("fontSize", "auto"))
+        if (effective_source_cap is None and container == "free" and auto_text
+                and _uses_auto_geometry(obj) and _is_auto_style(requested_size)
+                and source_image_loader is not None):
+            source = source_image_loader()
+            if source is not None:
+                bgr = np.asarray(source)[y1:y2, x1:x2, ::-1]
+                effective_source_cap = source_cap_px(
+                    bgr, (0, 0, x2 - x1, y2 - y1),
+                    min_pieces=1 if len("".join(translation.split())) <= 2 else 3,
+                )
         ocr_size_default = None if effective_source_cap is not None else obj.get("ocr_font_size")
         box_size = _resolve_ocr_style(
             style_get(font_sizes_dict, oid),
@@ -574,6 +764,8 @@ def render_text_objects(
             ocr_size_default,
             "auto",
         )
+        compose_layout = bool((original.get("auto_generated") or original.get("origin") == "manual" or auto_text)
+                              and _is_auto_style(requested_size) and not original.get("seam_owner"))
         bold_val = style_get(bolds_dict, oid)
         if bold_val is None:
             bold_val = obj_style.get("bold", False)
@@ -623,10 +815,15 @@ def render_text_objects(
             enlarge=bool(obj.get("enlarge")),
             bubble_mask=obj.get("bubble_mask"),
             color_profile=active_color_profile,
+            adapt_contrast=user_color_auto,
+            keep_compounds=(auto_text or pair is not None) and container in ("bubble", "spiky"),
+            optical_size_hint=ocr_size_default,
         )
         bounds = obj.get("letter_bounds")
         if _valid_region(bounds):
-            style["source_letter_box"] = tuple(int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
+            anchor = tuple(int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
+            if _boxes_overlap(anchor, coords_raw):
+                style["source_letter_box"] = anchor
         if obj.get("letters_mask"):
             from app.mask_store import decode_mask_value
 
@@ -646,20 +843,44 @@ def render_text_objects(
                     )
                 else:
                     style["letters_box"] = coords_raw
-        fixed_size = ((isinstance(box_size, (int, float)) and box_size > 0)
-                      or (isinstance(box_size, str) and box_size.isdigit()
-                          and int(box_size) > 0))
-        attempts = fit_attempts(obj, coords)
-        if isinstance(obj.get("bubble_mask"), dict) and obj["bubble_mask"].get("kind") == "bubble":
-            attempts = [coords]
-        if (style.get("bubble_mask") is None
-                and str(obj.get("container") or "").lower() in ("bubble", "spiky")):
-            from app.render.text_renderer import _derived_mask
-            shared = _derived_mask(image, coords, style.get("source_letter_box"))
+        moved_by_user = (original.get("auto_generated") and _valid_region(original.get("auto_geometry"))
+                         and original.get("region") != original["auto_geometry"] and not original.get("seam_owner"))
+        if moved_by_user:
+            style.update(bubble_mask=None, container=None, source_letter_box=None,
+                         letters=None, letters_box=None)
+        mask = style["bubble_mask"]
+        outline_box = _bubble_outline(mask, coords_raw)
+        stale_outline = (isinstance(mask, dict) and mask.get("kind") == "bubble" and outline_box is None
+                         and not original.get("seam_owner"))
+        if stale_outline:
+            style["bubble_mask"] = mask = {"kind": "rect", "bbox": list(coords)}
+        has_outline = isinstance(mask, dict) and mask.get("kind") == "bubble"
+        if (not has_outline and container in ("bubble", "spiky")
+                and _uses_auto_geometry(obj) and y1 == coords[1] and y2 == coords[3]):
+            source_image = source_image_loader() if source_image_loader is not None else None
+            mask = _recover_bubble_mask(source_image or clean, coords, style.get("source_letter_box"))
+            if mask is None and source_image is not None:
+                mask = _recover_bubble_mask(clean, coords, style.get("source_letter_box"))
+            if mask is not None:
+                style["bubble_mask"] = mask
+                has_outline = True
+            elif style["bubble_mask"] is None:
+                style["bubble_mask"] = {"kind": "rect", "bbox": list(coords)}
+        elif mask is None and style["container"] in ("bubble", "spiky"):
+            shared = _derived_mask(clean, coords, style.get("source_letter_box"))
             if isinstance(shared, dict) and shared.get("kind") == "bubble":
                 style["bubble_mask"] = shared
+                has_outline = True
+        outline_box = style["bubble_mask"]["bbox"] if has_outline else coords
+        fit_y1, fit_y2 = min(coords[1], outline_box[1]), max(coords[3], outline_box[3])
+        style["compose_layout"] = (compose_layout and h_align == "center" and v_align == "middle"
+                                   and (core_y1 or 0) <= fit_y1 < fit_y2 <= (core_y2 or img_h))
+        render_base = clean if style["compose_layout"] else image
+        attempts = [coords] if has_outline or moved_by_user else fit_attempts(obj, coords)
         render_text = translation.strip()
-        if (str(obj.get("container") or "").lower() == "free"
+        if auto_text and container in ("bubble", "spiky"):
+            render_text = _reflow_dialogue(render_text)
+        if (container == "free"
                 and "\n" in render_text and obj.get("source_cap_px")
                 and not (isinstance(box_size, (int, float)) and box_size > 0)
                 and not (isinstance(box_size, str) and box_size.isdigit()
@@ -667,7 +888,7 @@ def render_text_objects(
             joined = " ".join(render_text.split())
             probe_stats: dict = {}
             try:
-                _render_in_region(image.copy(), joined, attempts[-1],
+                _render_in_region(render_base.copy(), joined, attempts[-1],
                                   stats=probe_stats, **style)
             except ValueError:
                 probe_stats = {}
@@ -680,7 +901,7 @@ def render_text_objects(
             for attempt, box in enumerate(attempts):
                 attempt_stats: dict = {"attempt_box": box}
                 try:
-                    candidate = _render_in_region(image.copy(), render_text, box,
+                    candidate = _render_in_region(render_base.copy(), render_text, box,
                                                   stats=attempt_stats, **style)
                 except ValueError as exc:
                     if "minimum readable" not in str(exc):
@@ -700,6 +921,10 @@ def render_text_objects(
                 attempt_stats["spills_letter_box"] = spills
                 rendered.append((attempt_stats.get("lines", 0), attempt, candidate, attempt_stats))
             if not rendered:
+                if pair:
+                    seen_keys.discard(dup_key)
+                    pending.appendleft(original)
+                    continue
                 if floor_only and last_error is not None:
                     logger.warning(
                         "Chapter {} page {} object {} below readable floor, left for review",
@@ -715,11 +940,11 @@ def render_text_objects(
                 best = None
                 verdict: dict = {"id": oid}
                 if render_text != translation.strip():
-                    verdict["joined_free"] = True
+                    verdict["reflowed" if container in ("bubble", "spiky") else "joined_free"] = True
                 for item in _rank_renders(rendered):
                     candidate = item[2]
                     item_stats = item[3] if len(item) > 3 and isinstance(item[3], dict) else {}
-                    mask = _ink_mask(image, candidate)
+                    mask = _ink_mask(render_base, candidate)
                     box = _mask_bbox(mask)
                     overlap = 0
                     if box is not None:
@@ -741,35 +966,32 @@ def render_text_objects(
                         continue
                     if shared_frame:
                         verdict["shared_frame"] = True
+                    guard = "clear"
+                    if item_stats.get("layout_score") is not None and overlap:
+                        reflow = _fit_around_ink(render_base, render_text, attempts[item[1]],
+                                                 style, placed_boxes, placed_mask)
+                        if reflow is not None:
+                            candidate, mask, box, item_stats = reflow
+                            cand_frame = item_stats.get("frame")
+                            collision = overlap = 0
+                            guard = "recomposed"
+                        else:
+                            collision = max(collision, overlap)
                     if collision == 0:
-                        image.paste(candidate)
+                        _paste_ink(image, candidate, mask, box)
                         if box is not None:
                             placed_boxes.append(box)
                         placed_mask |= mask
                         if cand_frame is not None:
                             placed_frames.append((cand_frame, translation.strip()))
-                        verdict.update({
-                            "guard": "clear",
-                            "attempt": item[1],
-                            "size": item_stats.get("size"),
-                            "lines": item_stats.get("lines"),
-                            "frame": cand_frame,
-                            "frame_source": item_stats.get("frame_source"),
-                            "lobe": item_stats.get("lobe"),
-                            "fallbacks": item_stats.get("fallbacks", []),
-                            "stages_skipped": item_stats.get("stages_skipped", []),
-                            "band_narrowing": item_stats.get("band_narrowing", {}),
-                            "below_share": bool(item_stats.get("below_share")),
-                            "spills_letter_box": bool(item_stats.get("spills_letter_box")),
-                            "fill_fallback": item_stats.get("fill_fallback"),
-                            "bbox_overlap": overlap,
-                        })
+                        verdict.update(guard=guard, bbox_overlap=overlap)
+                        verdict.update(_stats_verdict_fields(item_stats, cand_frame, item[1]))
                         painted = True
                         break
                     key = (collision, overlap)
                     if best is None or key < best[0]:
                         best = (key, candidate, mask, box, item_stats, item[1])
-                if not painted and best is not None:
+                if not painted and best is not None and best[4].get("layout_score") is None:
                     _, candidate, mask, box, item_stats, best_attempt = best
                     cand_frame = item_stats.get("frame")
                     cand_fit = item_stats.get("fit_box")
@@ -855,12 +1077,24 @@ def render_text_objects(
                             verdict["fallbacks"] = (
                                 list(verdict.get("fallbacks") or []) + ["skipped_collision"]
                             )
+                if not painted and best is not None and best[4].get("layout_score") is not None:
+                    verdict.update(guard="skipped_collision", review=True)
+                    verdict.update(_stats_verdict_fields(best[4], best[4].get("frame"), best[5]))
+                if stale_outline:
+                    verdict["stale_outline"] = True
+                if not painted and pair:
+                    seen_keys.discard(dup_key)
+                    pending.appendleft(original)
+                    continue
                 if verdicts is not None:
                     verdicts.append(verdict)
-                if not painted:
-                    continue
                 if painted:
                     rendered_count += 1
+                    if pair:
+                        consumed.add(other_id)
+                        rendered_count += 1
+                        if verdicts is not None:
+                            verdicts.append({"id": other_id, "guard": "joined_in_bubble", "with": oid})
                 continue
             rendered_count += 1
         except Exception as e:

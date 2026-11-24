@@ -169,12 +169,15 @@ class AIModeRenderingMixin:
 
     async def finish(self) -> None:
         from app.routers.export import _preflight_copy
+        from app.routers.render_commit import layout_conflict_reviews
 
         chapter_id = self.job.chapter_id
         with _j("get_manifest_lock", get_manifest_lock)(chapter_id):
             manifest = _j("load_manifest_raw", load_manifest_raw)(chapter_id)
             manifest["workflow"] = {"stage": "review", "page_index": 0}
             _j("save_manifest_raw", save_manifest_raw)(chapter_id, manifest)
+        for review in layout_conflict_reviews(manifest):
+            self._append_page_capped(self.report["review_list"], review)
         preflight = _preflight_copy(manifest, require_final_approval=False)
         self.report["editorial_blockers"] = int(preflight.get("blocker_count") or 0)
         self.report["blocker_samples"] = [

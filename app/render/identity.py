@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-RENDER_IDENTITY_VERSION = "phase45-v3"
+RENDER_IDENTITY_VERSION = "phase45-v6"
 
 
 def file_revision(path: Path) -> tuple[int, int, int]:
@@ -48,6 +48,11 @@ def _normalized_text_object(obj: dict) -> dict:
             "y2": int(region.get("y2", 0)),
         },
         "translation": str(obj.get("translation") or ""),
+        "auto_translation": obj.get("auto_translation"),
+        "auto_generated": bool(obj.get("auto_generated")),
+        "origin": obj.get("origin"),
+        "auto_geometry": _normalized_optional_region(obj.get("auto_geometry")),
+        "seam_owner": obj.get("seam_owner"),
         "style": obj.get("style") or {},
         "source_missing": bool(obj.get("source_missing", False)),
         "font_selection_mode": str(obj.get("font_selection_mode") or ""),
@@ -60,6 +65,12 @@ def _normalized_text_object(obj: dict) -> dict:
         "typography_role": str(obj.get("typography_role") or ""),
         "role": str(obj.get("role") or ""),
         "container": str(obj.get("container") or ""),
+        "speaker": obj.get("speaker"),
+        "enlarge": bool(obj.get("enlarge")),
+        "lettering_color": obj.get("lettering_color"),
+        "ocr_font_size": obj.get("ocr_font_size"),
+        "ocr_text_color": obj.get("ocr_text_color"),
+        "ocr_color_profile": obj.get("ocr_color_profile"),
         "ocr_text_region": _normalized_optional_region(obj.get("ocr_text_region")),
     }
 
@@ -103,16 +114,26 @@ def render_input_signature(manifest: dict, page_index: int) -> str:
             "drafts": _page_drafts(manifest, page_index),
         }
 
+    source_revision = None
+    if page.get("original") and page["original"] != base_value:
+        try:
+            source_revision = file_revision(Path(str(page["original"])))
+        except OSError:
+            pass
+    core = page.get("stitch_core")
     payload = {
         "version": RENDER_IDENTITY_VERSION,
         "original": page.get("original"),
         "clean": page.get("clean"),
         "base_revision": list(file_revision(base_path)),
+        "original_revision": source_revision,
         "source_revision": int(page.get("source_revision") or 0),
         "process_revision": int(page.get("process_revision") or 0),
         "clean_revision": int(page.get("clean_revision") or 0),
         "skipped": bool(page.get("skipped", False)),
         "process_required": bool(page.get("process_required", False)),
+        "stitch_core": {key: core.get(key) for key in ("source_y1", "core_source_y1", "core_source_y2")}
+        if isinstance(core, dict) else None,
         "preserve_regions": [
             {k: int(region.get(k, 0)) for k in ("x1", "y1", "x2", "y2")}
             for region in (page.get("preserve_regions") or []) if isinstance(region, dict)

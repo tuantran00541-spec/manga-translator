@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from app.detector.bubble_mask import mask_inscribed_rect
+from app.render.composition import compose_text
 from app.parameters import (
     MAX_FONT_SIZE,
     RENDER_AUTO_STROKE_WIDTH,
@@ -41,7 +42,6 @@ from app.render.text_fitting import (
     _anchored_top,
     _band_line_centres,
     _band_line_spans,
-    _band_line_widths,
     _box_frame,
     _derived_mask,
     _fit_text,
@@ -50,6 +50,7 @@ from app.render.text_fitting import (
     _lines_fit_spans,
     _mask_bands,
     _mask_centroid,
+    _mask_layout_y,
     _resolve_mask,
     _screen_frame,
     _trim_mask_to_letters,
@@ -219,6 +220,58 @@ def _parse_color_profile(color_profile: dict | None) -> tuple[
     return prof_fill, grad_dir, grad_stops, prof_stroke, prof_glow, glow_radius
 
 
+_SRGB_LUMINANCE = np.array([_luminance((v, v, v)) for v in range(256)])
+
+
+def _background_luminances(image, glyph_boxes):
+    samples = []
+    for x1, y1, x2, y2 in glyph_boxes:
+        bounds = (max(0, x1), max(0, y1), min(image.width, x2), min(image.height, y2))
+        if bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
+            continue
+        rgb = np.asarray(image.crop(bounds).convert("RGB"))[::4, ::4]
+        luma = (_SRGB_LUMINANCE[rgb] * (0.2126, 0.7152, 0.0722)).sum(axis=2)
+        samples.extend(np.percentile(luma, (20, 50, 80)))
+    return np.asarray(samples)
+
+
+def _local_contrast(color, backgrounds):
+    luma = _luminance(color)
+    return (np.maximum(luma, backgrounds) + 0.05) / (np.minimum(luma, backgrounds) + 0.05)
+
+
+def _adapt_palette(palette, backgrounds, threshold, outline, *, prefer_black_or_white=False):
+    if not backgrounds.size:
+        return palette
+
+    def contrast(color):
+        return _local_contrast(color, backgrounds)
+
+    outlines = contrast(outline) >= threshold if outline is not None else False
+    result = []
+    for color in palette:
+        readable = contrast(color) >= threshold
+        if outline is not None and _contrast(color, outline) >= 2.0:
+            readable = readable | outlines
+        if readable.all():
+            result.append(color)
+            continue
+        target = max(((0, 0, 0), (255, 255, 255)), key=lambda rgb: contrast(rgb).min())
+        if prefer_black_or_white or contrast(target).min() < threshold:
+            result.append(target)
+            continue
+        lo, hi = 0.0, 1.0
+        for _ in range(8):
+            blend = (lo + hi) / 2
+            candidate = tuple(round(value + blend * (end - value)) for value, end in zip(color, target))
+            if contrast(candidate).min() >= threshold:
+                hi = blend
+            else:
+                lo = blend
+        result.append(tuple(round(value + hi * (end - value)) for value, end in zip(color, target)))
+    return result
+
+
 def render_text_in_box(
     image: Image.Image,
     text: str,
@@ -247,6 +300,11 @@ def render_text_in_box(
     letters=None,
     letters_box: tuple[int, int, int, int] | None = None,
     color_profile: dict | None = None,
+    adapt_contrast: bool | None = None,
+    keep_compounds: bool = False,
+    compose_layout: bool = False,
+    optical_size_hint: int | None = None,
+    reserved_boxes: tuple = (),
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -352,14 +410,26 @@ def render_text_in_box(
 
     font_path_str = str(font_path)
 
+    if compose_layout and h_align == "center" and v_align == "middle" and source_letter_box is None:
+        source_letter_box = (x1, y1, x2, y2)
     _mask, _mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
                                         source_letter_box, bubble_mask,
                                         letters, letters_box)
     curved = str(container or "").lower() in _CURVED_CONTAINERS or str(shape or "").lower() == "ellipse" \
         or (_mask is not None and _mask.get("kind") == "bubble")
     centred = h_align == "center" and v_align == "middle"
+    if compose_layout and centred:
+        optical_size_hint = optical_size_hint or target_size
+        target_size = None
+    if keep_compounds and _mask is not None and _mask.get("kind") == "bubble":
+        left, top, right, bottom = _mask["bbox"]
+        padding = max(padding, min(36, round(0.06 * min(right - left, bottom - top))))
 
     _fixed_height_fallback = False
+    fixed_spans = None
+    block_top = None
+    fixed_frame = None
+    positioned = None
     if target_size is not None:
         _readable_fixed = int(RENDER_MIN_READABLE_FONT_SIZE
                               * max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH))
@@ -367,21 +437,29 @@ def render_text_in_box(
             target_size = _readable_fixed
 
     if target_size is not None and curved and centred:
-        _fixed_font = get_font_object(font_path_str, target_size)
-        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
-        _bold_extra = 1 if is_bold else 0
         if _mask is not None and _mask.get("kind") == "bubble":
+            mx1, my1, mx2, my2 = (int(v) for v in _mask["bbox"])
+            measured = (max(0, mx1), max(0, my1), min(image.width, mx2), min(image.height, my2))
+            if measured[2] - measured[0] >= 16 and measured[3] - measured[1] >= 16:
+                fixed_frame = measured
+                x1, y1, x2, y2 = measured
+                raw_w, raw_h = x2 - x1, y2 - y1
+                pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+                box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+        _fixed_font = get_font_object(font_path_str, target_size)
+        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True, keep_compounds=keep_compounds)
+        if fixed_frame is not None:
             _bands = _mask_bands(_mask, (x1 + pad, y1 + pad, x2 - pad, y2 - pad))
             if _bands is not None:
                 _widest = max((b - a for band in _bands for a, b in band), default=0)
                 if _widest >= 0.4 * box_w:
                     _lh = _calc_line_height(draw, _fixed_font, stroke_w=stroke_w)
-                    _anchor = int(_mask["cy"]) - (y1 + pad)
+                    _anchor = _mask_layout_y(_mask, inner_body=keep_compounds) - (y1 + pad)
                     _top = _anchored_top(box_h, _lh * len(_fixed_lines), _anchor)
-                    _limits = _band_line_widths(box_w, box_h, len(_fixed_lines), _lh, _bands, top=_top)
-                    if _limits is None or len(_limits) != len(_fixed_lines) or not all(
-                            draw.textbbox((0, 0), line, font=_fixed_font)[2] + 2 * stroke_w + _bold_extra <= limit
-                            for line, limit in zip(_fixed_lines, _limits)):
+                    fixed_spans = _band_line_spans(box_w, box_h, len(_fixed_lines), _lh, _bands, top=_top)
+                    if _lines_fit_spans(draw, _fixed_lines, _fixed_font, fixed_spans, stroke_w + int(is_bold)):
+                        block_top = y1 + pad + _top
+                    else:
                         target_size = None
                         _fixed_height_fallback = True
         elif not _lines_fit_ellipse(draw, _fixed_lines, _fixed_font, box_w, box_h, stroke_w):
@@ -390,7 +468,7 @@ def render_text_in_box(
 
     if target_size is not None:
         _fixed_font = get_font_object(font_path_str, target_size)
-        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
+        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True, keep_compounds=keep_compounds)
         _bold_extra = 1 if is_bold else 0
         _whole_words = [w for ln in _fixed_lines for w in ln.split()] == text.split()
         _max_line_w = max((draw.textbbox((0, 0), line, font=_fixed_font)[2] for line in _fixed_lines), default=0)
@@ -403,14 +481,13 @@ def render_text_in_box(
             target_size = None
             _fixed_height_fallback = True
 
-    block_top = None
     if target_size is not None:
         actual_size = target_size
         font = get_font_object(font_path_str, actual_size)
-        lines = _wrap_text(draw, text, font, box_w, balance=True)
-        line_centres = None
+        lines = _wrap_text(draw, text, font, box_w, balance=True, keep_compounds=keep_compounds)
+        line_centres = [(a + b) / 2 for a, b in fixed_spans] if fixed_spans else None
         lines_source = "fixed_size"
-        draw_spans = None
+        draw_spans = fixed_spans
         fit_stats = {}
     else:
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
@@ -424,7 +501,9 @@ def render_text_in_box(
             source_letter_box=source_letter_box, centres_out=line_centres,
             stats_out=fit_stats, min_source_share=min_source_share,
             size_ceiling_px=size_band_hi_cap, bubble_mask=_mask, spans_out=spans_holder,
-            letters=letters, letters_box=letters_box)
+            letters=letters, letters_box=letters_box, keep_compounds=keep_compounds,
+            compose_layout=compose_layout, optical_size_hint=optical_size_hint,
+            bold=is_bold, glow=profile_glow_radius * 3, reserved_boxes=reserved_boxes)
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
@@ -436,7 +515,11 @@ def render_text_in_box(
         fit_stats["mask_source"] = _mask_source
         block_top = fit_stats.get("block_top")
         font = get_font_object(font_path_str, actual_size)
-        lines = _wrap_text(draw, text, font, box_w, balance=True)
+        positioned = fit_stats.get("composition")
+        if fit_stats.get("omit_glow"):
+            profile_glow_radius = 0
+        lines = fitted_lines if positioned else _wrap_text(
+            draw, text, font, box_w, balance=True, keep_compounds=keep_compounds)
         lines_source = "balanced"
         draw_spans = spans_holder if spans_holder else None
         _lh_check = _calc_line_height(draw, font, stroke_w=stroke_w)
@@ -447,7 +530,9 @@ def render_text_in_box(
         ):
             lines = fitted_lines
             lines_source = "fitted"
-        if centred and curved:
+        if positioned:
+            lines_source = "composition"
+        elif centred and curved:
             if draw_spans is not None:
                 if len(lines) != len(draw_spans):
                     lines = fitted_lines
@@ -467,7 +552,7 @@ def render_text_in_box(
         stats["fit_box"] = (x1, y1, x2, y2)
         stats["fixed_size_height_fallback"] = _fixed_height_fallback
         if h_align == "center":
-            stats["line_centring"] = "per_line" if line_centres else "box_centre"
+            stats["line_centring"] = "optical" if positioned else ("per_line" if line_centres else "box_centre")
         if target_size is None:
             stats["frame"] = fit_stats.get("frame")
             stats["frame_source"] = fit_stats.get("frame_source")
@@ -480,6 +565,11 @@ def render_text_in_box(
             stats["mask_source"] = fit_stats.get("mask_source")
             stats["floor_px"] = fit_stats.get("floor_px")
             stats["lines_source"] = lines_source
+            if positioned:
+                for key in ("layout_score", "edge_clearance", "preferred_size"):
+                    stats[key] = fit_stats[key]
+        elif fixed_frame is not None:
+            stats.update(frame=fixed_frame, frame_source="mask", mask_source=_mask_source)
 
     shape = str(shape or "").lower()
     if shape not in ("rectangle", "ellipse"):
@@ -515,71 +605,27 @@ def render_text_in_box(
 
     offsets = [(0, 0), (1, 0), (0, 1), (1, 1)] if is_bold else [(0, 0)]
 
-    fill_fallback = None
-    if explicit_fill:
-        def _protected_by_profile_stroke(bg_rgb_ref: tuple[float, float, float]) -> bool:
-            return bool(
-                profile_stroke_rgb is not None
-                and stroke_w >= 2
-                and _contrast(stroke_c, bg_rgb_ref) >= LOW_CONTRAST_RATIO
-                and _contrast(text_color, stroke_c) >= 2.0
-            )
-
-        if bg_color and bg_color not in ("transparent", "none", ""):
-            local_bg = parse_color(bg_color, default=(255, 255, 255))
-            if _contrast(text_color, local_bg) < LOW_CONTRAST_RATIO and not _protected_by_profile_stroke(local_bg):
-                bg_lum = (local_bg[0] * 299 + local_bg[1] * 587 + local_bg[2] * 114) / 1000
-                text_color = (0, 0, 0) if bg_lum > 128 else (255, 255, 255)
-                fill_fallback = "pale_to_auto"
-        else:
-            iw, ih = image.size
-            grey = np.asarray(image.convert("L"))
-            ink_rect = np.zeros((ih, iw), dtype=bool)
-            ring_rect = np.zeros((ih, iw), dtype=bool)
-            for i, line in enumerate(lines):
-                sx, lw = _line_start_x(draw, line, font, x1=x1, pad=pad, box_w=box_w,
-                                       h_align=h_align, centred=centred, curved=curved,
-                                       line_centres=line_centres, draw_spans=draw_spans,
-                                       i=i, line_count=len(lines))
-                cy = start_y + i * line_height
-                ink_rect[max(0, cy):min(ih, cy + line_height),
-                         max(0, sx):min(iw, sx + lw)] = True
-                ring_rect[max(0, cy - 8):min(ih, cy + line_height + 8),
-                          max(0, sx - 8):min(iw, sx + lw + 8)] = True
-            ring = ring_rect & ~ink_rect
-            vals = grey[ring]
-            if vals.size >= 50:
-                bg_grey = float(np.percentile(vals, 75))
-                bg_ref_ring = (bg_grey, bg_grey, bg_grey)
-                if _contrast(text_color, bg_ref_ring) < LOW_CONTRAST_RATIO and not _protected_by_profile_stroke(bg_ref_ring):
-                    text_color = auto_detect_text_color(image, (x1, y1, x2, y2))
-                    fill_fallback = "pale_to_auto"
-        if fill_fallback is not None:
-            profile_grad_dir = None
-            profile_grad_stops = None
-            profile_glow_rgb = None
-            profile_glow_radius = 0
-            if stroke_auto:
-                profile_stroke_applied = False
-                luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
-                stroke_c = (0, 0, 0) if luminance > 128 else (255, 255, 255)
-        if stats is not None and fill_fallback is not None:
-            stats["fill_fallback"] = fill_fallback
-
     ink_box = None
+    glyph_boxes = []
     line_layouts: list[tuple[int, int, str]] = []
     for i, line in enumerate(lines):
-        start_x, line_w = _line_start_x(draw, line, font, x1=x1, pad=pad, box_w=box_w,
-                                        h_align=h_align, centred=centred, curved=curved,
-                                        line_centres=line_centres, draw_spans=draw_spans,
-                                        i=i, line_count=len(lines))
-        cur_y = start_y + i * line_height
+        if positioned:
+            start_x, cur_y, _ = positioned[i]
+            line_w = draw.textbbox((0, 0), line, font=font)[2]
+        else:
+            start_x, line_w = _line_start_x(draw, line, font, x1=x1, pad=pad, box_w=box_w,
+                                            h_align=h_align, centred=centred, curved=curved,
+                                            line_centres=line_centres, draw_spans=draw_spans,
+                                            i=i, line_count=len(lines), stroke_w=stroke_w,
+                                            bold_extra=int(is_bold))
+            cur_y = start_y + i * line_height
         line_layouts.append((start_x, cur_y, line))
         if line_w > 0:
             bold = 1 if is_bold else 0
             gx0, gy0, gx1, gy1 = draw.textbbox(
                 (start_x, cur_y), line, font=font, stroke_width=stroke_w)
-            line_box = (
+            glyph_boxes.append((gx0, gy0, gx1 + bold, gy1 + bold))
+            line_box = glyph_boxes[-1] if positioned else (
                 min(start_x, gx0),
                 min(cur_y, gy0),
                 max(start_x + line_w, gx1) + bold,
@@ -588,6 +634,28 @@ def render_text_in_box(
             ink_box = line_box if ink_box is None else (
                 min(ink_box[0], line_box[0]), min(ink_box[1], line_box[1]),
                 max(ink_box[2], line_box[2]), max(ink_box[3], line_box[3]))
+
+    if adapt_contrast is True or (adapt_contrast is None and explicit_fill):
+        backgrounds = _background_luminances(image, glyph_boxes)
+        framed = str(container or "").lower() in ("bubble", "spiky", "box", "screen")
+        threshold = 4.5 if framed else LOW_CONTRAST_RATIO
+        palette = profile_grad_stops or [text_color]
+        outline = stroke_c if stroke_w >= 2 and (profile_stroke_applied or not stroke_auto) else None
+        plain_neutral = framed and profile_grad_stops is None and max(text_color) - min(text_color) <= 10
+        adjusted = _adapt_palette(palette, backgrounds, threshold, outline, prefer_black_or_white=plain_neutral)
+        if adjusted != palette:
+            if profile_grad_stops is None:
+                text_color = adjusted[0]
+            else:
+                profile_grad_stops = adjusted
+            if stroke_auto and not profile_stroke_applied:
+                stroke_c = (0, 0, 0) if _luminance(adjusted[len(adjusted) // 2]) > 0.179 else (255, 255, 255)
+            if stats is not None:
+                stats["fill_fallback"] = "local_contrast"
+        if (framed and stroke_w_auto and stroke_auto and not profile_stroke_applied
+                and backgrounds.size and np.ptp(backgrounds) <= 0.05
+                and all((_local_contrast(rgb, backgrounds) >= threshold).all() for rgb in adjusted)):
+            stroke_w = 0
 
     if profile_glow_rgb is not None and profile_glow_radius > 0 and ink_box is not None:
         _draw_outer_glow(
@@ -657,7 +725,10 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
              min_source_share: float = 0.0, size_ceiling_px: int | None = None,
              bubble_mask: dict | None = None, spans_out: list | None = None,
              letters=None,
-             letters_box: tuple[int, int, int, int] | None = None):
+             letters_box: tuple[int, int, int, int] | None = None,
+             keep_compounds: bool = False, compose_layout: bool = False,
+             optical_size_hint: int | None = None, bold: bool = False, glow: int = 0,
+             reserved_boxes: tuple = ()):
     x1, y1, x2, y2 = (int(v) for v in box)
     raw_w, raw_h = x2 - x1, y2 - y1
     pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
@@ -752,6 +823,28 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
+    if compose_layout and centered and image is not None:
+        size_hint = optical_size_hint if isinstance(optical_size_hint, (int, float)) and math.isfinite(optical_size_hint) else None
+        preferred = int(source_match or size_hint or (34 * scale))
+        if enlarge:
+            preferred = round(preferred * 1.25)
+        image_w, image_h = image_size
+        inner_frame = (max(0, x1), max(0, y1), min(image_w, x2), min(image_h, y2))
+        options = dict(preferred=min(preferred, maximum_size * 2), floor=floor, stroke=stroke_w,
+                       bold=bold, mask=mask if use_mask else None, ellipse=curved and not use_mask,
+                       anchor=source_letter_box, reserved_boxes=reserved_boxes)
+        plan = compose_text(image, text, inner_frame, font_path_str, glow=glow, **options)
+        omit_glow = plan is None and glow > 0
+        if omit_glow:
+            plan = compose_text(image, text, inner_frame, font_path_str, **options)
+        if plan is None:
+            return floor, [], False, inner_frame
+        if stats_out is not None:
+            stats_out.update(frame=inner_frame, frame_source=frame_source, floor_px=floor,
+                             composition=plan.lines, layout_score=plan.score,
+                             edge_clearance=plan.clearance, preferred_size=plan.target, omit_glow=omit_glow)
+        return plan.size, [line for _, _, line in plan.lines], True, inner_frame
+
     def search(fx1, fy1, fx2, fy2):
         fw, fh = fx2 - fx1, fy2 - fy1
         fpad = max(2, min(padding, int(min(fw, fh) * RENDER_PADDING_RATIO_MAX)))
@@ -763,7 +856,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         anchor_y = None
         if use_mask and mask is not None:
             bands = _mask_bands(mask, padded)
-            anchor_y = int(mask["cy"]) - padded[1]
+            anchor_y = _mask_layout_y(mask, inner_body=keep_compounds) - padded[1]
             if bands is not None:
                 widest = max((b - a for band in bands for a, b in band), default=0)
                 if widest < 0.4 * fbw:
@@ -771,7 +864,8 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                     fallbacks.append("mask_degenerate_rectangle")
         probe = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                           minimum_size=readable, maximum_size=maximum_size,
-                          curved=bool(bands is not None or curved), bands=bands)[0]
+                          curved=bool(bands is not None or curved), bands=bands, anchor_y=anchor_y,
+                          keep_compounds=keep_compounds)[0]
         fit_floor = floor if enlarge else max(floor, int(SOURCE_FLOOR_RATIO * probe))
         if enlarge:
             ceiling = maximum_size
@@ -783,27 +877,29 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         if bands is not None:
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
-                                          curved=True, bands=bands, anchor_y=anchor_y)
+                                          curved=True, bands=bands, anchor_y=anchor_y,
+                                          keep_compounds=keep_compounds)
             if not fits and fit_floor > readable:
                 size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                               minimum_size=readable, maximum_size=fit_floor,
-                                              curved=True, bands=bands, anchor_y=anchor_y)
+                                              curved=True, bands=bands, anchor_y=anchor_y,
+                                              keep_compounds=keep_compounds)
         elif curved:
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
-                                          curved=True, bands=None)
+                                          curved=True, bands=None, keep_compounds=keep_compounds)
             if not fits and fit_floor > readable:
                 size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                               minimum_size=readable, maximum_size=fit_floor,
-                                              curved=True, bands=None)
+                                              curved=True, bands=None, keep_compounds=keep_compounds)
         else:
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
-                                          curved=False, bands=None)
+                                          curved=False, bands=None, keep_compounds=keep_compounds)
             if not fits and fit_floor > readable:
                 size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                               minimum_size=readable, maximum_size=fit_floor,
-                                              curved=False, bands=None)
+                                              curved=False, bands=None, keep_compounds=keep_compounds)
         return size, lines, fits, bands, anchor_y, padded, ceiling, fit_floor
 
     size, lines, fits_readably, bands, anchor_y, padded, ceiling, floor = search(x1, y1, x2, y2)
@@ -832,12 +928,13 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         rbw, rbh = rw - rpad * 2, rh - rpad * 2
         if rbw > 0 and rbh > 0:
             ok, flines = _fits(draw, text, rbw, rbh, font_path_str, floor, stroke_w,
-                               curved=False, bands=None)
+                               curved=False, bands=None, keep_compounds=keep_compounds)
             rsize = floor
             if not ok and floor > readable:
                 rsize, flines, ok = _fit_text(
                     draw, text, rbw, rbh, font_path_str, stroke_w=stroke_w,
-                    minimum_size=readable, maximum_size=floor, curved=False, bands=None)
+                    minimum_size=readable, maximum_size=floor, curved=False, bands=None,
+                    keep_compounds=keep_compounds)
             if ok:
                 size, lines, fits_readably = rsize, flines, True
                 x1, y1, x2, y2 = rx1, ry1, rx2, ry2
