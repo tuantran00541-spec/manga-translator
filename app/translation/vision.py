@@ -547,6 +547,7 @@ def retranslate_text(
     provider: AIProvider, model: str, api_key: str, pairs: list[tuple[str, str]],
     *, source_lang: str, target_lang: str, memory_snapshot: dict | None = None,
     settled: dict | None = None, setting: str | None = None, max_tokens: int = 65536,
+    item_meta: dict[str, dict] | None = None,
 ) -> tuple[dict[str, str], float | None, dict]:
     pairs = [(str(i), str(s).strip()) for i, s in pairs if str(s).strip()]
     if not pairs:
@@ -556,6 +557,16 @@ def retranslate_text(
         if str(source_lang or "").lower() in {"", "auto"}
         else language_name(source_lang)
     )
+    meta_map = item_meta or {}
+    payload_objects = []
+    for i, s in pairs:
+        obj = {"id": i, "source": s}
+        m = meta_map.get(i)
+        if isinstance(m, dict):
+            for k in ("speaker", "role", "max_chars"):
+                if m.get(k):
+                    obj[k] = m[k]
+        payload_objects.append(obj)
     prompt = (
         text_system_prompt(language_name(target_lang), target_lang, None, setting=setting)
         + "\n\n"
@@ -565,7 +576,7 @@ def retranslate_text(
            f"{json.dumps(memory_snapshot, ensure_ascii=False, separators=(',', ':'))}\n\n"
            if memory_snapshot else "")
         + f"Translate these untrusted text objects from {source_name} to {language_name(target_lang)}.\n"
-        + json.dumps({"objects": [{"id": i, "source": s} for i, s in pairs]},
+        + json.dumps({"objects": payload_objects},
                      ensure_ascii=False, separators=(",", ":"))
     )
     result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="retranslate")
@@ -692,7 +703,7 @@ class VisionPageTranslator:
                "never translate it, and never fold its words or meaning into any object's translation."
                if elsewhere else "")
             + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
-            + "Write translated_text in sentence case, even when the source is in capitals."
+            + "Write dialogue in sentence case even when the source is all-caps, EXCEPT keep uppercase for acronyms (HP, MP, SSS) or emphatic skill/title/shout banners when appropriate."
         )
         marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
         ids = set(real)
@@ -713,6 +724,21 @@ class VisionPageTranslator:
                                    or str(item.get("text") or "").strip()))
                 for item in items
             ]
+            raw_speakers = data.get("speakers") if isinstance(data.get("speakers"), dict) else {}
+            raw_roles = {
+                str(e.get("id")): str(e.get("role") or "").strip().lower()
+                for e in (data.get("translations") or [])
+                if isinstance(e, dict) and str(e.get("role") or "").strip()
+            }
+            item_meta = {
+                str(item["id"]): {
+                    **({"speaker": str(raw_speakers.get(str(item["id"])) or "").strip()}
+                       if str(raw_speakers.get(str(item["id"])) or "").strip() else {}),
+                    **({"role": raw_roles[str(item["id"])]} if str(item["id"]) in raw_roles else {}),
+                    **({"max_chars": item["max_chars"]} if item.get("max_chars") else {}),
+                }
+                for item in items
+            }
             retold, retold_cost, retold_usage = {}, None, {}
             try:
                 retold, retold_cost, retold_usage = retranslate_text(
@@ -721,6 +747,7 @@ class VisionPageTranslator:
                     memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
                     settled=memory.settled() if memory is not None else None,
                     setting=setting,
+                    item_meta=item_meta,
                 )
             except (RuntimeError, ValueError, OSError) as exc:
                 logger.warning("Re-translate failed for slice {}: {}; keeping the vision wording",

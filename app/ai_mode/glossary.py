@@ -16,21 +16,28 @@ MISREAD_VOTES = 2
 
 GLOSSARY_PROMPT = (
     "{source}"
-    "QUESTION: which names, terms and forms of address must every slice translate into {target} the same way?\n"
-    "- names: every person, clan, sect, place, item and technique name, spelled exactly as written "
-    "(check each occurrence). \"target\" is its {target} form: people keep the source spelling; places, "
-    "organisations, spells, techniques, titles and signs are translated (Hán Việt where the genre uses it).\n"
-    "- terms: recurring titles, ranks, realms and genre terms, each with the one {target} term to use.\n"
-    "- address: for each speaker and listener (a group such as \"disciples\" is one speaker), how the speaker "
-    "refers to themselves (self) and to the listener (other), chosen from {basis} of both (apparent age, gender, "
-    "rank) and how they relate; one form per pair.\n"
+    "GOAL: build a single canonical chapter glossary for consistent {target} translation across all slices.\n"
+    "RULES:\n"
+    "- names: every person, clan, sect, place, item, and technique name (verify exact source spelling across occurrences). "
+    "One entry per entity — never add duplicate entries under alternate spellings.\n"
+    "  • Tie-breaker for person names: in modern/western/game/sci-fi stories, keep source spelling (e.g. \"Jinwoo\" -> \"Jinwoo\"); "
+    "in murim/cultivation/eastern-historical worlds, use one consistent Hán Việt form for person AND technique names when clear "
+    "(e.g. \"Cheonma\" -> \"Thiên Ma\", \"Iron Sword Pavilion\" -> \"Thiết Kiếm Các\"), or keep the exact romanized spelling if no clear Hán Việt exists (never guess inconsistent variants).\n"
+    "  • Places, organisations, spells, titles, and signs are always translated.\n"
+    "- terms: recurring titles, ranks, realms, and genre terms with one fixed {target} equivalent (e.g. sword=\"kiếm\", blade/saber=\"đao\").\n"
+    "- address: for each recurring speaker->listener pair (a group like \"disciples\" counts as one speaker), pick one exact self/other pair "
+    "from {basis} (apparent age, gender, rank, hostility/closeness) matching the story's world register.\n"
     "{language}"
     "ANSWER with JSON only: "
-    '{{"names":[{{"source":"","target":"","note":"who or what"}}],"terms":[{{"source":"","target":""}}],'
+    '{{"names":[{{"source":"","target":"","note":"role/who"}}],"terms":[{{"source":"","target":""}}],'
     '"address":[{{"from":"","to":"","self":"","other":""}}]}}'
 )
-_VIETNAMESE = ("Vietnamese: cultivation stories use Hán Việt realms and titles (Luyện Khí, Trúc Cơ, sư phụ, sư huynh, "
-               "đạo hữu, bổn tọa, tại hạ); disciples to their master: self \"con\" or \"bọn con\", other \"sư phụ\".\n")
+_VIETNAMESE = (
+    "Vietnamese register guide:\n"
+    "- Murim / cultivation / historical: kiếm-hiệp pairs (ta/ngươi, tại hạ/các hạ, sư phụ/con or đệ tử, sư huynh/sư đệ, đạo hữu, bổn tọa); "
+    "Hán Việt realms (Luyện Khí, Trúc Cơ, Kim Đan). Never assign modern 'tôi/bạn/cậu/tớ' in these worlds.\n"
+    "- Modern / slice-of-life: tôi/cậu, tớ/cậu, anh/em, chú/cháu, tao/mày (close friends/hostile peers only).\n"
+)
 
 
 def _field(value) -> str:

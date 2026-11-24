@@ -20,14 +20,12 @@ GAP_PX = 8
 CLEAN_REVIEW_EFFORT = "low"
 
 CLEAN_REVIEW_PROMPT = (
-    "IMAGE: a sheet of crop pairs from a manga chapter. In each pair LEFT is the raw crop with its text and RIGHT "
-    "is the same place after the text was erased; the pair's id is in the black tag above it.\n"
-    "QUESTION: compared with LEFT, does RIGHT still show any of the erased text: letter fragments, ghost outlines, "
-    "smears or blotches?\n"
-    "Text that looks the same in LEFT and RIGHT was kept on purpose; clean background, art and balloon outlines "
-    "are not residue.\n"
-    'ANSWER with JSON only: {"residue":["<id>"]} listing the ids whose RIGHT must be erased again, [] when all '
-    "are clean."
+    "IMAGE: a sheet of manga before/after crop pairs (black tag = pair id). LEFT is raw with text; RIGHT is after erasure.\n"
+    "QUESTION: compared with LEFT, does RIGHT still need re-cleaning because of EITHER:\n"
+    "  (1) leftover erased text (letter fragments, ghost strokes, dark outlines), OR\n"
+    "  (2) obvious erasure damage (heavy blurry smudges, blotches, or melted/warped background lines where text sat)?\n"
+    "TIE-BREAKER: Text identical in LEFT and RIGHT was kept intentionally (do NOT flag). Clean reconstructed art, paper grain, and intact bubble borders are NOT defects. Only flag clear visual flaws a reader would notice.\n"
+    'ANSWER with JSON only: {"residue":["<id>"]} ([] when all pairs are clean).'
 )
 
 
