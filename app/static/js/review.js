@@ -67,8 +67,8 @@ function chooseRepaintMode() {
     const aiModelInput = document.createElement("input");
     aiModelInput.type = "text";
     aiModelInput.className = "ui-input";
-    aiModelInput.value = "openai/gpt-image-2.6-flare";
-    aiModelInput.placeholder = "openai/gpt-image-2.6-flare";
+    aiModelInput.value = "openai/gpt-image-2.5-flare";
+    aiModelInput.placeholder = "openai/gpt-image-2.5-flare";
     aiModelLabel.append(aiModelText, aiModelInput);
 
     const aiQualityLabel = document.createElement("label");
@@ -174,7 +174,7 @@ function chooseRepaintMode() {
     const aiOption = createOption(
       "ai",
       "Vẽ lại bằng AI (API)",
-      "Gửi vùng đã tô sang mô hình ảnh API đã cấu hình. Tự gom nhiều vùng thành lưới động 2×2 / 3×3 (tối đa 9 vùng/lượt) để giảm chi phí và căn chỉnh sát nét vẽ gốc.",
+      "Gửi vùng đã tô sang mô hình ảnh API đã cấu hình. Tự gom nhiều vùng thành lưới động 3×4 / 3×3 / 2×2 (tối đa 12 vùng/lượt), giữ nguyên viền khung thoại và căn chỉnh sát nét vẽ gốc.",
       "Đẹp nhất cho SFX"
     );
     const restoreOption = createOption(
@@ -214,7 +214,7 @@ function chooseRepaintMode() {
     confirmBtn.addEventListener("click", () => {
       if (selectedMode === "ai") {
         const providerId = aiProviderSelect.value || "";
-        const model = aiModelInput.value.trim() || "openai/gpt-image-2.6-flare";
+        const model = aiModelInput.value.trim() || "openai/gpt-image-2.5-flare";
         const quality = aiQualitySelect.value || "low";
         fetch("/api/inpaint/settings", {
           method: "PUT",

@@ -41,7 +41,8 @@ def test_inpaint_settings_defaults_and_persistence(tmp_path, monkeypatch):
     defaults = api_inpaint.load_inpaint_settings()
     assert defaults["enabled"] is False
     assert defaults["hybrid_auto"] is False
-    assert defaults["model"] == "openai/gpt-image-2.6-flare"
+    assert defaults["rescue_only"] is True
+    assert defaults["model"] == "openai/gpt-image-2.5-flare"
     assert defaults["quality"] == "low"
     assert defaults["pack_atlas"] is True
     assert defaults["max_api_calls_per_chapter"] == 3
@@ -49,13 +50,15 @@ def test_inpaint_settings_defaults_and_persistence(tmp_path, monkeypatch):
     saved = api_inpaint.save_inpaint_settings({
         "enabled": True,
         "hybrid_auto": True,
+        "rescue_only": False,
         "provider_id": "custom-gw",
-        "model": "openai/gpt-image-2.6-flare",
+        "model": "openai/gpt-image-2.5-flare",
         "quality": "auto",  # must be coerced to "low" to prevent expensive auto billing
         "max_api_calls_per_chapter": 99,
         "pack_atlas": False,
     })
     assert saved["enabled"] is True
+    assert saved["rescue_only"] is False
     assert saved["provider_id"] == "custom-gw"
     assert saved["quality"] == "low"
     assert saved["max_api_calls_per_chapter"] == 20  # clamped
@@ -76,7 +79,7 @@ def test_complexity_score_separates_flat_bubble_from_sfx_art():
     assert api_inpaint.is_complex_for_ai(art, art_mask) is True
 
 
-def test_pack_and_unpack_single_2x2_and_3x3_atlas():
+def test_pack_and_unpack_single_2x2_3x3_and_3x4_atlas():
     c1 = np.full((180, 240, 3), (10, 40, 220), dtype=np.uint8)
     c2 = np.full((260, 140, 3), (30, 210, 50), dtype=np.uint8)
     c3 = np.full((120, 300, 3), (220, 60, 20), dtype=np.uint8)
@@ -84,13 +87,13 @@ def test_pack_and_unpack_single_2x2_and_3x3_atlas():
 
     single_atlas, single_slots, grid_single = api_inpaint.pack_regions_to_atlas([c1])
     assert single_atlas.size == (1024, 1024)
-    assert grid_single == 1
+    assert grid_single == (1, 1)
     unpacked_single = api_inpaint.unpack_atlas(single_atlas, single_slots)
     assert unpacked_single[0].shape == c1.shape
 
     grid_atlas, grid_slots, grid_2x2 = api_inpaint.pack_regions_to_atlas([c1, c2, c3, c4])
     assert grid_atlas.size == (1024, 1024)
-    assert grid_2x2 == 2
+    assert grid_2x2 == (2, 2)
     unpacked = api_inpaint.unpack_atlas(grid_atlas, grid_slots)
     assert [u.shape for u in unpacked] == [c1.shape, c2.shape, c3.shape, c4.shape]
     for orig, rec in zip((c1, c2, c3, c4), unpacked):
@@ -102,33 +105,50 @@ def test_pack_and_unpack_single_2x2_and_3x3_atlas():
     ]
     atlas_3x3, slots_3x3, grid_3x3 = api_inpaint.pack_regions_to_atlas(nine_crops)
     assert atlas_3x3.size == (1024, 1024)
-    assert grid_3x3 == 3
+    assert grid_3x3 == (3, 3)
     unpacked_9 = api_inpaint.unpack_atlas(atlas_3x3, slots_3x3)
     assert [u.shape for u in unpacked_9] == [c.shape for c in nine_crops]
-    for orig, rec in zip(nine_crops, unpacked_9):
+
+    twelve_crops = [
+        np.full((160 + (i % 2) * 30, 200 + (i % 3) * 20, 3), (15 * i + 20, 240 - 15 * i, 100 + i * 5), dtype=np.uint8)
+        for i in range(12)
+    ]
+    atlas_3x4, slots_3x4, grid_3x4 = api_inpaint.pack_regions_to_atlas(twelve_crops)
+    assert atlas_3x4.size == (1024, 1024)
+    assert grid_3x4 == (3, 4)
+    unpacked_12 = api_inpaint.unpack_atlas(atlas_3x4, slots_3x4)
+    assert [u.shape for u in unpacked_12] == [c.shape for c in twelve_crops]
+    for orig, rec in zip(twelve_crops, unpacked_12):
         assert np.max(np.abs(orig.astype(int) - rec.astype(int))) <= 2
 
 
-def test_plan_atlas_batches_dynamic_3x3_and_2x2():
-    compact_regions = [{"crop": np.zeros((220, 260, 3), dtype=np.uint8)} for _ in range(9)]
-    batches = api_inpaint.plan_atlas_batches(compact_regions, pack_atlas=True, max_calls=3)
-    assert batches == [list(range(9))]
+def test_plan_atlas_batches_dynamic_3x4_3x3_and_2x2():
+    small_regions = [{"crop": np.zeros((200, 240, 3), dtype=np.uint8)} for _ in range(12)]
+    assert api_inpaint.plan_atlas_batches(small_regions, pack_atlas=True, max_calls=3) == [list(range(12))]
+
+    medium_regions = [{"crop": np.zeros((300, 320, 3), dtype=np.uint8)} for _ in range(9)]
+    assert api_inpaint.plan_atlas_batches(medium_regions, pack_atlas=True, max_calls=3) == [list(range(9))]
 
     large_regions = [{"crop": np.zeros((520, 480, 3), dtype=np.uint8)} for _ in range(6)]
-    batches_large = api_inpaint.plan_atlas_batches(large_regions, pack_atlas=True, max_calls=1)
-    assert batches_large == [[0, 1, 2, 3]]
+    assert api_inpaint.plan_atlas_batches(large_regions, pack_atlas=True, max_calls=1) == [[0, 1, 2, 3]]
 
     mixed = [
         {"crop": np.zeros((500, 450, 3), dtype=np.uint8)},  # 0 large
-        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 1 compact
+        {"crop": np.zeros((300, 320, 3), dtype=np.uint8)},  # 1 medium
         {"crop": np.zeros((500, 450, 3), dtype=np.uint8)},  # 2 large
-        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 3 compact
-        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 4 compact
-        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 5 compact
-        {"crop": np.zeros((240, 240, 3), dtype=np.uint8)},  # 6 compact
+        {"crop": np.zeros((300, 320, 3), dtype=np.uint8)},  # 3 medium
+        {"crop": np.zeros((300, 320, 3), dtype=np.uint8)},  # 4 medium
+        {"crop": np.zeros((300, 320, 3), dtype=np.uint8)},  # 5 medium
+        {"crop": np.zeros((300, 320, 3), dtype=np.uint8)},  # 6 medium
     ]
-    batches_mixed = api_inpaint.plan_atlas_batches(mixed, pack_atlas=True, max_calls=2)
-    assert batches_mixed == [[0, 2], [1, 3, 4, 5, 6]]
+    assert api_inpaint.plan_atlas_batches(mixed, pack_atlas=True, max_calls=2) == [[0, 2], [1, 3, 4, 5, 6]]
+
+    # 1 large + 1 small crop MUST coalesce into 1 single 2x2 call (never waste 2 separate 1x1 calls!)
+    two_mixed = [
+        {"crop": np.zeros((500, 450, 3), dtype=np.uint8)},
+        {"crop": np.zeros((200, 220, 3), dtype=np.uint8)},
+    ]
+    assert api_inpaint.plan_atlas_batches(two_mixed, pack_atlas=True, max_calls=3) == [[0, 1]]
 
 
 def test_align_ai_crop_corrects_vertical_shift_and_scale_drift():
@@ -157,7 +177,7 @@ def test_inpaint_regions_via_api_packs_4_into_1_call_and_respects_budget(monkeyp
     monkeypatch.setattr(
         api_inpaint,
         "resolve_api_inpaint_target",
-        lambda **kwargs: (fake_provider, "sk-test", "openai/gpt-image-2.6-flare", "low"),
+        lambda **kwargs: (fake_provider, "sk-test", "openai/gpt-image-2.5-flare", "low"),
     )
     monkeypatch.setattr(api_inpaint, "validate_url", lambda url: url)
 
@@ -183,17 +203,18 @@ def test_inpaint_regions_via_api_packs_4_into_1_call_and_respects_budget(monkeyp
     monkeypatch.setattr(api_inpaint, "public_request", lambda _method, url, **kw: fake_post(url, **kw))
 
     regions = [
-        {"crop": np.full((120, 140, 3), 100 + i * 10, dtype=np.uint8), "mask": np.full((120, 140), 255, dtype=np.uint8)}
-        for i in range(11)
+        {"crop": np.full((120, 140, 3), 100 + i * 8, dtype=np.uint8), "mask": np.full((120, 140), 255, dtype=np.uint8)}
+        for i in range(14)
     ]
     outputs = api_inpaint.inpaint_regions_via_api(regions, pack_atlas=True, max_calls=1)
     assert len(calls) == 1
     assert calls[0]["url"] == "https://gateway.example.test/v1/images/edits"
-    assert calls[0]["data"]["model"] == "openai/gpt-image-2.6-flare"
+    assert calls[0]["data"]["model"] == "openai/gpt-image-2.5-flare"
     assert calls[0]["data"]["size"] == "1024x1024"
-    assert "3x3 grid" in calls[0]["data"]["prompt"]
-    assert all(out is not None for out in outputs[:9])
-    assert outputs[9] is None and outputs[10] is None
+    assert "3x4 grid" in calls[0]["data"]["prompt"]
+    assert "NEVER erase" in calls[0]["data"]["prompt"]
+    assert all(out is not None for out in outputs[:12])
+    assert outputs[12] is None and outputs[13] is None
 
 
 def test_atlas_failure_keeps_results_in_slots_from_other_batches(monkeypatch):
@@ -378,14 +399,16 @@ def test_inpaint_settings_endpoints_and_ai_repaint_route(tmp_path, monkeypatch):
     r_get = client.get("/api/inpaint/settings")
     assert r_get.status_code == 200
     body = r_get.json()
-    assert body["model"] == "openai/gpt-image-2.6-flare"
+    assert body["model"] == "openai/gpt-image-2.5-flare"
+    assert body["rescue_only"] is True
     assert body["providers"][0]["id"] == "generic-gw"
 
     r_put = client.put("/api/inpaint/settings", json={
         "enabled": True,
         "hybrid_auto": True,
+        "rescue_only": True,
         "provider_id": "generic-gw",
-        "model": "openai/gpt-image-2.6-flare",
+        "model": "openai/gpt-image-2.5-flare",
         "quality": "low",
         "max_api_calls_per_chapter": 4,
         "pack_atlas": True,
@@ -506,7 +529,7 @@ def test_cross_page_chapter_batching_pools_6_pages_into_1_3x3_api_call(tmp_path,
     monkeypatch.setattr(
         api_inpaint,
         "resolve_api_inpaint_target",
-        lambda **kwargs: (fake_provider, "sk-test", "openai/gpt-image-2.6-flare", "low"),
+        lambda **kwargs: (fake_provider, "sk-test", "openai/gpt-image-2.5-flare", "low"),
     )
     monkeypatch.setattr(api_inpaint, "validate_url", lambda url: url)
 
@@ -559,3 +582,84 @@ def test_cross_page_chapter_batching_pools_6_pages_into_1_3x3_api_call(tmp_path,
     for i in range(6):
         assert manifest["pages"][i]["clean"] is not None
         assert manifest["pages"][i]["processing_metrics"]["auto_inpaint"]["api_inpaint_regions"] == 1
+
+
+def test_ai_rescue_skips_clean_lama_and_only_rescues_smudged_regions(monkeypatch):
+    art, mask = _make_textured_panel(260, 280)
+    # 1. Clean fill (same sharpness as surrounding art) -> should NOT trigger rescue
+    assert api_inpaint.needs_ai_rescue(art, art.copy(), mask) < 0.50
+
+    # 2. Smudged LaMa mush (flat blurred gray blob inside mask) -> MUST trigger rescue
+    smudged = art.copy()
+    smudged[mask > 127] = (110, 110, 110)
+    assert api_inpaint.needs_ai_rescue(art, smudged, mask) >= api_inpaint.AI_RESCUE_THRESHOLD
+
+    # 2b. Dark-scene linework melted by LaMa into smooth dark brown fog -> MUST also trigger rescue
+    dark_art = np.full((260, 280, 3), (45, 55, 72), dtype=np.uint8)
+    for x in range(8, 272, 16):
+        cv2.line(dark_art, (x, 0), (x + 12, 259), (12, 14, 18), 2)
+    for y in range(12, 250, 24):
+        cv2.line(dark_art, (0, y), (279, y + 6), (92, 108, 128), 2)
+    dark_smudge = dark_art.copy()
+    dark_smudge[mask > 127] = cv2.GaussianBlur(dark_art, (31, 31), 9.0)[mask > 127]
+    assert api_inpaint.needs_ai_rescue(dark_art, dark_smudge, mask) >= api_inpaint.AI_RESCUE_THRESHOLD
+
+    # 3. Inpainter with rescue_only=True runs local LaMa first and ONLY calls API when smudged
+    box = BubbleBox(75, 70, 185, 170, 0.95, np.full((100, 110), 255, np.uint8), safe_to_inpaint=True)
+    monkeypatch.setattr(
+        "app.inpaint.lama_inpainter.load_inpaint_settings",
+        lambda: {
+            "enabled": True,
+            "hybrid_auto": True,
+            "rescue_only": True,
+            "provider_id": "generic-gw",
+            "model": "openai/gpt-image-2.5-flare",
+            "quality": "low",
+            "max_api_calls_per_chapter": 2,
+            "pack_atlas": True,
+        },
+    )
+
+    api_seen = []
+
+    def fake_api(regions, **kwargs):
+        api_seen.append(regions[0]["crop"].copy())
+        return [np.full_like(r["crop"], (190, 200, 210)) for r in regions]
+
+    monkeypatch.setattr("app.inpaint.lama_inpainter.inpaint_regions_via_api", fake_api)
+
+    # Case A: local LaMa keeps sharp art -> 0 API calls!
+    inp_ok = Inpainter()
+    inp_ok._lama_fill = lambda image, crop, lmask, box, **kw: image
+    inp_ok.inpaint(art, [box])
+    assert api_seen == []
+
+    # Case B: local LaMa produces blurry flat gray smudge -> triggers AI rescue with ORIGINAL crop!
+    inp_bad = Inpainter()
+
+    def blurry_lama(image, crop, lmask, crop_box, **kw):
+        out = image.copy()
+        cx1, cy1, cx2, cy2 = crop_box
+        sub = out[cy1:cy2, cx1:cx2]
+        sub[lmask > 127] = (110, 110, 110)
+        return out
+
+    inp_bad._lama_fill = blurry_lama
+    inp_bad.inpaint(art, [box])
+    assert len(api_seen) == 1
+    assert inp_bad.last_metrics()["api_inpaint_regions"] == 1
+    # Verify AI received crisp original crop, NOT the smudged (110,110,110) patch
+    assert not np.all(api_seen[0][70:170, 75:185] == 110)
+
+    # Case C: border_protected_display that fills white over textured art MUST also trigger AI rescue
+    api_seen.clear()
+    bpd_box = BubbleBox(
+        75, 70, 185, 170, 0.95, np.full((100, 110), 255, np.uint8),
+        mask_source="border_protected_display",
+        safe_to_inpaint=True,
+    )
+    inp_bpd = Inpainter()
+    inp_bpd._paint_border_protected_display = lambda img, lmask, cbox: blurry_lama(img, img, lmask, cbox)
+    inp_bpd.inpaint(art, [bpd_box])
+    assert len(api_seen) == 1
+    assert inp_bpd.last_metrics()["api_inpaint_regions"] == 1

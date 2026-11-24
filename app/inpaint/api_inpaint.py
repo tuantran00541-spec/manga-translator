@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 import threading
+import time
 from typing import Any
 
 import cv2
@@ -28,19 +29,24 @@ from app.security import validate_url
 INPAINT_SETTINGS_PATH = BASE_DIR / "data" / "inpaint_settings.json"
 _SETTINGS_LOCK = threading.Lock()
 
-DEFAULT_API_INPAINT_MODEL = "openai/gpt-image-2.6-flare"
+DEFAULT_API_INPAINT_MODEL = "openai/gpt-image-2.5-flare"
 DEFAULT_API_INPAINT_QUALITY = "low"
 DEFAULT_MAX_API_CALLS_PER_CHAPTER = 3
 ATLAS_SIZE = 1024
 ATLAS_DIVIDER_2X2 = 12
 ATLAS_DIVIDER_3X3 = 10
+ATLAS_DIVIDER_3X4 = 10
 ATLAS_DIVIDER = ATLAS_DIVIDER_2X2
+ATLAS_SMALL_MAX_DIM = 260
 ATLAS_COMPACT_MAX_DIM = 380
 ATLAS_MAX_SLOTS_2X2 = 4
 ATLAS_MAX_SLOTS_3X3 = 9
-MAX_ATLAS_WORKERS = 3
+ATLAS_MAX_SLOTS_3X4 = 12
+# Run atlas batches sequentially to avoid concurrent image-edit / credit-hold collisions on gateways.
+MAX_ATLAS_WORKERS = 1
+AI_RESCUE_THRESHOLD = 0.42
 
-# Never allow "auto": on image-2.6-flare at 1024x1024, "auto" bills ~$0.22/img (~8x "low").
+# Never allow "auto": on flare models at 1024x1024, "auto" bills ~$0.22/img (~8-14x "low").
 _ALLOWED_QUALITIES = {"low", "medium", "high"}
 
 DEFAULT_INPAINT_SETTINGS: dict[str, Any] = {
@@ -49,27 +55,28 @@ DEFAULT_INPAINT_SETTINGS: dict[str, Any] = {
     "model": DEFAULT_API_INPAINT_MODEL,
     "quality": DEFAULT_API_INPAINT_QUALITY,
     "hybrid_auto": False,
+    "rescue_only": True,
     "max_api_calls_per_chapter": DEFAULT_MAX_API_CALLS_PER_CHAPTER,
     "pack_atlas": True,
 }
 
 _SINGLE_PROMPT = (
-    "Clean manga/manhwa artwork redraw: completely remove all text, letters, and sound effects (SFX) "
-    "inside the panel/bubble while keeping every surrounding detail, character face, hair, clothing, "
-    "line art style, colors, framing, and proportions 100% identical to the input image. "
-    "Redraw clean white speech bubble interiors, crisp ink borders, and seamless background art/speedlines "
-    "where text was removed. Do not add any new text or letters."
+    "Remove all text, letters, and SFX from this manga/manhwa crop. "
+    "CRITICAL: NEVER erase or alter speech bubbles, jagged shout bubbles, thought clouds, or narration boxes—"
+    "keep every bubble border 100% intact with exact original spikes, rebuild broken border ink where letters overlapped, "
+    "and make bubble interiors clean white. Redraw underlying art/speedlines behind floating SFX only. "
+    "Keep faces, colors, and framing identical. Add no text."
 )
 
 
-def _atlas_prompt_for_grid(grid_dim: int) -> str:
-    label = f"{grid_dim}x{grid_dim}"
+def _atlas_prompt_for_grid(cols: int, rows: int) -> str:
+    label = f"{cols}x{rows}"
     return (
-        f"This 1024x1024 image is a {label} grid of separate manga/manhwa artwork crops divided by thick solid dark gray borders. "
-        "For EVERY non-blank crop cell independently: completely remove ALL text, letters, and sound effects (SFX) and seamlessly "
-        "redraw the underlying speech bubble interiors, crisp black ink borders, hair, clothing, speedlines, and background art. "
-        f"Preserve the exact {label} grid divider lines, exact crop positions, framing, scale, character faces, and line-art style "
-        "100% faithfully in each cell. Do not shift, zoom, merge cells, or add any new text."
+        f"This 1024x1024 image is a {label} grid ({cols} columns x {rows} rows) of separate manga/manhwa crops divided by dark gray borders. "
+        "In EVERY non-blank cell independently: remove all text, letters, and SFX. "
+        "CRITICAL: NEVER erase or alter speech bubbles, jagged shout bubbles, or narration boxes—keep exact original bubble borders intact with clean white interiors; "
+        "only redraw underlying art behind floating SFX. "
+        f"Keep exact {label} dividers, framing, scale, faces, and line art identical. Add no text."
     )
 
 
@@ -88,6 +95,8 @@ def _normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
             data["quality"] = q if q in _ALLOWED_QUALITIES else DEFAULT_API_INPAINT_QUALITY
         if "hybrid_auto" in raw:
             data["hybrid_auto"] = bool(raw["hybrid_auto"])
+        if "rescue_only" in raw:
+            data["rescue_only"] = bool(raw["rescue_only"])
         if "max_api_calls_per_chapter" in raw:
             try:
                 cap = int(raw["max_api_calls_per_chapter"])
@@ -255,6 +264,80 @@ def is_complex_for_ai(
     return region_complexity_score(crop, local_mask) >= threshold
 
 
+def needs_ai_rescue(
+    orig_crop: np.ndarray,
+    cleaned_crop: np.ndarray,
+    local_mask: np.ndarray,
+) -> float:
+    """Fast (<1ms) post-LaMa artifact estimator for 2-Pass AI Rescue.
+
+    Returns 0.0 when local LaMa output is clean/sharp enough, or a score >= 0.50 when
+    LaMa smudged detailed artwork/SFX or left a harsh seam that genuinely needs AI redraw.
+    """
+    if orig_crop is None or cleaned_crop is None or local_mask is None:
+        return 0.0
+    if orig_crop.shape != cleaned_crop.shape or orig_crop.size == 0:
+        return 0.0
+
+    base_complexity = region_complexity_score(orig_crop, local_mask)
+    if base_complexity < 0.45:
+        return 0.0
+
+    mask_bool = local_mask > 127
+    area = int(np.count_nonzero(mask_bool))
+    if area < 900:
+        return 0.0
+
+    non_mask = ~mask_bool
+    ring = (
+        cv2.dilate(mask_bool.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (29, 29))) > 0
+    ) & non_mask
+    if int(np.count_nonzero(ring)) < 64:
+        return 0.0
+
+    orig_lab = cv2.cvtColor(orig_crop, cv2.COLOR_BGR2LAB).astype(np.float32) if orig_crop.ndim == 3 else orig_crop.astype(np.float32)
+    clean_lab = cv2.cvtColor(cleaned_crop, cv2.COLOR_BGR2LAB).astype(np.float32) if cleaned_crop.ndim == 3 else cleaned_crop.astype(np.float32)
+    orig_l = orig_lab[:, :, 0] if orig_lab.ndim == 3 else orig_lab
+    clean_l = clean_lab[:, :, 0] if clean_lab.ndim == 3 else clean_lab
+
+    # 1. Texture/sharpness loss inside mask vs surrounding untouched artwork (supports dark scenes too)
+    orig_hp = np.abs(orig_l - cv2.GaussianBlur(orig_l, (0, 0), 1.4))
+    clean_hp = np.abs(clean_l - cv2.GaussianBlur(clean_l, (0, 0), 1.4))
+    ctx_energy = float(np.percentile(orig_hp[ring], 85))
+    fill_energy = float(np.percentile(clean_hp[mask_bool], 85))
+    blur_ratio = fill_energy / max(1.5, ctx_energy)
+    blur_term = 0.0
+    if ctx_energy >= 5.5 and blur_ratio < 0.62:
+        blur_term = min(1.0, (0.62 - blur_ratio) / 0.40)
+
+    # 1b. Ink/edge collapse inside mask vs surrounding artwork (catches melted dark-scene linework)
+    orig_gray = cv2.cvtColor(orig_crop, cv2.COLOR_BGR2GRAY) if orig_crop.ndim == 3 else orig_crop
+    clean_gray = cv2.cvtColor(cleaned_crop, cv2.COLOR_BGR2GRAY) if cleaned_crop.ndim == 3 else cleaned_crop
+    ctx_edge = float((cv2.Canny(orig_gray, 40, 110) > 0)[ring].mean())
+    fill_edge = float((cv2.Canny(clean_gray, 40, 110) > 0)[mask_bool].mean())
+    edge_loss_term = 0.0
+    if ctx_edge >= 0.045:
+        edge_ratio = fill_edge / max(1e-5, ctx_edge)
+        if edge_ratio < 0.50:
+            edge_loss_term = min(1.0, (0.50 - edge_ratio) / 0.35)
+
+    detail_loss = max(blur_term, edge_loss_term)
+
+    # 2. Rim discontinuity across the mask boundary (detects obvious grey/blurry LaMa patches)
+    inner_rim = mask_bool & ~(cv2.erode(mask_bool.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0)
+    outer_rim = (cv2.dilate(mask_bool.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0) & non_mask
+    seam_term = 0.0
+    if np.any(inner_rim) and np.any(outer_rim):
+        in_mean = clean_lab[inner_rim].mean(axis=0)
+        out_mean = orig_lab[outer_rim].mean(axis=0)
+        rim_delta = float(np.linalg.norm(in_mean - out_mean))
+        if rim_delta > 12.0:
+            seam_term = min(1.0, (rim_delta - 12.0) / 26.0)
+
+    area_term = 0.15 if area >= 5000 else 0.0
+    return float(0.60 * detail_loss + 0.35 * seam_term + area_term)
+
+
 def _pad_into_cell(im: Image.Image, cell_w: int, cell_h: int) -> tuple[Image.Image, tuple[int, int, int, int]]:
     w, h = im.size
     scale = min(cell_w / max(1, w), cell_h / max(1, h))
@@ -272,13 +355,13 @@ def pack_regions_to_atlas(
     crops_bgr: list[np.ndarray],
     *,
     atlas_size: int = ATLAS_SIZE,
-) -> tuple[Image.Image, list[dict[str, Any]], int]:
-    """Pack 1..9 BGR crops into a single 1024x1024 PNG image (1x1, 2x2, or 3x3 grid).
+) -> tuple[Image.Image, list[dict[str, Any]], tuple[int, int]]:
+    """Pack 1..12 BGR crops into a single 1024x1024 PNG image (1x1, 2x2, 3x3, or 3x4 grid).
 
-    Returns (atlas_pil, slots, grid_dim) where grid_dim is 1, 2, or 3.
+    Returns (atlas_pil, slots, (cols, rows)).
     """
-    if not crops_bgr or len(crops_bgr) > ATLAS_MAX_SLOTS_3X3:
-        raise ValueError(f"pack_regions_to_atlas accepts 1 to {ATLAS_MAX_SLOTS_3X3} crops")
+    if not crops_bgr or len(crops_bgr) > ATLAS_MAX_SLOTS_3X4:
+        raise ValueError(f"pack_regions_to_atlas accepts 1 to {ATLAS_MAX_SLOTS_3X4} crops")
 
     pil_crops = [Image.fromarray(cv2.cvtColor(c, cv2.COLOR_BGR2RGB)) for c in crops_bgr]
     count = len(pil_crops)
@@ -289,27 +372,33 @@ def pack_regions_to_atlas(
             "orig_size": pil_crops[0].size,
             "atlas_box": box,
         }]
-        return canvas, slots, 1
+        return canvas, slots, (1, 1)
 
-    grid_dim = 2 if count <= ATLAS_MAX_SLOTS_2X2 else 3
-    divider = ATLAS_DIVIDER_2X2 if grid_dim == 2 else ATLAS_DIVIDER_3X3
-    cell_size = (atlas_size - divider * (grid_dim - 1)) // grid_dim
+    if count <= ATLAS_MAX_SLOTS_2X2:
+        cols, rows, divider = 2, 2, ATLAS_DIVIDER_2X2
+    elif count <= ATLAS_MAX_SLOTS_3X3:
+        cols, rows, divider = 3, 3, ATLAS_DIVIDER_3X3
+    else:
+        cols, rows, divider = 3, 4, ATLAS_DIVIDER_3X4
+
+    cell_w = (atlas_size - divider * (cols - 1)) // cols
+    cell_h = (atlas_size - divider * (rows - 1)) // rows
     atlas = Image.new("RGB", (atlas_size, atlas_size), (40, 40, 40))
 
     slots: list[dict[str, Any]] = []
     for idx, im in enumerate(pil_crops):
-        row = idx // grid_dim
-        col = idx % grid_dim
-        ox0 = col * (cell_size + divider)
-        oy0 = row * (cell_size + divider)
-        cell, (bx1, by1, bx2, by2) = _pad_into_cell(im, cell_size, cell_size)
+        row = idx // cols
+        col = idx % cols
+        ox0 = col * (cell_w + divider)
+        oy0 = row * (cell_h + divider)
+        cell, (bx1, by1, bx2, by2) = _pad_into_cell(im, cell_w, cell_h)
         atlas.paste(cell, (ox0, oy0))
         slots.append({
             "index": idx,
             "orig_size": im.size,
             "atlas_box": (ox0 + bx1, oy0 + by1, ox0 + bx2, oy0 + by2),
         })
-    return atlas, slots, grid_dim
+    return atlas, slots, (cols, rows)
 
 
 def plan_atlas_batches(
@@ -318,10 +407,11 @@ def plan_atlas_batches(
     pack_atlas: bool = True,
     max_calls: int | None = None,
 ) -> list[list[int]]:
-    """Dynamically group region indices into 1x1, 2x2 (large crops), or 3x3 (compact crops) bins.
+    """Dynamically group region indices into 1x1, 2x2 (large), 3x3 (medium), or 3x4 (compact) bins.
 
-    - Compact crops (max dim <= 380px) pack up to 9 per 1024x1024 call (3x3 grid).
-    - Large crops (max dim > 380px) pack up to 4 per 1024x1024 call (2x2 grid) to preserve detail.
+    - Small crops (max dim <= 260px) pack up to 12 per 1024x1024 call (3x4 grid, 334x248 cells).
+    - Medium crops (260 < max dim <= 380px) pack up to 9 per 1024x1024 call (3x3 grid, 334x334 cells).
+    - Large crops (max dim > 380px) pack up to 4 per 1024x1024 call (2x2 grid, 506x506 cells).
     - Strictly enforces max_calls while keeping priority order (earlier indices packed first).
     """
     if not regions:
@@ -334,41 +424,77 @@ def plan_atlas_batches(
     if budget == 0:
         return []
 
-    bins: list[dict[str, Any]] = []
+    # Fast-path: 1..4 regions ALWAYS fit into a single 1x1 or 2x2 call regardless of mixed sizes,
+    # avoiding wasting 2 API calls on e.g. 1 large + 1 small crop.
+    if len(regions) <= ATLAS_MAX_SLOTS_2X2:
+        return [list(range(len(regions)))]
 
-    for idx, region in enumerate(regions):
-        crop = region["crop"]
-        max_dim = max(int(crop.shape[0]), int(crop.shape[1]))
-        is_compact = max_dim <= ATLAS_COMPACT_MAX_DIM
+    bins: list[dict[str, Any]] = []
+    cap_by_kind = {
+        "3x4": ATLAS_MAX_SLOTS_3X4,
+        "3x3": ATLAS_MAX_SLOTS_3X3,
+        "2x2": ATLAS_MAX_SLOTS_2X2,
+    }
+    max_dim_of = [
+        max(int(r["crop"].shape[0]), int(r["crop"].shape[1])) for r in regions
+    ]
+
+    for idx in range(len(regions)):
+        max_dim = max_dim_of[idx]
+        if max_dim <= ATLAS_SMALL_MAX_DIM:
+            preferred = "3x4"
+            fallback_kinds = ("3x3", "2x2")
+        elif max_dim <= ATLAS_COMPACT_MAX_DIM:
+            preferred = "3x3"
+            fallback_kinds = ("2x2",)
+        else:
+            preferred = "2x2"
+            fallback_kinds = ()
 
         placed = False
-        if is_compact:
-            for b in bins:
-                if b["kind"] == "3x3" and len(b["indices"]) < ATLAS_MAX_SLOTS_3X3:
-                    b["indices"].append(idx)
-                    placed = True
-                    break
-            if not placed and (budget is None or len(bins) < budget):
-                bins.append({"kind": "3x3", "indices": [idx]})
+        for b in bins:
+            if b["kind"] == preferred and len(b["indices"]) < cap_by_kind[preferred]:
+                b["indices"].append(idx)
                 placed = True
-            if not placed:
-                # Budget reached: tuck compact crop into any remaining slot of a 2x2 bin.
+                break
+        if not placed and (budget is None or len(bins) < budget):
+            bins.append({"kind": preferred, "indices": [idx]})
+            placed = True
+        if not placed:
+            for fk in fallback_kinds:
                 for b in bins:
-                    if len(b["indices"]) < ATLAS_MAX_SLOTS_2X2:
+                    if b["kind"] == fk and len(b["indices"]) < cap_by_kind[fk]:
                         b["indices"].append(idx)
                         placed = True
                         break
-        else:
-            for b in bins:
-                if b["kind"] == "2x2" and len(b["indices"]) < ATLAS_MAX_SLOTS_2X2:
-                    b["indices"].append(idx)
-                    placed = True
+                if placed:
                     break
-            if not placed and (budget is None or len(bins) < budget):
-                bins.append({"kind": "2x2", "indices": [idx]})
-                placed = True
 
-    return [b["indices"] for b in bins if b["indices"]]
+    # Coalesce under-filled bins whenever two bins fit together into a single valid grid call.
+    def _max_slots_for(indices: list[int]) -> int:
+        worst = max(max_dim_of[i] for i in indices)
+        if worst <= ATLAS_SMALL_MAX_DIM:
+            return ATLAS_MAX_SLOTS_3X4
+        if worst <= ATLAS_COMPACT_MAX_DIM:
+            return ATLAS_MAX_SLOTS_3X3
+        return ATLAS_MAX_SLOTS_2X2
+
+    merged_bins: list[list[int]] = [b["indices"] for b in bins if b["indices"]]
+    changed = True
+    while changed and len(merged_bins) > 1:
+        changed = False
+        for i in range(len(merged_bins)):
+            for j in range(i + 1, len(merged_bins)):
+                combined = merged_bins[i] + merged_bins[j]
+                if len(combined) <= _max_slots_for(combined):
+                    merged_bins[i] = combined
+                    merged_bins.pop(j)
+                    changed = True
+                    break
+            if changed:
+                break
+
+    return merged_bins
 
 
 def unpack_atlas(
@@ -508,7 +634,7 @@ def _call_images_edit_endpoint(
     quality: str,
     atlas_image: Image.Image,
     *,
-    grid_dim: int = 1,
+    grid_dim: int | tuple[int, int] = 1,
     timeout: float = 150.0,
 ) -> Image.Image:
     base = str(provider.api_base or "").rstrip("/")
@@ -519,7 +645,11 @@ def _call_images_edit_endpoint(
     atlas_image.save(buf, format="PNG")
     png_bytes = buf.getvalue()
 
-    prompt = _SINGLE_PROMPT if grid_dim <= 1 else _atlas_prompt_for_grid(grid_dim)
+    if isinstance(grid_dim, tuple):
+        cols, rows = int(grid_dim[0]), int(grid_dim[1])
+    else:
+        cols = rows = int(grid_dim)
+    prompt = _SINGLE_PROMPT if cols * rows <= 1 else _atlas_prompt_for_grid(cols, rows)
     data = {
         "model": model,
         "prompt": prompt,
@@ -531,15 +661,21 @@ def _call_images_edit_endpoint(
     files = {"image": ("panel.png", png_bytes, "image/png")}
     headers = auth_headers(provider, api_key)
 
-    resp = public_request(
-        "POST",
-        url,
-        headers=headers,
-        data=data,
-        files=files,
-        timeout=(15, timeout),
-        allow_redirects=False,
-    )
+    resp = None
+    for attempt in range(2):
+        resp = public_request(
+            "POST",
+            url,
+            headers=headers,
+            data=data,
+            files=files,
+            timeout=(15, timeout),
+            allow_redirects=False,
+        )
+        if resp.ok or resp.status_code not in {429, 502, 503, 504} or attempt == 1:
+            break
+        time.sleep(2.0)
+
     if not resp.ok:
         detail = ""
         try:
@@ -594,25 +730,32 @@ def inpaint_regions_via_api(
     def _run_batch(indices: list[int]) -> Exception | None:
         try:
             crops = [regions[i]["crop"] for i in indices]
-            atlas_pil, slots, grid_dim = pack_regions_to_atlas(crops)
+            atlas_pil, slots, grid_shape = pack_regions_to_atlas(crops)
+            cols, rows = grid_shape
+            grid_arg: int | tuple[int, int] = cols if cols == rows else (cols, rows)
             edited_pil = _call_images_edit_endpoint(
                 provider,
                 api_key,
                 effective_model,
                 effective_quality,
                 atlas_pil,
-                grid_dim=grid_dim,
+                grid_dim=grid_arg,
             )
             unpacked = unpack_atlas(edited_pil, slots)
         except Exception as exc:
-            logger.warning("Image edit batch with {} regions failed ({})", len(indices), type(exc).__name__)
+            logger.warning(
+                "Image edit batch with {} regions failed ({}): {}",
+                len(indices),
+                type(exc).__name__,
+                str(exc)[:200],
+            )
             return exc
         for idx, ai_crop in zip(indices, unpacked):
             results[idx] = ai_crop
         return None
 
-    if len(batches) == 1:
-        outcomes = [_run_batch(batches[0])]
+    if len(batches) == 1 or MAX_ATLAS_WORKERS <= 1:
+        outcomes = [_run_batch(batch) for batch in batches]
     else:
         with ThreadPoolExecutor(max_workers=min(MAX_ATLAS_WORKERS, len(batches))) as pool:
             outcomes = list(pool.map(_run_batch, batches))

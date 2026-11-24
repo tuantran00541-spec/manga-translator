@@ -606,6 +606,7 @@ class InpaintSettingsUpdateRequest(BaseModel):
     model: str | None = None
     quality: str | None = None
     hybrid_auto: bool | None = None
+    rescue_only: bool | None = None
     max_api_calls_per_chapter: int | None = None
     pack_atlas: bool | None = None
 

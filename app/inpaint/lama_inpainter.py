@@ -13,10 +13,12 @@ from app.config import (
 )
 from app.detector.boxes import BubbleBox
 from app.inpaint.api_inpaint import (
+    AI_RESCUE_THRESHOLD,
     composite_api_region,
     inpaint_regions_via_api,
     is_complex_for_ai,
     load_inpaint_settings,
+    needs_ai_rescue,
     region_complexity_score,
 )
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
@@ -407,6 +409,7 @@ class Inpainter:
 
         api_cfg = load_inpaint_settings()
         use_hybrid_api = bool(api_cfg.get("enabled") and api_cfg.get("hybrid_auto"))
+        rescue_only = bool(api_cfg.get("rescue_only", False))
         ai_candidates: list[dict] = []
 
         pending = {id(b) for cluster in clusters for b in cluster}
@@ -431,10 +434,32 @@ class Inpainter:
                 hole = np.maximum(self._subtract_protected_regions(hole, crop_box, protected_regions), local_mask)
 
             if cluster and all(getattr(b, "mask_source", "") == "border_protected_display" for b in cluster):
+                orig_before = result[cy1:cy2, cx1:cx2].copy() if use_hybrid_api else None
                 result = self._paint_border_protected_display(result, local_mask, crop_box)
+                if use_hybrid_api and orig_before is not None and np.any(local_mask > 127):
+                    rescue_score = needs_ai_rescue(orig_before, result[cy1:cy2, cx1:cx2], local_mask)
+                    if rescue_score >= AI_RESCUE_THRESHOLD:
+                        rescue_mask = local_mask.copy()
+                        for b in cluster:
+                            bx1 = max(0, b.x1 - cx1)
+                            by1 = max(0, b.y1 - cy1)
+                            bx2 = min(cx2 - cx1, b.x2 - cx1)
+                            by2 = min(cy2 - cy1, b.y2 - cy1)
+                            if bx2 > bx1 and by2 > by1:
+                                rescue_mask[by1:by2, bx1:bx2] = 255
+                        rescue_mask = self._subtract_protected_regions(rescue_mask, crop_box, protected_regions)
+                        if np.any(rescue_mask > 127):
+                            ai_candidates.append({
+                                "score": rescue_score,
+                                "crop_box": crop_box,
+                                "local_mask": rescue_mask,
+                                "hole": hole,
+                                "crop": orig_before,
+                                "already_local": True,
+                            })
                 continue
 
-            if use_hybrid_api and np.any(local_mask > 127):
+            if use_hybrid_api and not rescue_only and np.any(local_mask > 127):
                 cur_crop = result[cy1:cy2, cx1:cx2]
                 score = region_complexity_score(cur_crop, local_mask)
                 if is_complex_for_ai(cur_crop, local_mask):
@@ -443,19 +468,38 @@ class Inpainter:
                         "crop_box": crop_box,
                         "local_mask": local_mask,
                         "hole": hole,
+                        "crop": cur_crop.copy(),
+                        "already_local": False,
                     })
                     continue
 
+            orig_before = result[cy1:cy2, cx1:cx2].copy() if (use_hybrid_api and rescue_only) else None
             result = self._smart_paint_region(result, local_mask, crop_box, hole=hole)
+            if use_hybrid_api and rescue_only and orig_before is not None and np.any(local_mask > 127):
+                # Measure rescue artifacts on the tighter inner mask (undoing adaptive dilation padding)
+                # so white margins outside letters don't dilute blur/seam detection.
+                core_eval = cv2.erode(
+                    (local_mask > 127).astype(np.uint8) * 255,
+                    cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)),
+                )
+                eval_mask = core_eval if int(np.count_nonzero(core_eval > 127)) >= 900 else local_mask
+                rescue_score = max(
+                    needs_ai_rescue(orig_before, result[cy1:cy2, cx1:cx2], local_mask),
+                    needs_ai_rescue(orig_before, result[cy1:cy2, cx1:cx2], eval_mask),
+                )
+                if rescue_score >= AI_RESCUE_THRESHOLD:
+                    ai_candidates.append({
+                        "score": rescue_score,
+                        "crop_box": crop_box,
+                        "local_mask": local_mask,
+                        "hole": hole,
+                        "crop": orig_before,
+                        "already_local": True,
+                    })
 
         if ai_candidates:
             if deferred_ai_items is not None:
-                for item in ai_candidates:
-                    cx1, cy1, cx2, cy2 = item["crop_box"]
-                    deferred_ai_items.append({
-                        **item,
-                        "crop": result[cy1:cy2, cx1:cx2].copy(),
-                    })
+                deferred_ai_items.extend(ai_candidates)
                 return result
 
             ai_candidates.sort(key=lambda item: item["score"], reverse=True)
@@ -466,10 +510,7 @@ class Inpainter:
             try:
                 regions_payload = [
                     {
-                        "crop": result[
-                            item["crop_box"][1]:item["crop_box"][3],
-                            item["crop_box"][0]:item["crop_box"][2],
-                        ].copy(),
+                        "crop": item["crop"],
                         "mask": item["local_mask"],
                     }
                     for item in ai_candidates
@@ -497,7 +538,7 @@ class Inpainter:
                         feather=False,
                     )
                     self._metric_add("api_inpaint_regions")
-                else:
+                elif not item.get("already_local"):
                     result = self._smart_paint_region(
                         result,
                         item["local_mask"],

@@ -196,7 +196,7 @@
     const inpaintDesc = el(
       "p",
       "settings-row-desc",
-      "Giữ ~85% khung thoại phẳng chạy Smart Fill cục bộ miễn phí (<2ms); chỉ gom các vùng SFX/tranh phức tạp xuyên cả chương thành lưới động 3×3 (tối đa 9 vùng/lượt) hoặc 2×2 (vùng lớn) gửi tới nhà cung cấp AI bạn đã cấu hình.",
+      "Giữ ~85% khung thoại phẳng chạy Smart Fill cục bộ miễn phí (<2ms); chỉ gom các vùng SFX/tranh phức tạp xuyên cả chương thành lưới động 3×4 (tối đa 12 vùng nhỏ), 3×3 (9 vùng vừa) hoặc 2×2 (4 vùng lớn) gửi tới nhà cung cấp AI bạn đã cấu hình.",
     );
 
     const inpaintProvider = el("select", "ui-select");
@@ -204,7 +204,7 @@
     const inpaintModelListId = `inpaint-models-${Math.random().toString(36).slice(2, 8)}`;
     const inpaintModelList = document.createElement("datalist");
     inpaintModelList.id = inpaintModelListId;
-    const inpaintModel = input("openai/gpt-image-2.6-flare", "Mô hình tẩy nền AI");
+    const inpaintModel = input("openai/gpt-image-2.5-flare", "Mô hình tẩy nền AI");
     inpaintModel.setAttribute("list", inpaintModelListId);
     const inpaintQuality = el("select", "ui-select");
     inpaintQuality.setAttribute("aria-label", "Chất lượng tẩy nền AI");
@@ -227,7 +227,8 @@
       return { wrap, box };
     };
     const hybridToggle = makeCheckbox("Bật Hybrid tự động xuyên cả chương (gom vùng SFX khó toàn chương trước khi gọi AI)");
-    const atlasToggle = makeCheckbox("Gom lưới động 3×3 / 2×2 (tối đa 9 vùng vừa hoặc 4 vùng lớn trong 1 ảnh 1024×1024)");
+    const rescueToggle = makeCheckbox("Chỉ cứu vùng LaMa làm chưa sạch (AI Rescue — chạy LaMa cục bộ trước, giảm 70–85% chi phí API)");
+    const atlasToggle = makeCheckbox("Gom lưới động 3×4 / 3×3 / 2×2 (tối đa 12 vùng nhỏ hoặc 9 vùng vừa trong 1 ảnh 1024×1024)");
 
     const inpaintGrid = el("div", "settings-inpaint-grid");
     const miniField = (labelText, control) => {
@@ -241,7 +242,7 @@
       miniField("Chất lượng", inpaintQuality),
       miniField("Tối đa lượt API / chương", inpaintMaxCalls),
     );
-    inpaintSection.append(inpaintHead, inpaintDesc, inpaintGrid, inpaintModelList, hybridToggle.wrap, atlasToggle.wrap);
+    inpaintSection.append(inpaintHead, inpaintDesc, inpaintGrid, inpaintModelList, hybridToggle.wrap, rescueToggle.wrap, atlasToggle.wrap);
 
     let inpaintReady = false;
     const refreshInpaintModelHints = async (pid) => {
@@ -280,10 +281,11 @@
             inpaintProvider.value = data.provider_id;
           }
         }
-        inpaintModel.value = data.model || "openai/gpt-image-2.6-flare";
+        inpaintModel.value = data.model || "openai/gpt-image-2.5-flare";
         inpaintQuality.value = ["low", "medium", "high"].includes(data.quality) ? data.quality : "low";
         inpaintMaxCalls.value = String(data.max_api_calls_per_chapter ?? 3);
         hybridToggle.box.checked = Boolean(data.enabled && data.hybrid_auto);
+        rescueToggle.box.checked = data.rescue_only !== false;
         atlasToggle.box.checked = data.pack_atlas !== false;
         inpaintReady = true;
         void refreshInpaintModelHints(inpaintProvider.value || providers[0]?.id || "");
@@ -306,8 +308,9 @@
           body: JSON.stringify({
             enabled: hybridOn,
             hybrid_auto: hybridOn,
+            rescue_only: Boolean(rescueToggle.box.checked),
             provider_id: inpaintProvider.value || "",
-            model: inpaintModel.value.trim() || "openai/gpt-image-2.6-flare",
+            model: inpaintModel.value.trim() || "openai/gpt-image-2.5-flare",
             quality: ["low", "medium", "high"].includes(inpaintQuality.value) ? inpaintQuality.value : "low",
             max_api_calls_per_chapter: cap,
             pack_atlas: Boolean(atlasToggle.box.checked),
@@ -328,6 +331,7 @@
     });
     inpaintQuality.addEventListener("change", () => { void persistInpaintSettings(); });
     hybridToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
+    rescueToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
     atlasToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
     inpaintMaxCalls.addEventListener("change", () => { void persistInpaintSettings(); });
     inpaintModel.addEventListener("input", scheduleSaveInpaint);

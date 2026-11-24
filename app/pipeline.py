@@ -944,7 +944,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                             feather=False,
                         )
                         api_applied += 1
-                    else:
+                    elif not item.get("already_local"):
                         clean_image = self.inpainter._smart_paint_region(
                             clean_image,
                             item["local_mask"],
