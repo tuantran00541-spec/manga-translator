@@ -199,6 +199,25 @@
       "Giữ ~85% khung thoại phẳng chạy Smart Fill cục bộ miễn phí (<2ms); chỉ gom các vùng SFX/tranh phức tạp xuyên cả chương thành lưới động 3×4 (tối đa 12 vùng nhỏ), 3×3 (9 vùng vừa) hoặc 2×2 (4 vùng lớn) gửi tới nhà cung cấp AI bạn đã cấu hình.",
     );
 
+    const inpaintMasterRow = el("div", "settings-inpaint-master");
+    const inpaintMasterCopy = el("div", "settings-inpaint-master-copy");
+    const inpaintMasterTitle = el("strong", "settings-field-label", "Tẩy nền tự động qua API");
+    const inpaintMasterHint = el("span", "settings-row-desc", "Đang tắt — chỉ chạy cục bộ (Smart Fill + LaMa, không gọi API).");
+    inpaintMasterCopy.append(inpaintMasterTitle, inpaintMasterHint);
+    const inpaintMasterBtn = button("", "settings-inpaint-switch");
+    inpaintMasterBtn.type = "button";
+    inpaintMasterBtn.setAttribute("role", "switch");
+    inpaintMasterBtn.setAttribute("aria-checked", "false");
+    const inpaintSwitchTrack = el("span", "settings-inpaint-switch-track");
+    const inpaintSwitchThumb = el("span", "settings-inpaint-switch-thumb");
+    inpaintSwitchTrack.append(inpaintSwitchThumb);
+    const inpaintSwitchLabel = el("span", "settings-inpaint-switch-label", "Tắt");
+    inpaintMasterBtn.append(inpaintSwitchTrack, inpaintSwitchLabel);
+    inpaintMasterRow.append(inpaintMasterCopy, inpaintMasterBtn);
+
+    const inpaintDetails = el("div", "settings-inpaint-details");
+    inpaintDetails.hidden = true;
+
     const inpaintProvider = el("select", "ui-select");
     inpaintProvider.setAttribute("aria-label", "Nhà cung cấp tẩy nền AI");
     const inpaintModelListId = `inpaint-models-${Math.random().toString(36).slice(2, 8)}`;
@@ -226,7 +245,6 @@
       wrap.append(box, el("span", "", labelText));
       return { wrap, box };
     };
-    const hybridToggle = makeCheckbox("Bật Hybrid tự động xuyên cả chương (gom vùng SFX khó toàn chương trước khi gọi AI)");
     const rescueToggle = makeCheckbox("Chỉ cứu vùng LaMa làm chưa sạch (AI Rescue — chạy LaMa cục bộ trước, giảm 70–85% chi phí API)");
     const atlasToggle = makeCheckbox("Gom lưới động 3×4 / 3×3 / 2×2 (tối đa 12 vùng nhỏ hoặc 9 vùng vừa trong 1 ảnh 1024×1024)");
 
@@ -242,7 +260,21 @@
       miniField("Chất lượng", inpaintQuality),
       miniField("Tối đa lượt API / chương", inpaintMaxCalls),
     );
-    inpaintSection.append(inpaintHead, inpaintDesc, inpaintGrid, inpaintModelList, hybridToggle.wrap, rescueToggle.wrap, atlasToggle.wrap);
+    inpaintDetails.append(inpaintGrid, inpaintModelList, rescueToggle.wrap, atlasToggle.wrap);
+    inpaintSection.append(inpaintHead, inpaintDesc, inpaintMasterRow, inpaintDetails);
+
+    let inpaintHybridOn = false;
+    const syncInpaintMasterUI = (on) => {
+      inpaintHybridOn = Boolean(on);
+      inpaintMasterBtn.classList.toggle("is-on", inpaintHybridOn);
+      inpaintMasterBtn.setAttribute("aria-checked", String(inpaintHybridOn));
+      inpaintSwitchLabel.textContent = inpaintHybridOn ? "Đang bật" : "Đang tắt";
+      inpaintMasterHint.textContent = inpaintHybridOn
+        ? "Đang bật — tự động gom vùng khó xuyên chương gửi tới API đã chọn."
+        : "Đang tắt — chỉ chạy cục bộ (Smart Fill + LaMa, không gọi API).";
+      inpaintDetails.hidden = !inpaintHybridOn;
+    };
+    syncInpaintMasterUI(false);
 
     let inpaintReady = false;
     const refreshInpaintModelHints = async (pid) => {
@@ -284,7 +316,7 @@
         inpaintModel.value = data.model || "openai/gpt-image-2.5-flare";
         inpaintQuality.value = ["low", "medium", "high"].includes(data.quality) ? data.quality : "low";
         inpaintMaxCalls.value = String(data.max_api_calls_per_chapter ?? 3);
-        hybridToggle.box.checked = Boolean(data.enabled && data.hybrid_auto);
+        syncInpaintMasterUI(Boolean(data.enabled && data.hybrid_auto));
         rescueToggle.box.checked = data.rescue_only !== false;
         atlasToggle.box.checked = data.pack_atlas !== false;
         inpaintReady = true;
@@ -298,7 +330,7 @@
     const persistInpaintSettings = async () => {
       if (!inpaintReady) return;
       inpaintStatusEl.textContent = "Đang lưu…";
-      const hybridOn = Boolean(hybridToggle.box.checked);
+      const hybridOn = Boolean(inpaintHybridOn);
       const cap = Math.max(1, Math.min(20, Number(inpaintMaxCalls.value) || 3));
       inpaintMaxCalls.value = String(cap);
       try {
@@ -325,12 +357,15 @@
       clearTimeout(saveInpaintTimer);
       saveInpaintTimer = setTimeout(() => { void persistInpaintSettings(); }, 250);
     };
+    inpaintMasterBtn.addEventListener("click", () => {
+      syncInpaintMasterUI(!inpaintHybridOn);
+      void persistInpaintSettings();
+    });
     inpaintProvider.addEventListener("change", () => {
       void refreshInpaintModelHints(inpaintProvider.value);
       void persistInpaintSettings();
     });
     inpaintQuality.addEventListener("change", () => { void persistInpaintSettings(); });
-    hybridToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
     rescueToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
     atlasToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });
     inpaintMaxCalls.addEventListener("change", () => { void persistInpaintSettings(); });
@@ -366,7 +401,7 @@
 
     const customNote = el("p", "settings-intro-note", "Kết nối dịch vụ trung gian, máy chủ tự lưu trữ hoặc điểm cuối tương thích OpenAI / Gemini thông qua URL gốc, giao thức và danh sách mô hình.");
     const customId = input("acme-gateway", "Mã định danh nhà cung cấp");
-    customId.pattern = "[a-z0-9][a-z0-9_-]{0,63}";
+    customId.pattern = "[a-z0-9][a-z0-9_\\-]{0,63}";
     const customLabel = input("Tên hiển thị (VD: MiniRouter)", "Tên hiển thị");
     const customBase = input("https://gateway.example/v1", "URL gốc (Base URL)");
     const customProtocol = el("select", "ui-select");

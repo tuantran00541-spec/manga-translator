@@ -152,6 +152,18 @@
   .settings-block { display: grid; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle); }
   .settings-inpaint-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .settings-inpaint-status { color: var(--text-muted); font-size: 11.5px; }
+  .settings-inpaint-master { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-raised); }
+  .settings-inpaint-master-copy { display: grid; gap: 2px; min-width: 0; }
+  .settings-inpaint-switch { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-pill); background: var(--surface-panel); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast); }
+  .settings-inpaint-switch:hover { border-color: var(--text-primary); color: var(--text-primary); }
+  .settings-inpaint-switch-track { position: relative; width: 30px; height: 16px; border-radius: var(--radius-pill); background: var(--border-strong); transition: background var(--motion-fast); }
+  .settings-inpaint-switch-thumb { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: var(--radius-pill); background: var(--surface-panel); transition: transform var(--motion-fast), background var(--motion-fast); }
+  .settings-inpaint-switch.is-on { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
+  .settings-inpaint-switch.is-on:hover { border-color: var(--accent); color: var(--accent-contrast); }
+  .settings-inpaint-switch.is-on .settings-inpaint-switch-track { background: var(--accent-contrast); }
+  .settings-inpaint-switch.is-on .settings-inpaint-switch-thumb { transform: translateX(14px); background: var(--accent); }
+  .settings-inpaint-details { display: grid; gap: 10px; }
+  .settings-inpaint-details[hidden] { display: none; }
   .settings-inpaint-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .settings-inpaint-field { display: grid; gap: 5px; }
   .settings-inpaint-check { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12.5px; cursor: pointer; }
