@@ -16,6 +16,10 @@ _PROVIDER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _ALLOWED_PROTOCOLS = frozenset({"openai", "gemini"})
 
 
+def is_deepseek_v41_model(model: str | None) -> bool:
+    return "deepseek-v4.1" in str(model or "").strip().lower()
+
+
 @dataclass(frozen=True)
 class AIProvider:
     id: str
@@ -42,10 +46,12 @@ class AIProvider:
     def models_url(self) -> str:
         return f"{self.api_base.rstrip('/')}/models"
 
-    def chat_completion_extras(self) -> dict:
+    def chat_completion_extras(self, model: str | None = None) -> dict:
         if self.protocol != "openai":
             return {}
         if self.request_profile == "deepseek":
+            if is_deepseek_v41_model(model):
+                return {"reasoning_effort": "low"}
             return {"thinking": {"type": "disabled"}}
         return {}
 

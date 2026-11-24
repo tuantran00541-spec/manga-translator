@@ -9,7 +9,7 @@ import requests
 from fastapi import HTTPException
 
 from app import api_proxy
-from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS, AIProvider, auth_headers
+from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS, AIProvider, auth_headers, is_deepseek_v41_model
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.translation.cost import usage_cost_usd
@@ -200,8 +200,8 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
         "max_tokens": max_tokens,
         "stream": False,
     }
-    payload.update(provider.chat_completion_extras())
-    if reasoning_effort and provider.id == CLOUD_PROVIDER_ID:
+    payload.update(provider.chat_completion_extras(model))
+    if reasoning_effort and (provider.id == CLOUD_PROVIDER_ID or is_deepseek_v41_model(model)):
         payload["reasoning_effort"] = reasoning_effort
     response = None
     try:

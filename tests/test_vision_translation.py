@@ -538,6 +538,58 @@ def test_gemini_translation_sends_system_instruction_top_level(monkeypatch):
     assert all(part.get("text") != "SYS_RULES" for part in seen["payload"]["input"])
 
 
+def test_oversized_merged_unboxed_box_is_dropped_while_shout_boxes_stay():
+    from app.translation.vision import _safe_unboxed_box
+
+    # Normal / large individual shout bubbles on 900x2435 slice pass
+    assert _safe_unboxed_box({"x1": 43, "y1": 144, "x2": 956, "y2": 357}, 900, 2435) is not None
+    assert _safe_unboxed_box({"x1": 21, "y1": 719, "x2": 978, "y2": 986}, 900, 2435) is not None
+    # Giant merged box spanning 2 distant bubbles + character face between them (47% area / 63% height) is blocked
+    assert _safe_unboxed_box({"x1": 90, "y1": 230, "x2": 841, "y2": 860}, 900, 2435) is None
+
+
+def test_deepseek_v41_uses_low_reasoning_effort_on_openai_and_direct_deepseek(monkeypatch):
+    from app.ai_mode import vision_json
+    from app.ai_providers import PROVIDERS, resolve_provider
+    import numpy as np
+
+    assert PROVIDERS["deepseek"].chat_completion_extras("deepseek-v4.1-flash-1017") == {"reasoning_effort": "low"}
+    assert PROVIDERS["deepseek"].chat_completion_extras("deepseek-v4-flash") == {"thinking": {"type": "disabled"}}
+
+    seen = []
+
+    class FakeResp:
+        status_code = 200
+        text = ""
+        headers = {}
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": '{"translations":[{"id":"1","translated_text":"Xin chào"}],"setting":"murim"}'}}],
+                "usage": {},
+            }
+
+        def close(self):
+            pass
+
+    def fake_proxy_post(**kwargs):
+        seen.append(kwargs["payload"])
+        return FakeResp(), False, None
+
+    monkeypatch.setattr("app.translation.vision.api_proxy.proxy_post", fake_proxy_post)
+    monkeypatch.setattr("app.ai_mode.vision_json.api_proxy.proxy_post", fake_proxy_post)
+
+    router_prov = resolve_provider("minirouter", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
+    translator = VisionPageTranslator(router_prov, "deepseek/deepseek-v4.1-flash-1017")
+    translator._openai("SYS", "USR", "AAAA", api_key="k", ids={"1"}, max_tokens=2048)
+    vision_json.request_vision_json(
+        router_prov, "deepseek/deepseek-v4.1-flash-1017", "k", "classify",
+        [("page", np.zeros((16, 16, 3), dtype=np.uint8))], reasoning_effort="low", stage="setting",
+    )
+    assert seen[0]["reasoning_effort"] == "low"
+    assert seen[1]["reasoning_effort"] == "low"
+
+
 def test_other_gates_also_judge_per_line_not_per_value():
     from app.translation.vision import _bare_scream, _drop_foreign_script, _hangul_misread, _latin_noise
 

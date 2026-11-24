@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from app import api_proxy
 from app.ai_mode.vision_json import request_vision_json, stage_headers, sum_usage_dicts
 from app.box_format import scaled_box
-from app.ai_providers import PROVIDERS, AIProvider, auth_headers
+from app.ai_providers import PROVIDERS, AIProvider, auth_headers, is_deepseek_v41_model
 from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import contains_secret_token, validate_url
@@ -239,6 +239,23 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
 
 
 MAX_UNBOXED = 8
+MAX_UNBOXED_AREA_RATIO = 0.35
+MAX_UNBOXED_HEIGHT_RATIO = 0.55
+
+
+def _safe_unboxed_box(raw: object, width: int, height: int) -> tuple[int, int, int, int] | None:
+    box = scaled_box(raw, width, height)
+    if box is None or width <= 0 or height <= 0:
+        return None
+    x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]) + 1, int(box[3]) + 1
+    bw, bh = max(0, x2 - x1), max(0, y2 - y1)
+    if bw <= 0 or bh <= 0:
+        return None
+    if (bw * bh) / (width * height) > MAX_UNBOXED_AREA_RATIO:
+        return None
+    if bh / height > MAX_UNBOXED_HEIGHT_RATIO:
+        return None
+    return (x1, y1, x2, y2)
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 
 _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
@@ -843,8 +860,9 @@ class VisionPageTranslator:
         speakers = {str(k): " ".join(str(v).split())[:80] for k, v in (data.get("speakers") or {}).items()
                     if str(k) in ids and isinstance(v, str) and v.strip()} if isinstance(data.get("speakers"), dict) else {}
         unboxed = tuple(
-            (int(box[0]), int(box[1]), int(box[2]) + 1, int(box[3]) + 1)
-            for raw in (data.get("unboxed") or [])[:MAX_UNBOXED] if (box := scaled_box(raw, w, h)) is not None
+            box
+            for raw in (data.get("unboxed") or [])[:MAX_UNBOXED]
+            if (box := _safe_unboxed_box(raw, w, h)) is not None
         )
         return replace(
             result, font_choices=fonts, roles=roles, unboxed=unboxed, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
@@ -888,7 +906,9 @@ class VisionPageTranslator:
             "max_tokens": max_tokens,
             "stream": False,
         }
-        payload.update(self.provider.chat_completion_extras())
+        payload.update(self.provider.chat_completion_extras(self.model))
+        if is_deepseek_v41_model(self.model) and "reasoning_effort" not in payload:
+            payload["reasoning_effort"] = "low"
         response = None
         try:
             try:
