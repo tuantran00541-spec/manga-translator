@@ -218,7 +218,7 @@ def test_a_line_box_inside_a_block_box_is_not_a_second_text():
     cv2.putText(image, "HELLO", (330, 355), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
     cv2.putText(image, "THERE", (330, 455), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
     boxes = KiuyhaTextDetector("unused", session=_NestedSession()).text_boxes(image)
-    assert len(boxes) == 1 and boxes[0].x1 <= 300 and boxes[0].y2 >= 500
+    assert len(boxes) == 1 and boxes[0].x1 <= 330 and boxes[0].y1 <= 330 and boxes[0].y2 >= 455
 
 
 

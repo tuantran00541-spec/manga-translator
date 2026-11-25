@@ -68,12 +68,22 @@ MASKLESS_DARK_DROP = 25
 MASKLESS_SMALL_BOX_AREA = 15000
 MASKLESS_MIN_COVERAGE = 0.02
 ROTATED_MIN_SCORE = PAGE_CONFIDENCE
+ROTATED_AUX_MIN_SCORE = 0.50
+NATIVE_AUX_CONFIDENCE = 0.25
+NATIVE_AUX_OVERLAP = 0.45
+NATIVE_AUX_STRICT_CONF = 0.32
+ENHANCED_CTD_MIN_SCORE = 0.35
+ENHANCED_CTD_AUX_MIN_SCORE = 0.50
 RESCUE_MIN_SCORE = 0.10
 RESCUE_WORD_MAX_W = 80
 RESCUE_WORD_MAX_H = 35
 RESCUE_WORD_MIN_AREA = 100
 RESCUE_WORD_MIN_FILL = 0.35
+RESCUE_WORD_MIN_ASPECT = 2.0
+RESCUE_MIN_CONTRAST = 40.0
+RESCUE_UNSTRETCHED_CTD_MIN = 0.35
 RESCUE_WORD_PAD = 8
+TIGHT_BOX_PAD = 4
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
 SAME_LINE_X = knob("detect.same_line_x")
@@ -692,9 +702,13 @@ def _is_white_bubble_display(image: np.ndarray, box: tuple[int, int, int, int]) 
 
 def _restore_outline_glyphs(gray, letters, protected, labels, stats, candidates, core):
     """Accept small outlined glyphs when CTD, a text row and surrounding white paper agree."""
+    if not np.any(letters):
+        return
     heights = stats[np.unique(labels[letters]), cv2.CC_STAT_HEIGHT]
+    if heights.size == 0:
+        return
     cap = float(np.median(heights))
-    if cap < 8:
+    if not np.isfinite(cap) or cap < 8:
         return
     left, top, right, bottom = core
     pad = round(cap)
@@ -712,7 +726,11 @@ def _restore_outline_glyphs(gray, letters, protected, labels, stats, candidates,
         comp = labels[bounds] == cid
         values = gray[bounds]
         _, faint = cv2.connectedComponents(((values < 228) & ~letters[bounds]).astype(np.uint8))
-        outline = np.isin(faint, np.unique(faint[comp]))
+        faint_ids = np.unique(faint[comp])
+        faint_ids = faint_ids[faint_ids > 0]
+        if faint_ids.size == 0:
+            continue
+        outline = np.isin(faint, faint_ids)
         if outline[0].any() or outline[-1].any() or outline[:, 0].any() or outline[:, -1].any():
             continue
         paper = (cv2.dilate(outline.astype(np.uint8), collar) > 0) & ~outline & ~letters[bounds]
@@ -741,6 +759,11 @@ def _white_bubble_display_mask(
     if ch < 32 or cw < 32 or crop.ndim != 3:
         return None
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    # Require a predominantly bright outer page margin so large bubbles inside dark/flaming
+    # panels fall back to CTD letter_mask instead of losing edge words to dark panel bleed.
+    border_px = np.concatenate([gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]])
+    if float((border_px >= 195).mean()) < 0.65:
+        return None
     prob = probability(crop)
 
     dark = (gray < 140).astype(np.uint8)
@@ -899,15 +922,113 @@ def _mask_coverage(shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarray
     return cov
 
 
-def _word_blobs(binary: np.ndarray) -> list[tuple[tuple[int, int, int, int], np.ndarray]]:
+def _word_blobs(
+    binary: np.ndarray,
+    *,
+    max_h: int = 64,
+    max_w: int = 280,
+) -> list[tuple[tuple[int, int, int, int], np.ndarray]]:
     dil = cv2.dilate(binary.astype(np.uint8), np.ones((5, 17), np.uint8))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(dil, 8)
     out = []
     for i in range(1, n):
         x, y, w, h, area = (int(v) for v in stats[i])
-        if 10 <= h <= 45 and 15 <= w <= 220 and area >= 60:
+        if 10 <= h <= max_h and 15 <= w <= max_w and area >= 60:
             out.append(((x, y, x + w, y + h), binary[y:y + h, x:x + w] & (labels[y:y + h, x:x + w] == i)))
     return out
+
+
+def _has_strong_aux_letter_evidence(letters: np.ndarray | None, mask_size: int) -> bool:
+    """Require genuine multi-glyph or dense CTD letter seeds on low-confidence aux detections."""
+    if letters is None or not np.any(letters) or mask_size <= 0:
+        return False
+    letter_px = int(np.count_nonzero(letters))
+    if letter_px < 120 or letter_px / float(mask_size) < 0.10:
+        return False
+    _, _, stats, _ = cv2.connectedComponentsWithStats(letters.astype(np.uint8), connectivity=8)
+    valid = [row for row in stats[1:] if int(row[cv2.CC_STAT_AREA]) >= 6]
+    if len(valid) >= 3:
+        return True
+    if letter_px >= 2500:
+        return True
+    return False
+
+
+def _enhanced_letter_mask(
+    image: np.ndarray,
+    core: tuple[int, int, int, int],
+) -> tuple[tuple[int, int, int, int], np.ndarray, np.ndarray] | None:
+    """Retry CTD letter segmentation on locally contrast-enhanced or inverted crops."""
+    h, w = image.shape[:2]
+    x1, y1, x2, y2 = core
+    pad = max(64, int(0.45 * max(x2 - x1, y2 - y1)))
+    px1, py1 = max(0, x1 - pad), max(0, y1 - pad)
+    px2, py2 = min(w, x2 + pad), min(h, y2 + pad)
+    crop = image[py1:py2, px1:px2]
+    if crop.size == 0 or min(crop.shape[:2]) < 8 or crop.ndim != 3:
+        return None
+    local_core = (x1 - px1, y1 - py1, x2 - px1, y2 - py1)
+    variants = [_stretch(crop)]
+    gray = cv2.cvtColor(crop[local_core[1]:local_core[3], local_core[0]:local_core[2]], cv2.COLOR_BGR2GRAY)
+    if gray.size and float(np.median(gray)) < 115.0:
+        variants.append(255 - crop)
+    for variant in variants:
+        (lx1, ly1, lx2, ly2), mask, letters = letter_mask(variant, local_core, with_letters=True)
+        if not mask.size or fills_rectangle(mask):
+            continue
+        if np.count_nonzero(mask) / mask.size < MASKLESS_MIN_COVERAGE:
+            continue
+        if letters is None or np.count_nonzero(letters) < 16:
+            continue
+        rect = (px1 + lx1, py1 + ly1, px1 + lx2, py1 + ly2)
+        if _has_letter_piece(image, rect) or np.count_nonzero(letters) >= 48:
+            return rect, mask, letters
+    return None
+
+
+def _tighten_box(box: BubbleBox, *, pad: int = TIGHT_BOX_PAD) -> BubbleBox:
+    """Trim empty zero-padding around a box tightly to its non-zero mask/letters pixels."""
+    from dataclasses import replace
+
+    h = box.y2 - box.y1
+    w = box.x2 - box.x1
+    if h <= 0 or w <= 0:
+        return box
+    support = None
+    if box.mask is not None and box.mask.shape == (h, w) and np.any(box.mask > 0):
+        support = box.mask > 0
+    elif box.letters is not None and np.asarray(box.letters).shape == (h, w) and np.any(box.letters):
+        support = np.asarray(box.letters, dtype=bool)
+    if support is None:
+        return box
+    ys, xs = np.nonzero(support)
+    r0 = max(0, int(ys.min()) - pad)
+    r1 = min(h, int(ys.max()) + 1 + pad)
+    c0 = max(0, int(xs.min()) - pad)
+    c1 = min(w, int(xs.max()) + 1 + pad)
+    if r0 == 0 and r1 == h and c0 == 0 and c1 == w:
+        return box
+    rect = (box.x1 + c0, box.y1 + r0, box.x1 + c1, box.y1 + r1)
+    sliced_mask = (
+        np.ascontiguousarray(box.mask[r0:r1, c0:c1])
+        if box.mask is not None and box.mask.shape == (h, w)
+        else box.mask
+    )
+    sliced_letters = (
+        np.ascontiguousarray(np.asarray(box.letters)[r0:r1, c0:c1])
+        if box.letters is not None and np.asarray(box.letters).shape == (h, w)
+        else box.letters
+    )
+    return replace(
+        box,
+        x1=rect[0],
+        y1=rect[1],
+        x2=rect[2],
+        y2=rect[3],
+        mask=sliced_mask,
+        letters=sliced_letters,
+        core=_clip_core(box.core, rect),
+    )
 
 
 def _welded_words(image: np.ndarray, box: tuple[int, int, int, int]) -> list[tuple[tuple[int, int, int, int], np.ndarray]]:
@@ -920,8 +1041,14 @@ def _welded_words(image: np.ndarray, box: tuple[int, int, int, int]) -> list[tup
     out = []
     for i in range(1, len(stats)):
         x, y, w, h, area = (int(v) for v in stats[i])
-        if (RESCUE_WORD_MAX_W >= w >= 20 and RESCUE_WORD_MAX_H >= h >= 12
-                and area >= RESCUE_WORD_MIN_AREA and area / max(1, w * h) >= RESCUE_WORD_MIN_FILL):
+        fill = area / max(1, w * h)
+        if (
+            RESCUE_WORD_MAX_W >= w >= 20
+            and RESCUE_WORD_MAX_H >= h >= 12
+            and w >= RESCUE_WORD_MIN_ASPECT * h
+            and area >= RESCUE_WORD_MIN_AREA
+            and fill >= RESCUE_WORD_MIN_FILL
+        ):
             out.append(((x1 + x, y1 + y, x1 + x + w, y1 + y + h), labels[y:y + h, x:x + w] == i))
     return out
 
@@ -1159,6 +1286,140 @@ class KiuyhaTextDetector:
                 medium_out.add((bx1, by1, bx2, by2))
         return kept
 
+    def _native_aux_boxes(
+        self,
+        image: np.ndarray,
+        existing: list[tuple[int, int, int, int, float]],
+        medium_out: set[tuple[int, int, int, int]] | None = None,
+    ) -> list[tuple[int, int, int, int, float]]:
+        """Tile the slice at native 1.0x resolution with the aux detector to catch small/stylized text."""
+        if self._aux_session is None or self._aux_fixed is None:
+            return []
+        h, w = image.shape[:2]
+        if min(h, w) < 32:
+            return []
+        size_h, size_w = self._aux_fixed
+        tile_w = min(w, size_w)
+        tile_h = min(h, size_h)
+        step_x = max(1, int(tile_w * 0.80))
+        step_y = max(1, int(tile_h * 0.80))
+        xs = [0] if w <= tile_w else list(range(0, w - tile_w, step_x)) + [w - tile_w]
+        ys = [0] if h <= tile_h else list(range(0, h - tile_h, step_y)) + [h - tile_h]
+        tiles = [(x0, y0, tile_w, tile_h) for y0 in ys for x0 in xs]
+
+        raw_found: list[tuple[int, int, int, int, float]] = []
+        # Pack multiple narrow tiles side-by-side when 2+ tiles fit inside one canvas width.
+        per_canvas = max(1, (size_w + COLUMN_GAP) // (tile_w + COLUMN_GAP)) if tile_w * 2 + COLUMN_GAP <= size_w else 1
+        for first in range(0, len(tiles), per_canvas):
+            batch = tiles[first:first + per_canvas]
+            if len(batch) == 1:
+                x0, y0, tw, th = batch[0]
+                crop = image[y0:y0 + th, x0:x0 + tw]
+                for bx1, by1, bx2, by2, score in self._run_raw_boxes(
+                    self._aux_session, self._aux_input_name, self._aux_fixed, crop, NATIVE_AUX_CONFIDENCE
+                ):
+                    if bx2 - bx1 > 4 and by2 - by1 > 4:
+                        raw_found.append((x0 + bx1, y0 + by1, x0 + bx2, y0 + by2, score))
+            else:
+                canvas = np.full((size_h, size_w, 3), LETTERBOX_VALUE, np.uint8)
+                slots = []
+                cx = 0
+                for x0, y0, tw, th in batch:
+                    canvas[:th, cx:cx + tw] = image[y0:y0 + th, x0:x0 + tw]
+                    slots.append((cx, x0, y0, tw, th))
+                    cx += tw + COLUMN_GAP
+                for rx1, ry1, rx2, ry2, score in self._run_raw_boxes(
+                    self._aux_session, self._aux_input_name, self._aux_fixed, canvas, NATIVE_AUX_CONFIDENCE
+                ):
+                    mid_x = (rx1 + rx2) / 2.0
+                    slot = next((s for s in slots if s[0] <= mid_x < s[0] + s[3]), None)
+                    if slot is None:
+                        continue
+                    sx, x0, y0, tw, th = slot
+                    bx1 = x0 + max(0, rx1 - sx)
+                    bx2 = x0 + min(tw, rx2 - sx)
+                    by1 = y0 + max(0, ry1)
+                    by2 = y0 + min(th, ry2)
+                    if bx2 - bx1 > 4 and by2 - by1 > 4:
+                        raw_found.append((bx1, by1, bx2, by2, score))
+
+        kept: list[tuple[int, int, int, int, float]] = []
+        for bx1, by1, bx2, by2, score in _dedupe_raw_boxes(raw_found):
+            area = max(1, (bx2 - bx1) * (by2 - by1))
+            if any(
+                max(0, min(bx2, ex[2]) - max(bx1, ex[0])) * max(0, min(by2, ex[3]) - max(by1, ex[1]))
+                >= NATIVE_AUX_OVERLAP * area
+                for ex in existing
+            ):
+                continue
+            kept.append((bx1, by1, bx2, by2, score))
+            if medium_out is not None:
+                medium_out.add((bx1, by1, bx2, by2))
+        return kept
+
+    def _packed_rotated_aux_boxes(
+        self,
+        image: np.ndarray,
+        existing: list[tuple[int, int, int, int, float]],
+        medium_out: set[tuple[int, int, int, int]] | None = None,
+    ) -> list[tuple[int, int, int, int, float]]:
+        """Check 90-degree CW & CCW orientations in a single packed aux canvas even when upright boxes exist."""
+        if self._aux_session is None or self._aux_fixed is None:
+            return []
+        h, w = image.shape[:2]
+        if min(h, w) < 64 or max(h, w) > 5000:
+            return []
+        size_h, size_w = self._aux_fixed
+        slot_h = (size_h - COLUMN_GAP) // 2
+        rot_w, rot_h = h, w
+        scale = min(1.0, size_w / rot_w, slot_h / rot_h)
+        rw, rh = max(1, int(round(rot_w * scale))), max(1, int(round(rot_h * scale)))
+        if min(rw, rh) < 32:
+            return []
+        canvas = np.full((size_h, size_w, 3), LETTERBOX_VALUE, np.uint8)
+        ox = (size_w - rw) // 2
+        slots = []
+        for idx, (code, clockwise) in enumerate(((cv2.ROTATE_90_CLOCKWISE, True), (cv2.ROTATE_90_COUNTERCLOCKWISE, False))):
+            turned = cv2.rotate(image, code)
+            oy = idx * (rh + COLUMN_GAP)
+            canvas[oy:oy + rh, ox:ox + rw] = cv2.resize(turned, (rw, rh), interpolation=cv2.INTER_AREA)
+            slots.append((ox, oy, rw, rh, scale, clockwise))
+
+        raw = self._run_raw_boxes(
+            self._aux_session, self._aux_input_name, self._aux_fixed, canvas, ROTATED_AUX_MIN_SCORE
+        )
+        kept: list[tuple[int, int, int, int, float]] = []
+        for cx1, cy1, cx2, cy2, score in raw:
+            mid_y = (cy1 + cy2) / 2.0
+            slot = next((s for s in slots if s[1] <= mid_y < s[1] + s[3]), None)
+            if slot is None:
+                continue
+            sx, sy, sw, sh, sc, clockwise = slot
+            tx1 = int(max(0, cx1 - sx) / sc)
+            tx2 = int(min(rot_w, math.ceil(min(sw, cx2 - sx) / sc)))
+            ty1 = int(max(0, cy1 - sy) / sc)
+            ty2 = int(min(rot_h, math.ceil(min(sh, cy2 - sy) / sc)))
+            if tx2 <= tx1 or ty2 <= ty1:
+                continue
+            if clockwise:
+                bx1, by1, bx2, by2 = ty1, h - 1 - tx2, ty2, h - 1 - tx1
+            else:
+                bx1, by1, bx2, by2 = w - 1 - ty2, tx1, w - 1 - ty1, tx2
+            bx1, by1, bx2, by2 = max(0, bx1), max(0, by1), min(w, bx2), min(h, by2)
+            if bx2 - bx1 <= 8 or by2 - by1 <= 8:
+                continue
+            area = max(1, (bx2 - bx1) * (by2 - by1))
+            if any(
+                max(0, min(bx2, ex[2]) - max(bx1, ex[0])) * max(0, min(by2, ex[3]) - max(by1, ex[1]))
+                >= 0.35 * area
+                for ex in existing
+            ):
+                continue
+            kept.append((bx1, by1, bx2, by2, score))
+            if medium_out is not None:
+                medium_out.add((bx1, by1, bx2, by2))
+        return kept
+
     def _raw_slice_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         low: list[tuple[int, int, int, int, float]] = []
         medium_aux: set[tuple[int, int, int, int]] = set()
@@ -1166,6 +1427,8 @@ class KiuyhaTextDetector:
         if self.fixed is not None:
             found = found + self.page_boxes(image, low_out=low)
         found = found + self._overview_boxes(image, found, medium_out=medium_aux)
+        found = found + self._native_aux_boxes(image, found, medium_out=medium_aux)
+        found = found + self._packed_rotated_aux_boxes(image, found, medium_out=medium_aux)
         if not found:
             found = self._rotated_boxes(image)
         self._low_cache.value = low
@@ -1201,6 +1464,26 @@ class KiuyhaTextDetector:
         low_out: list[tuple[int, int, int, int, float]] | None = None,
     ) -> list[tuple[int, int, int, int, float]]:
         h, w = image.shape[:2]
+        if self.fixed is not None and self.fixed[0] == self.fixed[1]:
+            size = self.fixed[0]
+            base_scale = min(1.0, (size - COLUMN_GAP) / max(1.0, 2.0 * w))
+            max_chunk_h = max(size * 2, int(2.0 * size / max(base_scale, 0.25)) - HALVES_MIN_OVERLAP)
+            if h > max_chunk_h:
+                step = max(1, max_chunk_h - HALVES_MIN_OVERLAP)
+                starts = list(range(0, h - max_chunk_h, step)) + [h - max_chunk_h]
+                found: list[tuple[int, int, int, int, float]] = []
+                for y_off in starts:
+                    chunk_low: list[tuple[int, int, int, int, float]] | None = [] if low_out is not None else None
+                    for bx1, by1, bx2, by2, score in self._coarse_boxes(
+                        image[y_off:y_off + max_chunk_h], low_out=chunk_low
+                    ):
+                        found.append((bx1, by1 + y_off, bx2, by2 + y_off, score))
+                    if low_out is not None and chunk_low:
+                        low_out.extend(
+                            (bx1, by1 + y_off, bx2, by2 + y_off, score)
+                            for bx1, by1, bx2, by2, score in chunk_low
+                        )
+                return found
         plan = self.halves_plan(h, w)
         min_conf = min(self.conf_threshold, RESCUE_MIN_SCORE) if low_out is not None else None
         if plan is None:
@@ -1340,26 +1623,58 @@ class KiuyhaTextDetector:
             )
         found: list[tuple[BubbleBox, bool]] = []
 
+        kept_rects = [(b.x1, b.y1, b.x2, b.y2) for b in kept]
+
         def consider(rect, pixels, score, emit=None, welded=False):
             x1, y1, x2, y2 = rect
-            if x2 - x1 < 15 or y2 - y1 < 10 or not pixels.any():
+            rw, rh = x2 - x1, y2 - y1
+            if rw < 15 or rh < 10 or not pixels.any():
+                return
+            rect_area = max(1, rw * rh)
+            if any(
+                max(0, min(x2, kx2) - max(x1, kx1)) * max(0, min(y2, ky2) - max(y1, ky1)) >= 0.60 * rect_area
+                for kx1, ky1, kx2, ky2 in kept_rects
+            ):
                 return
             if np.count_nonzero(pixels & dilated[y1:y2, x1:x2]) >= 0.5 * np.count_nonzero(pixels):
                 return
+            cx1, cy1 = max(0, x1 - 8), max(0, y1 - 8)
+            cx2, cy2 = min(w, x2 + 8), min(h, y2 + 8)
+            raw_crop = image[cy1:cy2, cx1:cx2]
+            raw_gray = cv2.cvtColor(raw_crop, cv2.COLOR_BGR2GRAY) if raw_crop.ndim == 3 else raw_crop
+            if raw_gray.size and float(np.percentile(raw_gray, 95) - np.percentile(raw_gray, 5)) < RESCUE_MIN_CONTRAST:
+                return
+            if not welded:
+                _, _, pstats, _ = cv2.connectedComponentsWithStats(pixels.astype(np.uint8), connectivity=8)
+                n_parts = int(np.count_nonzero(pstats[1:, cv2.CC_STAT_AREA] >= 6))
+                if n_parts < 2 and not (rw >= RESCUE_WORD_MIN_ASPECT * rh and score >= self.conf_threshold):
+                    return
+                if score < self.conf_threshold:
+                    ux1, uy1 = max(0, x1 - 8), max(0, y1 - 8)
+                    ux2, uy2 = min(w, x2 + 8), min(h, y2 + 8)
+                    if float(probability(image[uy1:uy2, ux1:ux2]).max()) < RESCUE_UNSTRETCHED_CTD_MIN:
+                        return
             ex1, ey1, ex2, ey2 = emit or rect
             letters = np.zeros((ey2 - ey1, ex2 - ex1), bool)
             letters[y1 - ey1:y2 - ey1, x1 - ex1:x2 - ex1] = pixels
             mask = expand_local_ink(letters)
             if not fills_rectangle(mask):
-                found.append((_text_box(
+                box = _tighten_box(_text_box(
                     ex1, ey1, ex2, ey2, score, mask, self.source_model, letters, mask_source=LOCAL_INK_MASK,
-                ), welded))
+                ))
+                found.append((box, welded))
 
         for x1, y1, x2, y2, score in sorted(low, key=lambda b: (b[1], b[0])):
             if float(dilated[y1:y2, x1:x2].mean()) >= 0.85:
                 continue
             dark_evidence = _dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
-            if score < self.conf_threshold and not dark_evidence:
+            bright_evidence = False
+            if not dark_evidence and score >= 0.18:
+                crop_gray = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image[y1:y2, x1:x2]
+                if crop_gray.size and float(np.median(crop_gray)) < 110.0:
+                    bright_evidence = _bright_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
+            piece_evidence = dark_evidence or bright_evidence
+            if score < self.conf_threshold and not piece_evidence:
                 continue
             pad = max(64, int(0.5 * max(x2 - x1, y2 - y1)))
             px1, py1 = max(0, x1 - pad), max(0, y1 - pad)
@@ -1373,7 +1688,9 @@ class KiuyhaTextDetector:
             sx1, sy1, sx2, sy2 = px1 + lsx1, py1 + lsy1, px1 + lsx2, py1 + lsy2
             if letters is not None and letters.any():
                 uncov = letters & ~cov[sy1:sy2, sx1:sx2]
-                for (wx1, wy1, wx2, wy2), pixels in _word_blobs(uncov):
+                max_h = 120 if score >= self.conf_threshold else 64
+                max_w = 480 if score >= self.conf_threshold else 280
+                for (wx1, wy1, wx2, wy2), pixels in _word_blobs(uncov, max_h=max_h, max_w=max_w):
                     consider((sx1 + wx1, sy1 + wy1, sx1 + wx2, sy1 + wy2), pixels, score)
             if not dark_evidence:
                 continue
@@ -1392,8 +1709,15 @@ class KiuyhaTextDetector:
                     break
             else:
                 merged.append((box, welded))
-        return [box for box, welded in merged if not fills_rectangle(box.mask)
-                and _has_letter_piece(image, (box.x1, box.y1, box.x2, box.y2), allow_wide=welded)]
+        return [
+            box for box, welded in merged
+            if not fills_rectangle(box.mask)
+            and _has_letter_piece(
+                image,
+                (max(0, box.x1 - 8), max(0, box.y1 - 8), min(w, box.x2 + 8), min(h, box.y2 + 8)),
+                allow_wide=welded,
+            )
+        ]
 
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         self._low_cache.value = None
@@ -1404,6 +1728,11 @@ class KiuyhaTextDetector:
         boxes = []
         cores = []
         proposals = []
+        def add_box(box: BubbleBox) -> None:
+            tight = _tighten_box(box)
+            boxes.append(tight)
+            cores.append(tight.core)
+
         for x1, y1, x2, y2, score in _dedupe_raw_boxes(raw_boxes):
             core = (x1, y1, x2, y2)
             is_medium_aux = core in medium_aux
@@ -1416,11 +1745,10 @@ class KiuyhaTextDetector:
                 protected = _white_bubble_display_mask(image, core)
                 if protected is not None:
                     (px1, py1, px2, py2), pmask, pletters = protected
-                    boxes.append(_text_box(
+                    add_box(_text_box(
                         px1, py1, px2, py2, score, pmask, self.source_model, pletters,
                         core=core, mask_source="border_protected_display",
                     ))
-                    cores.append(core)
                     continue
             (x1, y1, x2, y2), mask, letters = letter_mask(image, core, with_letters=True)
             if not mask.size:
@@ -1428,9 +1756,21 @@ class KiuyhaTextDetector:
             coverage = np.count_nonzero(mask) / mask.size
             dense = fills_rectangle(mask)
             if coverage >= MASKLESS_MIN_COVERAGE and not dense:
-                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
-                cores.append(core)
+                if is_medium_aux and score < NATIVE_AUX_STRICT_CONF and not _has_strong_aux_letter_evidence(letters, mask.size):
+                    continue
+                add_box(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
                 continue
+            if (
+                (not is_medium_aux and score >= ENHANCED_CTD_MIN_SCORE)
+                or (is_medium_aux and score >= ENHANCED_CTD_AUX_MIN_SCORE)
+            ):
+                enhanced = _enhanced_letter_mask(image, core)
+                if enhanced is not None:
+                    (ex1, ey1, ex2, ey2), emask, eletters = enhanced
+                    add_box(_text_box(
+                        ex1, ey1, ex2, ey2, score, emask.astype(np.uint8) * 255, self.source_model, eletters, core=core,
+                    ))
+                    continue
             if is_medium_aux or score < MASKLESS_MIN_SCORE:
                 continue
 
@@ -1439,10 +1779,9 @@ class KiuyhaTextDetector:
                 letters = flat_background_ink(crop)
             local_mask = expand_local_ink(letters) if letters is not None else None
             if local_mask is not None and not fills_rectangle(local_mask):
-                boxes.append(_text_box(
+                add_box(_text_box(
                     x1, y1, x2, y2, score, local_mask, self.source_model, letters, core=core, mask_source=LOCAL_INK_MASK,
                 ))
-                cores.append(core)
                 continue
 
             rect = (x1, y1, x2, y2)
@@ -1454,23 +1793,26 @@ class KiuyhaTextDetector:
                 continue
             luminous = None if small else _luminous_glow_mask(image, rect)
             if luminous is not None and not fills_rectangle(luminous):
-                boxes.append(_text_box(x1, y1, x2, y2, score, luminous, self.source_model, core=core))
-                cores.append(core)
+                add_box(_text_box(x1, y1, x2, y2, score, luminous, self.source_model, core=core))
                 continue
             artwork = None if small else chromatic_stroke_mask(crop)
             if artwork is not None:
                 artwork_mask, letters = artwork
-                boxes.append(_text_box(
+                add_box(_text_box(
                     x1, y1, x2, y2, score, artwork_mask, self.source_model, letters,
                     core=core, mask_source=CONTRAST_ARTWORK_MASK,
                 ))
-                cores.append(core)
                 continue
             proposals.append(BubbleBox(
                 *core, score, source_model=self.source_model, class_name="text",
                 source_role="text_proposal", needs_review=True, deferred_reason="missing_glyph_mask",
             ))
-        kept = [part for box in _join_grown(boxes, cores) for piece in _split_blocks(box) for part in _split_sideways(piece)]
+        kept = [
+            _tighten_box(part)
+            for box in _join_grown(boxes, cores)
+            for piece in _split_blocks(box)
+            for part in _split_sideways(piece)
+        ]
         final = kept + self._rescue_boxes(image, kept)
         _attach_bubble_masks(image, final)
         return final + apply_final_nms(proposals)
