@@ -74,6 +74,21 @@ function renderEditorPanel(pageIndex) {
 
   const textBody = buildPanelSection(sections, "Nội dung chữ", true);
   textBody.append(ocrLabel, trLabel);
+  const layoutIssueMessages = {
+    balloon_overset: "Bản dịch dài hơn phần lòng ô có thể dàn ở cỡ đọc được.",
+    placement_unverified: "Chưa xác nhận được vị trí chữ trên ảnh gốc. Chỉnh vùng chữ trên ảnh để đặt lại vị trí.",
+    placement_ambiguous: "Nhiều bản dịch cùng trỏ vào vùng chữ này. Kiểm tra lại các vùng bị trùng.",
+    placement_outside_bounds: "Chữ vượt vùng đã xác nhận. Chỉnh cỡ chữ hoặc vùng chữ.",
+    placement_overset: "Bản dịch quá dài so với vùng chữ gốc. Rút gọn lời hoặc chỉnh vùng chữ.",
+    skipped_collision: "Vùng chữ chồng với vùng khác. Chỉnh vị trí hoặc cỡ chữ.",
+  };
+  const layoutIssue = page?.rendered && layoutIssueMessages[page?.render_layout_issue_types?.[obj.id]];
+  if (layoutIssue) {
+    const hint = document.createElement("small");
+    hint.className = "editor-page-status";
+    hint.textContent = layoutIssue;
+    textBody.appendChild(hint);
+  }
 
   const typographyBody = buildPanelSection(sections, "Kiểu chữ", true);
   window.stylePresets?.buildSection(typographyBody, obj, pageIndex);
@@ -178,8 +193,8 @@ function syncStyleDataset(panel, style) {
 
 
 function shownFontId(obj) {
-  if (obj.font_selection_mode !== "user" && obj.font_ai_id) return obj.font_ai_id;
   const font = obj.style?.font;
+  if (obj.font_selection_mode === "ai" && obj.font_ai_id) return obj.font_ai_id;
   return font && font !== "auto" ? font : "default";
 }
 window.shownFontId = shownFontId;

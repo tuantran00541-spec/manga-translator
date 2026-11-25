@@ -5,7 +5,12 @@ import hashlib
 import json
 from pathlib import Path
 
-RENDER_IDENTITY_VERSION = "phase45-v6"
+from app.region_policy import page_preserve_regions
+from app.render.size_bands import chapter_size_bands, uses_dialogue_size
+from app.text_objects import source_box_ids
+
+
+RENDER_IDENTITY_VERSION = "phase45-v10"
 
 
 def file_revision(path: Path) -> tuple[int, int, int]:
@@ -21,6 +26,11 @@ def _normalized_box(box: dict) -> dict:
         "x2": int(box.get("x2", 0)),
         "y2": int(box.get("y2", 0)),
         "removed": bool(box.get("removed", False)),
+        "origin": box.get("origin"),
+        "manual": bool(box.get("manual")),
+        "geometry_overridden": bool(box.get("geometry_overridden")),
+        "ocr_eligible": box.get("ocr_eligible"),
+        "letters_mask": copy.deepcopy(box.get("letters_mask")),
         "bubble_mask": copy.deepcopy(box.get("bubble_mask"))
         if isinstance(box.get("bubble_mask"), dict) else None,
     }
@@ -50,8 +60,12 @@ def _normalized_text_object(obj: dict) -> dict:
         "translation": str(obj.get("translation") or ""),
         "auto_translation": obj.get("auto_translation"),
         "auto_generated": bool(obj.get("auto_generated")),
+        "verified_balloon": bool(obj.get("verified_balloon")),
         "origin": obj.get("origin"),
+        "manual": bool(obj.get("manual")),
+        "geometry_overridden": bool(obj.get("geometry_overridden")),
         "auto_geometry": _normalized_optional_region(obj.get("auto_geometry")),
+        "source_boxes": sorted(source_box_ids(obj)),
         "seam_owner": obj.get("seam_owner"),
         "style": obj.get("style") or {},
         "source_missing": bool(obj.get("source_missing", False)),
@@ -69,6 +83,7 @@ def _normalized_text_object(obj: dict) -> dict:
         "enlarge": bool(obj.get("enlarge")),
         "lettering_color": obj.get("lettering_color"),
         "ocr_font_size": obj.get("ocr_font_size"),
+        "ocr_orientation": obj.get("ocr_orientation"),
         "ocr_text_color": obj.get("ocr_text_color"),
         "ocr_color_profile": obj.get("ocr_color_profile"),
         "ocr_text_region": _normalized_optional_region(obj.get("ocr_text_region")),
@@ -85,7 +100,7 @@ def _page_drafts(manifest: dict, page_index: int) -> dict:
     }
 
 
-def render_input_signature(manifest: dict, page_index: int) -> str:
+def render_input_signature(manifest: dict, page_index: int, *, size_bands=None) -> str:
     pages = manifest.get("pages", [])
     if page_index < 0 or page_index >= len(pages):
         raise IndexError(page_index)
@@ -99,9 +114,20 @@ def render_input_signature(manifest: dict, page_index: int) -> str:
 
     text_objects = [obj for obj in (page.get("text_objects") or []) if isinstance(obj, dict)]
     if text_objects:
+        roles = {str(obj.get("typography_role") or "").lower() for obj in text_objects
+                 if obj.get("source_cap_px") is None}
+        if any(uses_dialogue_size(obj) for obj in text_objects):
+            roles.add("dialogue")
+        roles.discard("")
+        if roles and size_bands is None:
+            size_bands = chapter_size_bands(pages)
+        referenced_sources = set().union(*(source_box_ids(obj) for obj in text_objects))
         render_content = {
             "mode": "text_objects",
             "objects": [_normalized_text_object(obj) for obj in text_objects],
+            "sources": [_normalized_box(box) for box in (page.get("boxes") or [])
+                        if isinstance(box, dict) and str(box.get("id")) in referenced_sources],
+            "size_bands": {role: band for role, band in (size_bands or {}).items() if role in roles},
         }
     else:
         render_content = {
@@ -136,7 +162,7 @@ def render_input_signature(manifest: dict, page_index: int) -> str:
         if isinstance(core, dict) else None,
         "preserve_regions": [
             {k: int(region.get(k, 0)) for k in ("x1", "y1", "x2", "y2")}
-            for region in (page.get("preserve_regions") or []) if isinstance(region, dict)
+            for region in page_preserve_regions(page) if isinstance(region, dict)
         ],
         "content": render_content,
     }

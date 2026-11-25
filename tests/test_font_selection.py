@@ -86,3 +86,29 @@ def test_unknown_user_font_falls_back_to_default():
 
     assert (font_id, mode) == ("default", "default")
     assert metadata["reason"] == "user_selection_rejected"
+
+
+def test_a_wide_framed_title_uses_source_proportions_when_font_is_auto():
+    import base64
+
+    import cv2
+    import numpy as np
+
+    from app.render.font_selection import resolve_object_font
+
+    mask = np.zeros((48, 160), np.uint8)
+    for start in range(8, 143, 23):
+        mask[11:32, start:start + 17] = 255
+    _, png = cv2.imencode(".png", mask)
+    obj = {
+        "style": {"font": "auto"},
+        "font_selection_mode": "auto",
+        "verified_balloon": True,
+        "typography_role": "title",
+        "container": "box",
+        "source_cap_px": 21,
+        "letters_mask": base64.b64encode(png).decode(),
+    }
+    font, mode, metadata = resolve_object_font(obj)
+    assert (font, mode) == ("dialogue.be-vietnam-pro", "auto")
+    assert metadata["reason"] == "source_proportions"

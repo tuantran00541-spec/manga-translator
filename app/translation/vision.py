@@ -715,7 +715,9 @@ class VisionPageTranslator:
             raise ValueError("Original and cleaned slices have different dimensions")
         h, w = original.shape[:2]
         real = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
-        objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"],
+        objects = [{"id": alias, "source_text": item["text"],
+                    "bbox_xyxy": item.get("source_region") or item["region"],
+                    **({"verified_balloon": True} if item.get("balloon_mask") else {}),
                     **({"max_chars": item["max_chars"]} if item.get("max_chars") else {})}
                    for alias, item in zip(real, items)]
         source_name = (
@@ -743,6 +745,10 @@ class VisionPageTranslator:
             + ("\nlettered_elsewhere boxes (grey X in the image) hold text the neighbouring slice translates: "
                "never translate it, and never fold its words or meaning into any object's translation."
                if elsewhere else "")
+            + ("\nA verified_balloon item covers one complete lettering block. Read all the marked fragments "
+               "as one utterance, keep neighbouring balloons separate, and return the whole translation under its ID. "
+               "Use newlines for intentional paragraphs only. The app fits the lines inside the balloon."
+               if any(item.get("verified_balloon") for item in objects) else "")
             + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
             + "Write dialogue in sentence case even when the source is all-caps, EXCEPT keep uppercase for acronyms (HP, MP, SSS) or emphatic skill/title/shout banners when appropriate."
         )

@@ -230,7 +230,7 @@ def edge_recrop_bounds_sequence(
 
 
 def active_overlap_signatures(
-    page: dict, region: dict
+    page: dict, region: dict, source_ids: tuple[str, ...] = (),
 ) -> list[tuple[str, str]]:
     matches: list[tuple[int, int, str, str]] = []
     preserve_regions = page_preserve_regions(page)
@@ -242,7 +242,9 @@ def active_overlap_signatures(
         if geometry_center_in_regions(box, preserve_regions):
             continue
         box_id = box.get("id")
-        if not box_id or not _region_overlaps_box(region, box):
+        if not box_id:
+            continue
+        if (source_ids and str(box_id) not in source_ids) or (not source_ids and not _region_overlaps_box(region, box)):
             continue
         matches.append(
             (
@@ -252,5 +254,8 @@ def active_overlap_signatures(
                 ocr_crop_signature(box),
             )
         )
+    if source_ids:
+        by_id = {box_id: geometry for _, _, box_id, geometry in matches}
+        return [(box_id, by_id[box_id]) for box_id in source_ids if box_id in by_id]
     matches.sort(key=lambda item: (item[0], item[1], item[2]))
     return [(box_id, geometry) for _, _, box_id, geometry in matches]

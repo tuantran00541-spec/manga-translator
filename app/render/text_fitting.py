@@ -30,6 +30,7 @@ ENLARGE_GROW_RATIO = 0.25
 ENLARGED_MIN_FONT_SIZE = 22
 SOURCE_FLOOR_RATIO = 0.6
 REFERENCE_PAGE_WIDTH = 800
+DEFAULT_BODY_FONT_SIZE = 34
 SOURCE_MATCH_MAX_FONT_SIZE = 200
 BOX_RULE_EXPAND = 64
 
@@ -180,42 +181,13 @@ def _derived_mask(image, box, letter_box):
     return mask
 
 
-def _recover_bubble_mask(image, box, letter_box):
-    anchor = letter_box or box
-    ax1, ay1, ax2, ay2 = anchor
-    height = ay2 - ay1
-    if height <= 0 or ax2 <= ax1:
-        return None
-    margin = max(8, min(36, height // 2))
-
-    def probe(region):
-        mask = _derived_mask(image, region, region)
-        if mask["kind"] != "bubble":
-            return None
-        _, my1, _, my2 = mask["bbox"]
-        left, _, right, _ = mask_inscribed_rect(mask)
-        overlap = min(ax2, right) - max(ax1, left)
-        if (overlap < 0.5 * (ax2 - ax1)
-                or max(ay1 - my2, my1 - ay2) > margin):
-            return None
-        return mask
-
-    mask = probe(anchor)
-    if mask is not None:
-        return mask
-    shift = max(16, min(96, height))
-    above = probe((ax1, ay1 - shift, ax2, ay2 - shift))
-    below = probe((ax1, ay1 + shift, ax2, ay2 + shift))
-    if above is not None and below is not None and above["bbox"] != below["bbox"]:
-        return None
-    return above or below
-
-
 def _resolve_mask(
-    image, box, container, letter_box, bubble_mask, letters=None, letters_box=None,
+    image, box, container, letter_box, bubble_mask, letters=None, letters_box=None, *, verified_balloon=False,
 ):
     mask = bubble_mask if isinstance(bubble_mask, dict) else None
     if mask is not None:
+        if verified_balloon and mask.get("kind") == "bubble":
+            return mask, "verified"
         return _trim_mask_to_letters(mask, box, letter_box, letters, letters_box), "object"
     if image is None or str(container or "").lower() not in ("bubble", "spiky"):
         return None, "none"

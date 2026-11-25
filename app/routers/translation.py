@@ -22,6 +22,8 @@ from app.manifest_utils import (
     save_manifest_raw,
     urlify_manifest,
 )
+from app.detector.bubble_mask import mask_inscribed_rect
+from app.render.balloon_layout import box_bounds
 from app.render.font_catalog import FontNotFoundError, resolve_font_id
 from app.render.page_renderer import letter_box
 from app.secret_store import (
@@ -32,7 +34,7 @@ from app.secret_store import (
 from app.security import validate_chapter_id, validate_url, validate_managed_path
 from app.schemas import RenderRequest
 from app.routers.render_commit import render_page
-from app.text_objects import ensure_page_text_objects
+from app.text_objects import auto_object_id, ensure_page_text_objects
 from app.region_policy import text_object_in_preserve_region
 from app.translation.cost import preflight_cost_usd
 from app.translation.vision import VisionPageTranslator, collapse_repeated_lines, drawn_in_art
@@ -196,14 +198,86 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
             continue
         if rect[2] <= rect[0] or rect[3] <= rect[1]:
             continue
-        candidates.append({
+        candidate = {
             "id": obj_id,
             "text": str(obj.get("ocr_text") or "").strip(),
             "region": rect,
             "fit_region": list(letter_box(obj, tuple(rect)) or rect),
             "initial_translation": str(obj.get("translation") or ""),
-        })
+        }
+        mask = obj.get("bubble_mask")
+        source = box_bounds(obj.get("letter_bounds"))
+        if source and obj.get("verified_balloon") and isinstance(mask, dict) and mask.get("kind") == "bubble":
+            candidate.update(
+                balloon_mask=mask, balloon_sources=list(obj.get("source_boxes") or []),
+                source_region=list(source),
+                fit_region=list(mask_inscribed_rect(mask)), source_cap_px=obj.get("source_cap_px"),
+            )
+        candidates.append(candidate)
+    if any("balloon_mask" in candidate for candidate in candidates):
+        candidates.sort(key=lambda candidate: ((candidate.get("source_region") or candidate["region"])[1],
+                                              (candidate.get("source_region") or candidate["region"])[0]))
     return candidates
+
+
+def prepare_page_balloons(chapter_id: str, page_index: int) -> int:
+    from app.image_io import read_image
+    from app.render.balloon_layout import plan_balloon_regions
+    from app.region_policy import page_preserve_regions
+
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        pages = manifest.get("pages", [])
+        if not 0 <= page_index < len(pages):
+            return 0
+        page = pages[page_index]
+        if ("balloons" in page or page.get("process_required") or page.get("skipped")
+                or not page.get("original") or not page.get("clean")):
+            return 0
+        original_path = validate_managed_path(page["original"], RAW_DIR / chapter_id)
+        clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / chapter_id)
+        checks = ("original", "clean", "source_revision", "clean_revision", "process_revision",
+                  "process_required", "skipped", "preserve_regions", "stitch_core", "boxes")
+        snapshot = {key: page.get(key) for key in checks}
+
+    if not original_path.is_file() or not clean_path.is_file():
+        return 0
+    boxes = snapshot["boxes"] or []
+    if boxes:
+        try:
+            original, clean = read_image(original_path), read_image(clean_path)
+        except (OSError, ValueError):
+            return 0
+        if original.shape[:2] != clean.shape[:2]:
+            return 0
+        stitch = snapshot["stitch_core"] or {}
+        y0 = int(stitch.get("source_y1") or 0)
+        core = (int(stitch.get("core_source_y1", y0)) - y0,
+                int(stitch.get("core_source_y2", y0 + original.shape[0])) - y0)
+        plans = plan_balloon_regions(original, clean, boxes, core=core,
+                                     preserve_regions=page_preserve_regions(page))
+    else:
+        plans = []
+
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        pages = manifest.get("pages", [])
+        if page_index >= len(pages) or any(pages[page_index].get(key) != val for key, val in snapshot.items()):
+            return 0
+        page = pages[page_index]
+        if "balloons" in page:
+            return 0
+        count_before = len(page.get("text_objects") or [])
+        page["balloons"] = plans
+        created, changed = ensure_page_text_objects(page)
+        if changed:
+            invalidate_page_render(manifest, page_index)
+        save_manifest_raw(chapter_id, manifest)
+        if changed:
+            from app.dependencies import pipeline
+
+            pipeline._sync_output_dir(chapter_id, manifest, [page_index])
+        return max(0, count_before + created - len(page.get("text_objects") or []))
 
 
 _SFX_LIKE_ROLES = frozenset({"sfx", "free_text"})
@@ -234,6 +308,10 @@ def _duplicate_reason(value: str, source: str, rect: list[int],
     return None
 
 
+def _independent_balloons(a, b):
+    return bool(a and b and set(a).isdisjoint(b))
+
+
 def _duplicate_translation_ids(candidates: list[dict], translated) -> dict[str, str]:
     sources = getattr(translated, "sources", {}) or {}
     translations = getattr(translated, "translations", {}) or {}
@@ -251,11 +329,13 @@ def _duplicate_translation_ids(candidates: list[dict], translated) -> dict[str, 
         kept = [group[0]]
         for other in group[1:]:
             other_source = str(sources.get(other["id"]) or other.get("text") or "")
-            other_rect = list(other.get("fit_region") or other["region"])
+            other_rect = list(other.get("source_region") or other.get("fit_region") or other["region"])
             reason = None
             for keeper in kept:
+                if _independent_balloons(keeper.get("balloon_sources"), other.get("balloon_sources")):
+                    continue
                 keeper_source = str(sources.get(keeper["id"]) or keeper.get("text") or "")
-                keeper_rect = list(keeper.get("fit_region") or keeper["region"])
+                keeper_rect = list(keeper.get("source_region") or keeper.get("fit_region") or keeper["region"])
                 reason = _duplicate_reason(
                     str(translations.get(other["id"]) or ""), other_source, other_rect,
                     str(translations.get(keeper["id"]) or ""), keeper_source, keeper_rect)
@@ -269,11 +349,13 @@ def _duplicate_translation_ids(candidates: list[dict], translated) -> dict[str, 
 
 
 def _committed_duplicate(page: dict, candidate: dict, value: str, source: str) -> str | None:
-    rect = list(candidate.get("fit_region") or candidate["region"])
+    rect = list(candidate.get("source_region") or candidate.get("fit_region") or candidate["region"])
     for obj in page.get("text_objects") or []:
         if (not isinstance(obj, dict) or str(obj.get("id")) == str(candidate["id"])
                 or obj.get("source_missing") or obj.get("joined_into") or obj.get("overlap_dropped")
                 or text_object_in_preserve_region(page, obj)):
+            continue
+        if obj.get("verified_balloon") and _independent_balloons(candidate.get("balloon_sources"), obj.get("source_boxes")):
             continue
         other_value = str(obj.get("translation") or "")
         if not other_value.strip():
@@ -308,15 +390,20 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
     raw = read_image(original_path)
     font_path = resolve_font_id(DEFAULT_LETTERING_FONT)
     for candidate in candidates:
+        source_region = candidate.get("source_region") or candidate["region"]
         ink = source_ink_hex(raw, candidate["region"])
         if ink:
             candidate["source_ink"] = ink
         short = len("".join(str(candidate.get("text") or "").split())) <= 2
-        cap = source_cap_px(raw, candidate["region"], min_pieces=1 if short else 3,
-                            bounds=candidate.get("fit_region"))
+        cap_bounds = source_region if candidate.get("balloon_mask") else candidate.get("fit_region")
+        cap = candidate.get("source_cap_px") or source_cap_px(
+            raw, candidate["region"], min_pieces=1 if short else 3, bounds=cap_bounds,
+        )
         if cap:
             candidate["source_cap_px"] = cap
-            candidate["max_chars"] = char_budget(font_path, candidate.get("fit_region") or candidate["region"], cap)
+        if cap or candidate.get("balloon_mask"):
+            preferred = cap or round(34 * max(1, raw.shape[1] / 800) * .68)
+            candidate["max_chars"] = char_budget(font_path, candidate.get("fit_region") or candidate["region"], preferred)
 
 
 async def translate_page_in_context(
@@ -348,6 +435,8 @@ async def translate_page_in_context(
         if not translate_api_key:
             raise HTTPException(409, f"{translate_provider.label} API key is not configured")
 
+    await run_in_threadpool(prepare_page_balloons, req.chapter_id, req.page_index)
+
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
         pages = manifest.get("pages", [])
@@ -358,7 +447,10 @@ async def translate_page_in_context(
             raise HTTPException(409, "Page must finish inpainting before vision translation")
         if not page.get("original"):
             raise HTTPException(409, "Original image is missing")
-        _, ensured = ensure_page_text_objects(page)
+        if req.force and req.object_ids is None:
+            _, ensured = ensure_page_text_objects(page, regroup_machine=True)
+        else:
+            _, ensured = ensure_page_text_objects(page)
         if ensured:
             invalidate_page_render(manifest, req.page_index)
             save_manifest_raw(req.chapter_id, manifest)
@@ -375,7 +467,10 @@ async def translate_page_in_context(
             candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
         if req.object_ids is not None:
             wanted = set(req.object_ids)
-            candidates = [candidate for candidate in candidates if candidate["id"] in wanted]
+            candidates = [
+                candidate for candidate in candidates if candidate["id"] in wanted
+                or wanted.intersection(auto_object_id(box_id) for box_id in candidate.get("balloon_sources", ()))
+            ]
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
         total_candidates = len(candidates)
@@ -447,6 +542,9 @@ async def translate_page_in_context(
                 or not isinstance(obj.get("region"), dict)
                 or [obj["region"].get(k) for k in ("x1", "y1", "x2", "y2")]
                    != candidate["region"]
+                or ("balloon_mask" in candidate and (
+                    not obj.get("verified_balloon") or obj.get("bubble_mask") != candidate["balloon_mask"]
+                    or obj.get("source_boxes") != candidate["balloon_sources"]))
             ):
                 stale += 1
                 continue
@@ -455,7 +553,7 @@ async def translate_page_in_context(
                 value = value.strip()
             role = getattr(translated, "roles", {}).get(candidate["id"])
             source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
-            if role == "sfx" and drawn_in_art(source):
+            if role == "sfx" and not obj.get("verified_balloon") and drawn_in_art(source):
                 value = ""
             duplicate_reason = duplicate_ids.get(candidate["id"])
             if duplicate_reason is not None:
@@ -495,7 +593,7 @@ async def translate_page_in_context(
             if role:
                 obj["typography_role"] = role
             container = getattr(translated, "containers", {}).get(candidate["id"])
-            if container:
+            if container and (not obj.get("verified_balloon") or container in ("bubble", "spiky", "box", "screen")):
                 obj["container"] = container
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True

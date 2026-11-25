@@ -390,14 +390,18 @@ class AIModeSeamsMixin:
 
     def _join_stacked_lines(self, indices: list[int]) -> None:
         from app.ai_mode.seams import join_stacked_lines, set_letter_bounds
+        from app.routers.translation import prepare_page_balloons
         from app.text_objects import ensure_page_text_objects
 
+        manifest = self._manifest()
+        legacy = [index for index in indices if "balloons" not in manifest["pages"][index]]
+        joined = sum(prepare_page_balloons(self.job.chapter_id, index) for index in legacy)
         with _j("get_manifest_lock", get_manifest_lock)(self.job.chapter_id):
             manifest = _j("load_manifest_raw", load_manifest_raw)(self.job.chapter_id)
             for page_index in indices:
                 ensure_page_text_objects(manifest["pages"][page_index])
                 set_letter_bounds(manifest["pages"][page_index])
-            self.report["lines_joined"] = join_stacked_lines(manifest, indices)
+            self.report["lines_joined"] = joined + join_stacked_lines(manifest, indices)
             _j("save_manifest_raw", save_manifest_raw)(self.job.chapter_id, manifest)
 
     def _ensure_objects(self, page_index: int) -> None:

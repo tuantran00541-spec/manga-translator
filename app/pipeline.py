@@ -570,6 +570,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     manual_boxes = [b for b in existing_boxes if b.get("manual")]
                     committed_boxes = detected_boxes + manual_boxes
                     target_page["boxes"] = committed_boxes
+                    target_page["balloons"] = page_data.get("balloons", [])
                     target_page["detection_state"] = page_data.get(
                         "detection_state", "verified"
                     )
@@ -1002,6 +1003,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                             changed = True
                         page["clean"] = None
                         page["boxes"] = []
+                        page.pop("balloons", None)
                         page["process_required"] = False
                     elif changed:
                         page["process_required"] = True

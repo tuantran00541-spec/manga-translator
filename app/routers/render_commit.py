@@ -25,10 +25,22 @@ from app.region_policy import geometry_center_in_regions, page_preserve_regions,
 
 router = APIRouter(prefix="/api", tags=["render"])
 
+_LAYOUT_REASONS = {
+    "skipped_collision": "Vùng chữ chồng với vùng khác, cần chỉnh bố cục.",
+    "unanchored_glyph": "Ký tự đứng riêng trong vùng ảnh gốc trống, cần kiểm tra bản dịch.",
+    "balloon_overset": "Lời thoại dài hơn phần lòng ô có thể dàn ở cỡ đọc được.",
+    "placement_unverified": "Chưa tìm thấy vị trí chữ có bằng chứng trên ảnh gốc.",
+    "placement_ambiguous": "Nhiều bản dịch cùng trỏ vào một vùng chữ gốc.",
+    "placement_outside_bounds": "Nét chữ vượt vùng đã xác nhận, cần chỉnh bố cục.",
+    "placement_overset": "Bản dịch dài hơn vùng chữ gốc có thể dàn ở cỡ đọc được.",
+}
+
 
 def layout_conflict_reviews(manifest: dict) -> list[dict]:
     return [
-        {"page": index + 1, "id": str(oid), "reason": "Vùng chữ chồng với vùng khác, cần chỉnh bố cục."}
+        {"page": index + 1, "id": str(oid),
+         "reason": _LAYOUT_REASONS.get((page.get("render_layout_issue_types") or {}).get(str(oid)),
+                                       _LAYOUT_REASONS["skipped_collision"])}
         for index, page in enumerate(manifest.get("pages", []))
         if isinstance(page, dict) and page.get("rendered") and not page.get("skipped")
         for oid in page.get("render_layout_conflicts") or []
@@ -77,7 +89,21 @@ def _render_snapshot(
     styles: dict[str, dict],
     size_bands: dict | None = None,
     layout_conflicts: list[str] | None = None,
+    layout_issue_types: dict[str, str] | None = None,
 ) -> tuple[int, list[str]]:
+    verdicts: list[dict] = []
+
+    @lru_cache(maxsize=1)
+    def load_source_image():
+        if not page.get("original"):
+            return None
+        try:
+            source_path = validate_managed_path(page["original"], _app_config.RAW_DIR / req.chapter_id)
+            with Image.open(source_path) as original:
+                return original.convert("RGB") if original.size == image.size else None
+        except (HTTPException, OSError):
+            return None
+
     text_objects = page.get("text_objects") or []
     if text_objects:
         _resolve_snapshot_fonts(page, styles)
@@ -92,23 +118,13 @@ def _render_snapshot(
         ]
         if not active_text_objects:
             return 0, []
-        verdicts: list[dict] = []
         core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else {}
         sy1 = int(core.get("source_y1") or 0)
         core_y1 = int(core["core_source_y1"]) - sy1 if "core_source_y1" in core else 0
         core_y2 = int(core["core_source_y2"]) - sy1 if "core_source_y2" in core else image.height
 
-        @lru_cache(maxsize=1)
-        def load_source_image():
-            if not page.get("clean") or not page.get("original"):
-                return None
-            try:
-                source_path = validate_managed_path(page["original"], _app_config.RAW_DIR / req.chapter_id)
-                with Image.open(source_path) as original:
-                    return original.convert("RGB") if original.size == image.size else None
-            except (HTTPException, OSError):
-                return None
-
+        source_boxes = {str(box["id"]): box for box in page.get("boxes") or []
+                        if isinstance(box, dict) and box.get("id")}
         rendered_count = render_text_objects(
             image,
             req,
@@ -128,34 +144,42 @@ def _render_snapshot(
             core_y1=core_y1,
             core_y2=core_y2,
             source_image_loader=load_source_image,
+            protected_regions=page_preserve_regions(page),
+            source_boxes=source_boxes,
         )
-        skipped = [
-            str(v["id"])
-            for v in verdicts
-            if v.get("review") and v.get("guard") in ("below_readable_floor", "below_source_floor")
-        ]
-        if layout_conflicts is not None:
-            layout_conflicts.extend(str(v["id"]) for v in verdicts if v.get("guard") == "skipped_collision")
-        return rendered_count, skipped
-    legacy_page = copy.deepcopy(page)
-    preserve_regions = page_preserve_regions(page)
-    for box in legacy_page.get("boxes") or []:
-        if isinstance(box, dict) and geometry_center_in_regions(box, preserve_regions):
-            box["removed"] = True
-    return render_boxes_legacy(
-        image,
-        req,
-        legacy_page,
-        drafts,
-        styles["colors"],
-        styles["fonts"],
-        styles["font_sizes"],
-        styles["bolds"],
-        styles["stroke_widths"],
-        styles["stroke_colors"],
-        styles["bg_colors"],
-        styles["corner_radii"],
-    ), []
+    else:
+        legacy_page = copy.deepcopy(page)
+        preserve_regions = page_preserve_regions(page)
+        for box in legacy_page.get("boxes") or []:
+            if isinstance(box, dict) and geometry_center_in_regions(box, preserve_regions):
+                box["removed"] = True
+        rendered_count = render_boxes_legacy(
+            image,
+            req,
+            legacy_page,
+            drafts,
+            styles["colors"],
+            styles["fonts"],
+            styles["font_sizes"],
+            styles["bolds"],
+            styles["stroke_widths"],
+            styles["stroke_colors"],
+            styles["bg_colors"],
+            styles["corner_radii"],
+            source_image_loader=load_source_image,
+            verdicts=verdicts,
+        )
+    skipped = [
+        str(v["id"])
+        for v in verdicts
+        if v.get("review") and v.get("guard") in ("below_readable_floor", "below_source_floor")
+    ]
+    issues = {str(v["id"]): v["guard"] for v in verdicts if v.get("guard") in _LAYOUT_REASONS}
+    if layout_conflicts is not None:
+        layout_conflicts.extend(issues)
+    if layout_issue_types is not None:
+        layout_issue_types.update(issues)
+    return rendered_count, skipped
 
 
 def _set_style_value(style: dict, field: str, value, *, stringify: bool = False) -> None:
@@ -234,7 +258,7 @@ def _load_render_snapshot(req: RenderRequest) -> tuple[dict, dict, str, dict]:
         drafts = copy.deepcopy(manifest.get("drafts", {}))
         size_bands = chapter_size_bands(pages)
         try:
-            signature = render_input_signature(manifest, req.page_index)
+            signature = render_input_signature(manifest, req.page_index, size_bands=size_bands)
         except FileNotFoundError as exc:
             raise HTTPException(404, "Base image not found. Hãy chạy xử lý trang trước khi kết xuất.") from exc
     return page, drafts, signature, size_bands
@@ -248,6 +272,7 @@ def _commit_render(
     final_path: Path,
     skipped_objects: list[str] | None = None,
     layout_conflicts: list[str] | None = None,
+    layout_issue_types: dict[str, str] | None = None,
 ) -> tuple[bool, int | None]:
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
@@ -278,6 +303,10 @@ def _commit_render(
                 page["render_layout_conflicts"] = list(layout_conflicts)
             else:
                 page.pop("render_layout_conflicts", None)
+            if layout_issue_types:
+                page["render_layout_issue_types"] = dict(layout_issue_types)
+            else:
+                page.pop("render_layout_issue_types", None)
             stamp_render_artifact(page, input_signature=final_signature, output_path=final_path)
             save_manifest_raw(req.chapter_id, manifest)
         publish_then_commit(tmp_path, final_path, commit_manifest)
@@ -342,8 +371,10 @@ def render_page(req: RenderRequest) -> dict:
 
     styles = _request_style_maps(req)
     layout_conflicts: list[str] = []
+    layout_issue_types: dict[str, str] = {}
     rendered_count, skipped_objects = _render_snapshot(
-        image, req, page, drafts, styles, size_bands=size_bands, layout_conflicts=layout_conflicts)
+        image, req, page, drafts, styles, size_bands=size_bands,
+        layout_conflicts=layout_conflicts, layout_issue_types=layout_issue_types)
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -359,6 +390,7 @@ def render_page(req: RenderRequest) -> dict:
             final_path,
             skipped_objects=skipped_objects,
             layout_conflicts=layout_conflicts,
+            layout_issue_types=layout_issue_types,
         )
     except HTTPException:
         raise
@@ -398,7 +430,8 @@ def render_page(req: RenderRequest) -> dict:
         "render_revision": render_revision,
         "skipped_objects": skipped_objects,
         "layout_conflicts": layout_conflicts,
+        "layout_issue_types": layout_issue_types,
     }
     if layout_conflicts:
-        result["warning"] = f"Còn {len(layout_conflicts)} vùng chữ chồng nhau cần xem lại."
+        result["warning"] = f"Còn {len(layout_conflicts)} vùng chữ cần xem lại bố cục hoặc ảnh gốc."
     return result

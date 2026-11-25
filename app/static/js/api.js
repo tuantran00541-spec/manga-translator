@@ -592,6 +592,7 @@ async function renderTranslations(pageIndex) {
     if (currentManifest && currentManifest.pages && currentManifest.pages[pageIndex]) {
       currentManifest.pages[pageIndex].rendered = true;
       currentManifest.pages[pageIndex].render_revision = data.render_revision;
+      currentManifest.pages[pageIndex].render_layout_issue_types = data.layout_issue_types || {};
     }
     if (data.warning) {
       showToast(data.warning, "info");

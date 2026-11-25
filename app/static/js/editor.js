@@ -451,7 +451,7 @@ function buildChapterExportButton() {
       anchor.remove();
       if (typeof window.showToast === "function") {
         const conflicts = Number(data.chapter_render?.layout_conflicts) || 0;
-        const review = conflicts ? ` Còn ${conflicts} vùng chữ chồng nhau cần xem lại.` : "";
+        const review = conflicts ? ` Còn ${conflicts} vùng chữ cần xem lại bố cục.` : "";
         window.showToast(`Đã kết xuất ${data.chapter_render?.rendered || 0} trang.${review}`, "info");
       }
     } catch (err) {

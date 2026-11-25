@@ -33,6 +33,7 @@ from app.render.font_metrics import (
     parse_color,
 )
 from app.render.text_fitting import (
+    DEFAULT_BODY_FONT_SIZE,
     ENLARGED_MIN_FONT_SIZE,
     ENLARGE_GROW_RATIO,
     REFERENCE_PAGE_WIDTH,
@@ -116,7 +117,7 @@ def _draw_outer_glow(
     glow_rgb: tuple[int, int, int],
     glow_radius: int,
     stroke_w: int,
-) -> None:
+) -> tuple[int, int, int, int]:
     radius = max(2, min(12, int(glow_radius)))
     pad_g = max(4, int(math.ceil(radius * 3.0)) + stroke_w + 2)
     px0 = ink_box[0] - pad_g
@@ -143,6 +144,7 @@ def _draw_outer_glow(
     rgba[:, :, 2] = glow_rgb[2]
     rgba[:, :, 3] = alpha
     _composite_rgba(image, Image.fromarray(rgba, mode="RGBA"), px0, py0)
+    return px0, py0, px0 + pw, py0 + ph
 
 
 def _draw_gradient_line(
@@ -223,13 +225,25 @@ def _parse_color_profile(color_profile: dict | None) -> tuple[
 _SRGB_LUMINANCE = np.array([_luminance((v, v, v)) for v in range(256)])
 
 
-def _background_luminances(image, glyph_boxes):
+def _background_luminances(image, glyph_boxes, line_layouts=None, font=None, stroke=0):
     samples = []
-    for x1, y1, x2, y2 in glyph_boxes:
+    for i, (x1, y1, x2, y2) in enumerate(glyph_boxes):
         bounds = (max(0, x1), max(0, y1), min(image.width, x2), min(image.height, y2))
         if bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
             continue
-        rgb = np.asarray(image.crop(bounds).convert("RGB"))[::4, ::4]
+        crop = image.crop(bounds).convert("RGB")
+        if line_layouts is not None:
+            x, y, line = line_layouts[i]
+            footprint = Image.new("L", crop.size)
+            ImageDraw.Draw(footprint).text((x - bounds[0], y - bounds[1]), line, font=font,
+                                           fill=255, stroke_width=stroke, stroke_fill=255)
+            rgb = np.asarray(crop)[np.asarray(footprint) >= 128]
+            if not rgb.size:
+                continue
+            luma = (_SRGB_LUMINANCE[rgb] * (0.2126, 0.7152, 0.0722)).sum(axis=-1)
+            samples.extend(np.percentile(luma, (5, 20, 50, 80, 95)))
+            continue
+        rgb = np.asarray(crop)[::4, ::4]
         luma = (_SRGB_LUMINANCE[rgb] * (0.2126, 0.7152, 0.0722)).sum(axis=2)
         samples.extend(np.percentile(luma, (20, 50, 80)))
     return np.asarray(samples)
@@ -272,6 +286,30 @@ def _adapt_palette(palette, backgrounds, threshold, outline, *, prefer_black_or_
     return result
 
 
+def _art_ink(palette, backgrounds, preferred_outline):
+    neutral = ((0, 0, 0), (255, 255, 255))
+    threshold = 4.5
+
+    def contrast(colours, outline=None):
+        body = np.min([_local_contrast(color, backgrounds) for color in colours], axis=0)
+        if outline is not None and all(_contrast(color, outline) >= 4.5 for color in colours):
+            body = np.maximum(body, _local_contrast(outline, backgrounds))
+        return float(body.min())
+
+    if not backgrounds.size or contrast(palette, preferred_outline) >= threshold:
+        return palette, preferred_outline
+    adjusted = _adapt_palette(palette, backgrounds, threshold, None)
+    if contrast(adjusted) >= threshold:
+        return adjusted, preferred_outline if preferred_outline is not None and all(
+            _contrast(color, preferred_outline) >= threshold for color in adjusted) else None
+    for outline in neutral:
+        if contrast(palette, outline) >= threshold:
+            return palette, outline
+    fill = min(neutral, key=lambda color: abs(_luminance(color) - _luminance(palette[len(palette) // 2])))
+    outline = neutral[1] if fill == neutral[0] else neutral[0]
+    return [fill] * len(palette), outline
+
+
 def render_text_in_box(
     image: Image.Image,
     text: str,
@@ -305,6 +343,9 @@ def render_text_in_box(
     compose_layout: bool = False,
     optical_size_hint: int | None = None,
     reserved_boxes: tuple = (),
+    typography_role: str | None = None,
+    verified_balloon: bool = False,
+    lock_frame: bool = False,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -400,6 +441,13 @@ def render_text_in_box(
         stroke_auto = False
         stroke_c = parse_color(stroke_color, default=(0, 0, 0))
 
+    art_auto_ink = (str(container or "").lower() == "free" and adapt_contrast is True
+                    and stroke_w_auto and stroke_auto
+                    and str(bg_color or "").lower() in ("", "none", "transparent"))
+    if art_auto_ink:
+        share = round(0.09 * min(raw_w, raw_h))
+        stroke_w = max(stroke_w, min(share, 5, max(3, round(image.width * 0.004))))
+
     draw = ImageDraw.Draw(image)
 
     target_size = None
@@ -412,9 +460,9 @@ def render_text_in_box(
 
     if compose_layout and h_align == "center" and v_align == "middle" and source_letter_box is None:
         source_letter_box = (x1, y1, x2, y2)
-    _mask, _mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
+    _mask, _mask_source = _resolve_mask(None if lock_frame else image, (x1, y1, x2, y2), container,
                                         source_letter_box, bubble_mask,
-                                        letters, letters_box)
+                                        letters, letters_box, verified_balloon=verified_balloon)
     curved = str(container or "").lower() in _CURVED_CONTAINERS or str(shape or "").lower() == "ellipse" \
         or (_mask is not None and _mask.get("kind") == "bubble")
     centred = h_align == "center" and v_align == "middle"
@@ -503,7 +551,8 @@ def render_text_in_box(
             size_ceiling_px=size_band_hi_cap, bubble_mask=_mask, spans_out=spans_holder,
             letters=letters, letters_box=letters_box, keep_compounds=keep_compounds,
             compose_layout=compose_layout, optical_size_hint=optical_size_hint,
-            bold=is_bold, glow=profile_glow_radius * 3, reserved_boxes=reserved_boxes)
+            bold=is_bold, glow=profile_glow_radius * 3, reserved_boxes=reserved_boxes,
+            typography_role=typography_role, verified_balloon=verified_balloon, lock_frame=lock_frame)
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
@@ -574,6 +623,7 @@ def render_text_in_box(
     shape = str(shape or "").lower()
     if shape not in ("rectangle", "ellipse"):
         shape = "rectangle"
+    bg_bbox = None
     if bg_color and bg_color not in ("transparent", "none", ""):
         box_bg_c = parse_color(bg_color, default=(255, 255, 255))
         bg_bbox = (x1, y1, x2 - 1, y2 - 1)
@@ -607,6 +657,7 @@ def render_text_in_box(
 
     ink_box = None
     glyph_boxes = []
+    glyph_layouts = []
     line_layouts: list[tuple[int, int, str]] = []
     for i, line in enumerate(lines):
         if positioned:
@@ -625,6 +676,7 @@ def render_text_in_box(
             gx0, gy0, gx1, gy1 = draw.textbbox(
                 (start_x, cur_y), line, font=font, stroke_width=stroke_w)
             glyph_boxes.append((gx0, gy0, gx1 + bold, gy1 + bold))
+            glyph_layouts.append((start_x, cur_y, line))
             line_box = glyph_boxes[-1] if positioned else (
                 min(start_x, gx0),
                 min(cur_y, gy0),
@@ -636,29 +688,50 @@ def render_text_in_box(
                 max(ink_box[2], line_box[2]), max(ink_box[3], line_box[3]))
 
     if adapt_contrast is True or (adapt_contrast is None and explicit_fill):
-        backgrounds = _background_luminances(image, glyph_boxes)
+        if art_auto_ink:
+            backgrounds = _background_luminances(image, glyph_boxes, glyph_layouts, font, stroke_w)
+        else:
+            backgrounds = _background_luminances(image, glyph_boxes)
         framed = str(container or "").lower() in ("bubble", "spiky", "box", "screen")
         threshold = 4.5 if framed else LOW_CONTRAST_RATIO
         palette = profile_grad_stops or [text_color]
         outline = stroke_c if stroke_w >= 2 and (profile_stroke_applied or not stroke_auto) else None
         plain_neutral = framed and profile_grad_stops is None and max(text_color) - min(text_color) <= 10
-        adjusted = _adapt_palette(palette, backgrounds, threshold, outline, prefer_black_or_white=plain_neutral)
+        if art_auto_ink:
+            adjusted, art_outline = _art_ink(palette, backgrounds, outline)
+            if art_outline is not None:
+                if art_outline != outline or adjusted != palette:
+                    profile_stroke_applied = False
+                    if stats is not None:
+                        stats["fill_fallback"] = "art_outline_contrast"
+                if profile_glow_rgb is not None and _contrast(art_outline, profile_glow_rgb) < 3:
+                    profile_glow_radius = 0
+                stroke_c = art_outline
+                stroke_w = min(stroke_w, max(2, round(actual_size * .06)))
+            else:
+                stroke_w = 0
+                profile_stroke_applied = False
+                if adjusted != palette:
+                    profile_glow_radius = 0
+        else:
+            adjusted = _adapt_palette(palette, backgrounds, threshold, outline, prefer_black_or_white=plain_neutral)
         if adjusted != palette:
             if profile_grad_stops is None:
                 text_color = adjusted[0]
             else:
                 profile_grad_stops = adjusted
-            if stroke_auto and not profile_stroke_applied:
+            if stroke_auto and not profile_stroke_applied and not art_auto_ink:
                 stroke_c = (0, 0, 0) if _luminance(adjusted[len(adjusted) // 2]) > 0.179 else (255, 255, 255)
-            if stats is not None:
+            if stats is not None and "fill_fallback" not in stats:
                 stats["fill_fallback"] = "local_contrast"
         if (framed and stroke_w_auto and stroke_auto and not profile_stroke_applied
                 and backgrounds.size and np.ptp(backgrounds) <= 0.05
                 and all((_local_contrast(rgb, backgrounds) >= threshold).all() for rgb in adjusted)):
             stroke_w = 0
 
+    draw_box = ink_box
     if profile_glow_rgb is not None and profile_glow_radius > 0 and ink_box is not None:
-        _draw_outer_glow(
+        draw_box = _draw_outer_glow(
             image,
             line_layouts,
             ink_box,
@@ -707,6 +780,13 @@ def render_text_in_box(
     if stats is not None:
         if ink_box is not None:
             stats["ink_box"] = ink_box
+        if bg_bbox is not None:
+            background = (bg_bbox[0], bg_bbox[1], bg_bbox[2] + 1, bg_bbox[3] + 1)
+            draw_box = background if draw_box is None else (
+                min(draw_box[0], background[0]), min(draw_box[1], background[1]),
+                max(draw_box[2], background[2]), max(draw_box[3], background[3]))
+        if draw_box is not None:
+            stats["draw_box"] = draw_box
         if use_gradient or profile_stroke_applied or (profile_glow_rgb is not None and profile_glow_radius > 0):
             stats["color_profile_applied"] = {
                 "gradient": use_gradient,
@@ -728,7 +808,8 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
              letters_box: tuple[int, int, int, int] | None = None,
              keep_compounds: bool = False, compose_layout: bool = False,
              optical_size_hint: int | None = None, bold: bool = False, glow: int = 0,
-             reserved_boxes: tuple = ()):
+             reserved_boxes: tuple = (), typography_role: str | None = None, verified_balloon: bool = False,
+             lock_frame: bool = False):
     x1, y1, x2, y2 = (int(v) for v in box)
     raw_w, raw_h = x2 - x1, y2 - y1
     pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
@@ -749,9 +830,9 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
     else:
         floor = readable
 
-    mask, mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
+    mask, mask_source = _resolve_mask(None if lock_frame else image, (x1, y1, x2, y2), container,
                                       source_letter_box, bubble_mask,
-                                      letters, letters_box)
+                                      letters, letters_box, verified_balloon=verified_balloon)
     frame = (x1, y1, x2, y2)
     frame_source = "region_no_frame"
     fallbacks: list[str] = []
@@ -769,7 +850,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
             box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
-    if not use_mask and str(container or "").lower() == "screen":
+    if not lock_frame and not use_mask and str(container or "").lower() == "screen":
         inset = max(24, int(0.05 * min(raw_w, raw_h)))
         ix1, iy1, ix2, iy2 = x1 + inset, y1 + inset, x2 - inset, y2 - inset
         if image is not None:
@@ -792,7 +873,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
-    if not use_mask and str(container or "").lower() == "box" and not curved and image is not None:
+    if not lock_frame and not use_mask and str(container or "").lower() == "box" and not curved and image is not None:
         measured = _box_frame(image, (x1, y1, x2, y2))
         if measured is not None:
             frame = measured
@@ -808,7 +889,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         if frame_source != "region_no_frame":
             fx1, fy1, fx2, fy2 = frame
             return (max(bx1, fx1), max(by1, fy1), min(bx2, fx2), min(by2, fy2))
-        if curved or str(container or "").lower() == "box":
+        if lock_frame or curved or str(container or "").lower() == "box":
             ax1, ay1, ax2, ay2 = attempt_box
             return (max(bx1, ax1), max(by1, ay1), min(bx2, ax2), min(by2, ay2))
         return (bx1, by1, bx2, by2)
@@ -825,14 +906,18 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
 
     if compose_layout and centered and image is not None:
         size_hint = optical_size_hint if isinstance(optical_size_hint, (int, float)) and math.isfinite(optical_size_hint) else None
-        preferred = int(source_match or size_hint or (34 * scale))
+        preferred = int(source_match or size_hint or (DEFAULT_BODY_FONT_SIZE * scale))
+        if container == "box" and typography_role == "title" and frame_source in ("mask", "box_rules"):
+            preferred = max(preferred, min(round(32 * scale), round(0.12 * min(raw_w, raw_h))))
         if enlarge:
             preferred = round(preferred * 1.25)
         image_w, image_h = image_size
         inner_frame = (max(0, x1), max(0, y1), min(image_w, x2), min(image_h, y2))
         options = dict(preferred=min(preferred, maximum_size * 2), floor=floor, stroke=stroke_w,
                        bold=bold, mask=mask if use_mask else None, ellipse=curved and not use_mask,
-                       anchor=source_letter_box, reserved_boxes=reserved_boxes)
+                       anchor=source_letter_box, reserved_boxes=reserved_boxes,
+                       preserve_paragraph_shape=verified_balloon and container == "box" and typography_role == "title",
+                       verified_balloon=verified_balloon and use_mask)
         plan = compose_text(image, text, inner_frame, font_path_str, glow=glow, **options)
         omit_glow = plan is None and glow > 0
         if omit_glow:

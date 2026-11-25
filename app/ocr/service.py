@@ -698,6 +698,7 @@ class OCRService:
             page_index,
             snapshot["signatures"],
             lang,
+            separator="" if snapshot["balloon_sources"] and lang in {"ja", "japan"} else "\n",
         )
         if not combined:
             combined = self._read_box_text(
@@ -739,12 +740,15 @@ class OCRService:
                 raise FileNotFoundError("Original page image is not configured")
             validated_original = validate_managed_path(original_value, _app_config.RAW_DIR / chapter_id)
             region = copy.deepcopy(obj.get("region") or {})
+            balloon_sources = tuple(obj.get("source_boxes") or ()) if obj.get("verified_balloon") else ()
             return {
                 "region": region,
                 "text": obj.get("ocr_text") or "",
                 "original_value": str(validated_original),
                 "source_revision": int(page.get("source_revision") or 0),
-                "signatures": active_overlap_signatures(page, region),
+                "balloon_sources": balloon_sources,
+                "follows_ocr": bool(balloon_sources and obj.get("ocr_text") == obj.get("auto_ocr_text")),
+                "signatures": active_overlap_signatures(page, region, balloon_sources),
             }
 
     def _collect_group_text(
@@ -753,6 +757,8 @@ class OCRService:
         page_index: int,
         signatures: list[tuple[str, str]],
         lang: str,
+        *,
+        separator: str = "\n",
     ) -> tuple[list[str], str]:
         texts: list[str] = []
         source_box_ids: list[str] = []
@@ -777,7 +783,7 @@ class OCRService:
             text = str(result.get("text") or "")
             if text:
                 texts.append(text)
-        return source_box_ids, "\n".join(texts)
+        return source_box_ids, separator.join(texts)
 
     def _commit_group_text(
         self,
@@ -803,7 +809,9 @@ class OCRService:
                 return manifest
             if page.get("skipped") or page.get("process_required") or text_object_in_preserve_region(page, obj):
                 return manifest
-            if self._group_result_stale(page, obj, snapshot, original_revision):
+            balloon_sources = snapshot["balloon_sources"]
+            if ((balloon_sources and tuple(source_box_ids) != balloon_sources)
+                    or self._group_result_stale(page, obj, snapshot, original_revision, combined=combined)):
                 logger.warning(
                     "Chapter {} page {} object {}: OCR result became stale; keeping newer state",
                     chapter_id,
@@ -822,6 +830,8 @@ class OCRService:
                 original_revision=original_revision,
                 region=snapshot["region"],
             )
+            if balloon_sources:
+                obj["auto_ocr_text"] = combined
             sync_group_visual_metadata(obj, page, source_box_ids)
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
@@ -834,19 +844,25 @@ class OCRService:
         obj: dict,
         snapshot: dict,
         original_revision: tuple[int, int, int],
+        *,
+        combined: str = "",
     ) -> bool:
         current_original = page.get("original")
         try:
             current_file_revision = file_revision(Path(str(current_original)))
         except OSError:
             current_file_revision = None
+        sources = tuple(obj.get("source_boxes") or ()) if obj.get("verified_balloon") else ()
+        text_unchanged = (obj.get("ocr_text") or "") == snapshot["text"]
+        follows_ocr = snapshot["follows_ocr"] and obj.get("ocr_text") == obj.get("auto_ocr_text") == combined
         return (
             current_original != snapshot["original_value"]
             or int(page.get("source_revision") or 0) != snapshot["source_revision"]
             or current_file_revision != original_revision
             or obj.get("region") != snapshot["region"]
-            or (obj.get("ocr_text") or "") != snapshot["text"]
-            or active_overlap_signatures(page, snapshot["region"])
+            or (not text_unchanged and not follows_ocr)
+            or sources != snapshot["balloon_sources"]
+            or active_overlap_signatures(page, snapshot["region"], sources)
             != snapshot["signatures"]
         )
 

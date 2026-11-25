@@ -11,11 +11,12 @@ from PIL import Image, ImageDraw
 
 from app.detector.bubble_mask import mask_row_spans
 from app.render.font_metrics import get_font_object
-from app.render.text_fitting import _word_units
+from app.render.text_fitting import DEFAULT_BODY_FONT_SIZE, REFERENCE_PAGE_WIDTH, _word_units
 
 
 _UNSPACED = re.compile(r"[\u2e80-\u9fff\uac00-\ud7af]")
 _BREAK_BEFORE = frozenset("、。，；：！？）》」』】〕）…")
+_VI_FORWARD_WORDS = frozenset({"bị", "bởi", "của", "đã", "đang", "để", "được", "ở", "sẽ", "từ", "về", "vì", "với"})
 
 
 @dataclass(frozen=True)
@@ -43,14 +44,34 @@ def _word_spans(text: str) -> tuple[str, list[tuple[int, int]], list[int]]:
             for first, last in zip(starts, starts[1:] + [len(words)]):
                 spans.append((offset + first, offset + len(words[:last].rstrip())))
         else:
-            start = offset
-            for unit in _word_units(tuple(words.split())):
-                spans.append((start, start + len(unit)))
-                start += len(unit) + 1
+            spans.extend((offset + word.start(), offset + word.end())
+                         for word in re.finditer(r"\S+", words))
         ends.extend([len(spans)] * (len(spans) - len(ends)))
         offset += len(words) + 1
         paragraphs.append(words)
     return "\n".join(paragraphs), spans, ends
+
+
+def _break_costs(text, spans, ends, *, balloon=False):
+    costs = {}
+    start = 0
+    while start < len(spans):
+        end = ends[start]
+        words = tuple(text[a:b] for a, b in spans[start:end])
+        if not any(_UNSPACED.search(word) for word in words):
+            offset = start
+            for unit in _word_units(words):
+                following = offset + len(unit.split())
+                costs.update((i, .5) for i in range(offset + 1, following))
+                offset = following
+            for i, (left, right) in enumerate(zip(words, words[1:]), start + 1):
+                right = right.rstrip(".,;:!?…")
+                if left.istitle() and left.isalpha() and right.istitle() and right.isalpha():
+                    costs[i] = .65
+                if balloon and left.casefold() in _VI_FORWARD_WORDS:
+                    costs[i] = .85
+        start = end
+    return costs
 
 
 def _interior(frame, mask, ellipse):
@@ -76,14 +97,23 @@ def _edge_distances(inside):
 
 
 def _exclude_art(safe, inside, image, frame, gap):
-    gray = np.asarray(image.crop(frame).convert("L"))
-    values = gray[inside != 0]
-    if values.size and np.count_nonzero(values > 220) > 0.80 * values.size:
-        foreign_ink = (gray < 135) & inside.astype(bool)
-    elif values.size and np.count_nonzero(values < 42) > 0.80 * values.size:
-        foreign_ink = (gray > 122) & inside.astype(bool)
-    else:
+    surface = image.crop(frame)
+    gray = np.asarray(surface.convert("L"))
+    occupied = inside != 0
+    values = gray[occupied]
+    if not values.size:
         return
+    if np.count_nonzero(values > 220) > 0.80 * values.size:
+        foreign_ink = gray < 135
+    elif np.count_nonzero(values < 42) > 0.80 * values.size:
+        foreign_ink = gray > 122
+    else:
+        lab = cv2.cvtColor(np.asarray(surface.convert("RGB")), cv2.COLOR_RGB2LAB).astype(np.float32)
+        deviation = np.linalg.norm(lab - np.median(lab[occupied], axis=0), axis=2)
+        if np.mean(deviation[occupied] <= 16) < .8:
+            return
+        foreign_ink = deviation > 32
+    foreign_ink &= occupied
     if foreign_ink.any():
         inside[foreign_ink] = 0
         safe &= _edge_distances(inside) > gap
@@ -101,6 +131,33 @@ def _line_spans(safe, top, n, height, step, anchor_x):
         spans.append(sorted(zip(edges[::2], edges[1::2]),
                             key=lambda ab: (max(ab[0] - anchor_x, anchor_x - ab[1], 0), ab[0] - ab[1])))
     return spans
+
+
+def _ink_rows(line, font, bearing, width, top, height, edge, bold):
+    """Measure the occupied span of each raster row, including the stroke and bold offsets."""
+    bitmap = Image.new("L", (width, height))
+    draw = ImageDraw.Draw(bitmap)
+    for dy in range(1 + int(bold)):
+        for dx in range(1 + int(bold)):
+            draw.text((dx - bearing, dy - top), line, fill=255, font=font, stroke_width=edge)
+    ink = np.asarray(bitmap) > 0
+    rows = np.flatnonzero(ink.any(axis=1))
+    active = ink[rows]
+    return rows, active.argmax(axis=1), width - active[:, ::-1].argmax(axis=1)
+
+
+def _place_ink_rows(runs, profile, top, width, anchor_x):
+    """Intersect the allowed horizontal positions of all occupied rows at this baseline."""
+    rows, lefts, rights = profile
+    rows = rows + top
+    if not rows.size or rows[0] < 0 or rows[-1] >= runs.shape[0]:
+        return None
+    origins = np.arange(runs.shape[1] - width + 1)
+    ends = runs[rows[:, None], origins[None, :] + lefts[:, None]]
+    fits = origins[(ends >= origins[None, :] + rights[:, None]).all(axis=0)]
+    if fits.size:
+        return int(fits[np.abs(fits + width / 2 - anchor_x).argmin()])
+    return None
 
 
 def _source_chamber(safe, frame, anchor, seed):
@@ -139,7 +196,8 @@ def _track_tops(reference, minimum, maximum, height, step, lines, window_widths,
 
 
 def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bold,
-                 glow=0, mask=None, ellipse=False, anchor=None, reserved_boxes=()) -> Composition | None:
+                 glow=0, mask=None, ellipse=False, anchor=None, reserved_boxes=(),
+                 verified_balloon=False, preserve_paragraph_shape=False) -> Composition | None:
     x1, y1, x2, y2 = frame
     w, h = x2 - x1, y2 - y1
     if min(w, h) < 8:
@@ -147,6 +205,7 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
     text, words, ends = _word_spans(text)
     if not words:
         return None
+    break_cost = _break_costs(text, words, ends, balloon=verified_balloon)
     inside = _interior(frame, mask, ellipse)
     distance = _edge_distances(inside)
     gap = max(2, round(0.065 * min(w, h)))
@@ -170,21 +229,42 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
     row_widths = safe.sum(axis=1)
     if not row_widths.any():
         return None
+    runs = None
+    if verified_balloon:
+        breaks = np.where(safe, w, np.arange(w, dtype=np.int32))
+        runs = np.minimum.accumulate(breaks[:, ::-1], axis=1)[:, ::-1]
     maximum_width = int(cols.max() - cols.min() + 1)
     min_y, max_y = int(rows.min()), int(rows.max()) + 1
     maximum_height = max_y - min_y
     paragraph_count = len(set(ends))
+    compact = (mask is not None or ellipse) and len(words) >= 4 and paragraph_count == 1
     x_scale, y_scale = max(1, w), max(1, h)
     # Measure the stroke and glow inside the same clearance as the ink.
     edge = stroke + glow
     draw = ImageDraw.Draw(image)
     preferred = max(floor, preferred)
     ceiling = min(preferred, int(maximum_height * 1.45))
-    sizes = sorted({max(floor, round(ceiling * f)) for f in
-                    (1, .94, .87, .79, .70, .61, .52, .44, .36, .29, .22, .16, 0)}, reverse=True)
+    sizes = {max(floor, round(ceiling * f)) for f in
+             (1, .94, .87, .79, .70, .61, .52, .44, .36, .29, .22, .16, 0)}
+    one_line = False
+    if verified_balloon and w >= h and paragraph_count == 1 and len(words) <= 5:
+        body_size = DEFAULT_BODY_FONT_SIZE * max(1.0, image.width / REFERENCE_PAGE_WIDTH)
+        probe_size = max(floor, round(min(0.76 * preferred, body_size)))
+        font = get_font_object(font_path, probe_size)
+        left, top, right, bottom = draw.textbbox((0, 0), text, font=font, stroke_width=edge)
+        line_height = max(1, bottom + int(bold) - top)
+        centre = round(anchor_y - line_height / 2)
+        span = _line_spans(safe, centre, 1, line_height, 1, anchor_x)
+        width = right - left + int(bold)
+        one_line = bool(span and any(b - a >= width for a, b in span[0]))
+        if not one_line and 0 < width <= maximum_width:
+            profile = _ink_rows(text, font, left, width, top, line_height, edge, bold)
+            one_line = _place_ink_rows(runs, profile, centre, width, anchor_x) is not None
+        if one_line:
+            sizes.add(probe_size)
     best = None
 
-    for size in sizes:
+    for size in sorted(sizes, reverse=True):
         size_cost = 1.15 * math.log(preferred / size) ** 2
         if best is not None and size_cost >= best.score:
             break
@@ -193,6 +273,8 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
         ink_height = max(1, desc - asc + int(bold))
         step = max(round(size * 1.02), ink_height + max(2, round(size * 0.12)))
         max_lines = min(len(words), 1 + (maximum_height - ink_height) // step)
+        if one_line:
+            max_lines = min(max_lines, 1)
         if paragraph_count > max_lines:
             continue
         window_widths = np.lib.stride_tricks.sliding_window_view(row_widths, ink_height).min(axis=1)
@@ -200,10 +282,31 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
         @lru_cache(maxsize=None)
         def measure(start, end):
             line = text[words[start][0]:words[end - 1][1]]
-            left, _, right, _ = draw.textbbox((0, 0), line, font=font, stroke_width=edge)
-            return line, left, right + int(bold) - left
+            left, top, right, bottom = draw.textbbox((0, 0), line, font=font, stroke_width=edge)
+            return line, left, right + int(bold) - left, top, bottom + int(bold) - top
 
-        natural_width = sum(draw.textlength(line, font=font) for line in text.splitlines())
+        @lru_cache(maxsize=None)
+        def ink_spans(y, height):
+            spans = _line_spans(safe, y, 1, max(1, height), 1, anchor_x)
+            return spans[0] if spans else ()
+
+        @lru_cache(maxsize=256)
+        def ink_profile(start, end):
+            line, bearing, width, top, height = measure(start, end)
+            return _ink_rows(line, font, bearing, width, top, height, edge, bold)
+
+        @lru_cache(maxsize=1024)
+        def place_profile(start, end, y, width):
+            return _place_ink_rows(runs, ink_profile(start, end), y, width, anchor_x)
+
+        paragraph_widths = dict(zip(dict.fromkeys(ends),
+                                    (draw.textlength(line, font=font) for line in text.splitlines())))
+        natural_width = sum(paragraph_widths.values())
+        if preserve_paragraph_shape and paragraph_count > 1:
+            paragraph_targets = {end: width / max(1, math.ceil(width / (.9 * maximum_width)))
+                                 for end, width in paragraph_widths.items()}
+        else:
+            paragraph_targets = {}
         min_lines = max(paragraph_count, math.ceil(natural_width / (maximum_width + size * .5)))
         for n in range(min_lines, min(max_lines, min_lines + 7) + 1):
             if n > min_lines + 3 and best is not None:
@@ -215,7 +318,7 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
             tops = _track_tops(reference, min_y, max_y - block_height, ink_height, step, n,
                                window_widths, shift, has_blockers=bool(reserved_boxes))
             for top in tops:
-                spans = _line_spans(safe, top, n, ink_height, step, anchor_x)
+                spans = [()] * n if verified_balloon else _line_spans(safe, top, n, ink_height, step, anchor_x)
                 if not spans:
                     continue
                 vertical_cost = 3 * ((top + block_height / 2 - anchor_y) / y_scale) ** 2
@@ -227,27 +330,43 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
                 for i, intervals in enumerate(spans):
                     next_states = {}
                     remaining = n - i - 1
-                    limit = max(b - a for a, b in intervals)
+                    limit = maximum_width if verified_balloon else max(b - a for a, b in intervals)
+                    baseline = top + i * step - asc
                     target = mean_width * (1 + .12 * math.cos((i - (n - 1) / 2) * math.pi / max(1, n - 1)))
                     for start, (cost, placed) in states.items():
                         if start == len(words):
                             continue
                         stop = min(ends[start], len(words) - remaining)
                         for end in range(start + 1 if remaining else len(words), stop + 1):
-                            line, bearing, width = measure(start, end)
+                            line, bearing, width, ink_top, ink_h = measure(start, end)
                             if width > limit:
                                 break
-                            a, b = min(((a, b) for a, b in intervals if b - a >= width),
+                            choices = ink_spans(baseline + ink_top, ink_h) if verified_balloon else intervals
+                            span = min(((a, b) for a, b in choices if b - a >= width),
                                        key=lambda ab: max(ab[0] + width / 2 - anchor_x,
-                                                          anchor_x - ab[1] + width / 2, 0))
-                            left = round(min(max(anchor_x - width / 2, a), b - width))
+                                                          anchor_x - ab[1] + width / 2, 0), default=None)
+                            left = None
+                            if span is not None:
+                                a, b = span
+                                left = round(min(max(anchor_x - width / 2, a), b - width))
+                            if (runs is not None and width > 0 and ink_h > 0
+                                    and (left is None or abs(left + width / 2 - anchor_x) > gap)):
+                                shaped = place_profile(start, end, baseline + ink_top, width)
+                                if shaped is not None:
+                                    left = shaped
+                            if left is None:
+                                continue
                             drift = (left + width / 2 - anchor_x) / x_scale
-                            ragged = (width - target) / max(size, mean_width)
-                            widow = remaining == 0 and n > 1 and end == start + 1 and width < .58 * mean_width
-                            value = cost + (.60 * ragged**2 + 7 * drift**2 + .24 * widow) / n
+                            line_target = paragraph_targets.get(ends[start], target)
+                            line_scale = paragraph_targets.get(ends[start], mean_width)
+                            ragged = (width - line_target) / max(size, line_scale)
+                            widow_limit = .8 if mask is not None and len(words) <= 6 else .58
+                            widow = remaining == 0 and n > 1 and end == start + 1 and width < widow_limit * mean_width
+                            wide = 2 * max(0, width / maximum_width - .76) ** 2 if compact else 0
+                            value = cost + (.60 * ragged**2 + 7 * drift**2 + .24 * widow + wide
+                                            + break_cost.get(end, 0)) / n
                             if end not in next_states or value < next_states[end][0]:
-                                next_states[end] = (value, placed + ((x1 + left - bearing,
-                                                                   y1 + top + i * step - asc, line),))
+                                next_states[end] = (value, placed + ((x1 + left - bearing, y1 + baseline, line),))
                     states = next_states
                     if not states:
                         break

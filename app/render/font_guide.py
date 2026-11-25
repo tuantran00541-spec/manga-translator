@@ -4,7 +4,7 @@ DEFAULT_LETTERING_FONT = "dialogue.mac-dinh-3"
 FONT_BY_ROLE = {"system_ui": "skill.exo-2", "skill_name": "skill.kanit"}
 FONT_BY_CONTAINER = {
     "bubble": {},
-    "spiky": {"*": "emphasis.bangers"},
+    "spiky": {"shout": "emphasis.bangers", "dark_threat": "emphasis.bangers"},
     "box": {"title": "emphasis.anton"},
     "screen": {"*": "skill.exo-2"},
     "free": {"narration": "emphasis.anton", "title": "emphasis.anton", "free_text": "emphasis.anton",

@@ -384,6 +384,12 @@ class PageProcessingMixin:
             for box in leftovers:
                 _fold_leftover(inpainted_records, box)
         auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
+        from app.render.balloon_layout import plan_balloon_regions
+
+        balloons = plan_balloon_regions(
+            image, clean_image, detector_records,
+            core=core_bounds, preserve_regions=preserve_regions or (),
+        )
 
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
 
@@ -468,6 +474,7 @@ class PageProcessingMixin:
                 }
                 for record in detector_records
             ],
+            "balloons": balloons,
             "detection_state": detection_state,
             "detection_issues": detection_issues,
             "unverified_regions": unverified_regions,

@@ -153,7 +153,7 @@ def set_letter_bounds(page: dict) -> None:
         if isinstance(o, dict) and o.get("id")
     }
     for obj in page.get("text_objects") or []:
-        if not isinstance(obj, dict):
+        if not isinstance(obj, dict) or obj.get("verified_balloon"):
             continue
         refs = list(source_box_ids(obj))
         for joined_id in obj.get("joined_lines") or []:
@@ -284,7 +284,7 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
 
 
 def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
-    from app.text_objects import DEFAULT_TEXT_OBJECT_STYLE, _auto_object_id, source_box_ids
+    from app.text_objects import DEFAULT_TEXT_OBJECT_STYLE, auto_object_id, source_box_ids
 
     pages = manifest.get("pages") or []
     created: list[tuple[int, str]] = []
@@ -325,7 +325,7 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
             box_id = str(box.get("id"))
             ocr_text = str(box.get("ocr_text") or "")
             mirror = {
-                "id": _auto_object_id(box_id),
+                "id": auto_object_id(box_id),
                 "shape": "rectangle",
                 "region": copy.deepcopy(region),
                 "source_boxes": [box_id],
@@ -345,7 +345,7 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
                 if box.get(color_key):
                     mirror[color_key] = copy.deepcopy(box[color_key])
             page.setdefault("text_objects", []).append(mirror)
-            created.append((page_index, _auto_object_id(box_id)))
+            created.append((page_index, auto_object_id(box_id)))
     return created
 
 
@@ -391,6 +391,8 @@ def drop_duplicated_leading_text(manifest: dict) -> list[int]:
                 and _rect(obj, 0) is not None]
         objs.sort(key=lambda obj: (_rect(obj, 0)[1], _rect(obj, 0)[0]))
         for lower_index, lower in enumerate(objs):
+            if lower.get("verified_balloon"):
+                continue
             lower_words = _norm_words(lower.get("translation"))
             if len(lower_words) < 4:
                 continue
@@ -556,9 +558,12 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
         objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
                    and str(obj.get("translation") or "").strip() and _letter_rect(obj) is not None
                    and not obj.get("seam_owner")]
-        objects.sort(key=lambda obj: -_area(_letter_rect(obj)))
+        objects.sort(key=lambda obj: (not obj.get("verified_balloon"), -_area(_letter_rect(obj))))
         kept: list[dict] = []
         for obj in objects:
+            if obj.get("verified_balloon"):
+                kept.append(obj)
+                continue
             rect = _letter_rect(obj)
             overlapped = [other for other in kept
                           if _shared(rect, _letter_rect(other)) >= OVERLAP_KEEP]
@@ -569,7 +574,8 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
                 obj["translation"] = ""
                 obj["overlap_dropped"] = True
                 dropped.append((page_index, str(obj.get("id"))))
-                if _regions_touch(dup_of.get("region"), obj.get("region")) and not _separate_lobes(dup_of, obj):
+                if (not dup_of.get("verified_balloon") and _regions_touch(dup_of.get("region"), obj.get("region"))
+                        and not _separate_lobes(dup_of, obj)):
                     letter_items = [
                         (dup_of.get("region"), dup_of.get("letters_mask")),
                         (obj.get("region"), obj.get("letters_mask")),
@@ -632,6 +638,8 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
     joined = 0
     for page_index in page_indices:
         page = pages[page_index]
+        if "balloons" in page:
+            continue
         lines = sorted((obj for obj in page.get("text_objects") or []
                         if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
                         and not obj.get("joined_into") and not str(obj.get("translation") or "").strip()
@@ -664,6 +672,7 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
             merged_region = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),
                              "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
             top["region"] = merged_region
+            top["auto_geometry"] = dict(merged_region)
             top["joined_lines"] = [str(obj["id"]) for obj in block[1:]]
             top.pop("ocr_text_region", None)
             _apply_merged_masks(top, block, letter_items, merged_region)
