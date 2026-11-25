@@ -413,20 +413,6 @@ def test_a_vision_misread_of_korean_sfx_as_latin_noise_is_treated_as_untranslate
     assert not _latin_noise("12")
 
 
-def test_a_bare_scream_is_treated_as_untranslated():
-    from app.translation.vision import _bare_scream
-
-    assert _bare_scream("AAAAA!!!")
-    assert _bare_scream("HHHHH...")
-    assert not _bare_scream("ÁÁÁÁ!!!")
-    assert not _bare_scream("ỨỨỨ!")
-    assert not _bare_scream("ỐỐỐ!")
-    assert not _bare_scream("HAHA!")
-    assert not _bare_scream("A!")
-    assert not _bare_scream("AA!")
-    assert not _bare_scream("Chuyện đó có vấn đề gì không?")
-
-
 def test_a_hangul_sfx_misread_as_latin_consonants_is_treated_as_untranslated():
     from app.translation.vision import _hangul_misread
 
@@ -591,13 +577,11 @@ def test_deepseek_v41_uses_low_reasoning_effort_on_openai_and_direct_deepseek(mo
 
 
 def test_other_gates_also_judge_per_line_not_per_value():
-    from app.translation.vision import _bare_scream, _drop_foreign_script, _hangul_misread, _latin_noise
+    from app.translation.vision import _drop_foreign_script, _hangul_misread, _latin_noise
 
     assert _latin_noise("Chào\n1/10")
-    assert _bare_scream("Chào\nAAAAA!!!")
     assert _hangul_misread("푸르륵", "BÙM\nFFR")
     assert not _latin_noise("Chào\nPHÙ...")
-    assert not _bare_scream("Chào\nHAHA!")
     assert not _hangul_misread("푸르륵", "BÙM\nRẦM")
 
     def filtered(value, source=""):

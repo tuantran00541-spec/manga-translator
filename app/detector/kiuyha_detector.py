@@ -1707,6 +1707,12 @@ class KiuyhaTextDetector:
                 if ix * iy >= 0.5 * min(box.mask.size, other.mask.size):
                     merged[i] = (_merge_mask_evidence([other, box]), welded or other_welded)
                     break
+                oy = max(0, min(box.y2, other.y2) - max(box.y1, other.y1))
+                gap = max(other.x1 - box.x2, box.x1 - other.x2)
+                min_h = min(box.y2 - box.y1, other.y2 - other.y1)
+                if oy >= 0.6 * min_h and 0 <= gap <= 0.5 * min_h:
+                    merged[i] = (_merge_mask_evidence([other, box]), welded or other_welded)
+                    break
             else:
                 merged.append((box, welded))
         return [

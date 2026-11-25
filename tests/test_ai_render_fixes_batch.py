@@ -24,7 +24,6 @@ from app.render.source_size import source_ink_hex
 from app.render.text_renderer import render_text_in_box
 from app.text_objects import ensure_page_text_objects
 from app.translation.vision import (
-    _line_is_bare_scream,
     _line_is_english,
     _salvage_translation_entries,
 )
@@ -563,8 +562,3 @@ def test_vision_salvage_entries_preserves_metadata_and_language_filters_protect_
     assert _line_is_english("IN AN") is False
     assert _line_is_english("Were you talking to me?") is True
     assert _line_is_english("GO TO ME") is True
-
-    assert _line_is_bare_scream("AAAAA!!!") is True
-    assert _line_is_bare_scream("ÁÁÁÁ!!!") is False
-    assert _line_is_bare_scream("ỨỨỨ!") is False
-    assert _line_is_bare_scream("ừừừ") is False

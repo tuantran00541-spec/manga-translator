@@ -400,29 +400,6 @@ def _line_is_latin_noise(line: str) -> bool:
     return "/" in normalized or len(words) >= 2
 
 
-def _bare_scream(text: str) -> bool:
-    return any(_line_is_bare_scream(line) for line in str(text or "").splitlines())
-
-
-def _strip_diacritics(text: str) -> str:
-    return "".join(char for char in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(char))
-
-
-def _line_is_bare_scream(line: str) -> bool:
-    raw_line = line
-    if _has_non_ascii_letter(raw_line):
-        return False
-    line = _strip_diacritics(line)
-    words = _ascii_words(line)
-    if len(words) != 1:
-        return False
-    word = words[0]
-    if len(word) < 3 or len(set(word)) != 1:
-        return False
-    rest = _normalize_for_script_check(line).replace(word, "", 1)
-    return all(not char.isalnum() for char in rest)
-
-
 _HANGUL = re.compile(r"[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]")
 _VOWELS = frozenset("aeiou")
 

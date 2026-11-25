@@ -14,7 +14,7 @@ def fills_rectangle(mask: np.ndarray) -> bool:
 
 
 def expand_local_ink(ink: np.ndarray) -> np.ndarray:
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     return cv2.dilate((ink > 0).astype(np.uint8) * 255, kernel)
 
 

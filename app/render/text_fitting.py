@@ -455,13 +455,6 @@ def _screen_frame(image: Image.Image, box):
     return (fx1, fx2, fy1, fy2, measured_x, measured_y)
 
 
-def _band_line_widths(box_w: int, box_h: int, line_count: int, line_height: int, bands, top: int | None = None) -> list[int] | None:
-    spans = _band_line_spans(box_w, box_h, line_count, line_height, bands, top=top)
-    if spans is None:
-        return None
-    return [b - a for a, b in spans]
-
-
 def _band_line_spans(box_w: int, box_h: int, line_count: int, line_height: int, bands, top: int | None = None) -> list[tuple[int, int]] | None:
     if line_count <= 0 or box_w <= 0 or box_h <= 0 or line_height <= 0 or not bands:
         return None
