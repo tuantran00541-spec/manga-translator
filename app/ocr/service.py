@@ -693,13 +693,15 @@ class OCRService:
         snapshot = self._snapshot_group(chapter_id, page_index, text_object_id)
         original_path, original_revision = self._source_identity(snapshot["original_value"])
 
-        source_box_ids, combined = self._collect_group_text(
+        source_box_ids, collected_combined = self._collect_group_text(
             chapter_id,
             page_index,
             snapshot["signatures"],
             lang,
-            separator="" if snapshot["balloon_sources"] and lang in {"ja", "japan"} else "\n",
+            separator="" if snapshot["balloon_sources"] and lang.lower() in {"ja", "japan"} else "\n",
+            strip_empty=bool(snapshot["balloon_sources"]),
         )
+        combined = collected_combined
         if not combined:
             combined = self._read_box_text(
                 original_path,
@@ -715,6 +717,7 @@ class OCRService:
             engine=engine,
             source_box_ids=source_box_ids,
             combined=combined,
+            expected_synced=collected_combined,
             snapshot=snapshot,
             original_revision=original_revision,
         )
@@ -747,7 +750,9 @@ class OCRService:
                 "original_value": str(validated_original),
                 "source_revision": int(page.get("source_revision") or 0),
                 "balloon_sources": balloon_sources,
-                "follows_ocr": bool(balloon_sources and obj.get("ocr_text") == obj.get("auto_ocr_text")),
+                "follows_ocr": bool(
+                    balloon_sources and str(obj.get("ocr_text") or "") == str(obj.get("auto_ocr_text") or "")
+                ),
                 "signatures": active_overlap_signatures(page, region, balloon_sources),
             }
 
@@ -759,6 +764,7 @@ class OCRService:
         lang: str,
         *,
         separator: str = "\n",
+        strip_empty: bool = False,
     ) -> tuple[list[str], str]:
         texts: list[str] = []
         source_box_ids: list[str] = []
@@ -781,6 +787,8 @@ class OCRService:
                 continue
             source_box_ids.append(box_id)
             text = str(result.get("text") or "")
+            if strip_empty:
+                text = text.strip()
             if text:
                 texts.append(text)
         return source_box_ids, separator.join(texts)
@@ -795,6 +803,7 @@ class OCRService:
         engine: str,
         source_box_ids: list[str],
         combined: str,
+        expected_synced: str | None = None,
         snapshot: dict,
         original_revision: tuple[int, int, int],
     ) -> dict:
@@ -810,8 +819,9 @@ class OCRService:
             if page.get("skipped") or page.get("process_required") or text_object_in_preserve_region(page, obj):
                 return manifest
             balloon_sources = snapshot["balloon_sources"]
+            synced_text = combined if expected_synced is None else expected_synced
             if ((balloon_sources and tuple(source_box_ids) != balloon_sources)
-                    or self._group_result_stale(page, obj, snapshot, original_revision, combined=combined)):
+                    or self._group_result_stale(page, obj, snapshot, original_revision, combined=synced_text)):
                 logger.warning(
                     "Chapter {} page {} object {}: OCR result became stale; keeping newer state",
                     chapter_id,
@@ -854,7 +864,10 @@ class OCRService:
             current_file_revision = None
         sources = tuple(obj.get("source_boxes") or ()) if obj.get("verified_balloon") else ()
         text_unchanged = (obj.get("ocr_text") or "") == snapshot["text"]
-        follows_ocr = snapshot["follows_ocr"] and obj.get("ocr_text") == obj.get("auto_ocr_text") == combined
+        follows_ocr = (
+            snapshot["follows_ocr"]
+            and str(obj.get("ocr_text") or "") == str(obj.get("auto_ocr_text") or "") == combined
+        )
         return (
             current_original != snapshot["original_value"]
             or int(page.get("source_revision") or 0) != snapshot["source_revision"]

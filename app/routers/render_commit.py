@@ -123,8 +123,12 @@ def _render_snapshot(
         core_y1 = int(core["core_source_y1"]) - sy1 if "core_source_y1" in core else 0
         core_y2 = int(core["core_source_y2"]) - sy1 if "core_source_y2" in core else image.height
 
-        source_boxes = {str(box["id"]): box for box in page.get("boxes") or []
-                        if isinstance(box, dict) and box.get("id")}
+        has_clean = bool(page.get("clean"))
+        source_boxes = (
+            {str(box["id"]): box for box in page.get("boxes") or []
+             if isinstance(box, dict) and box.get("id")}
+            if has_clean else None
+        )
         rendered_count = render_text_objects(
             image,
             req,

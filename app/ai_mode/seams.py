@@ -638,10 +638,9 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
     joined = 0
     for page_index in page_indices:
         page = pages[page_index]
-        if "balloons" in page:
-            continue
         lines = sorted((obj for obj in page.get("text_objects") or []
                         if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
+                        and not obj.get("verified_balloon")
                         and not obj.get("joined_into") and not str(obj.get("translation") or "").strip()
                         and _rect(obj, 0) is not None),
                        key=lambda obj: (_rect(obj, 0)[1], _rect(obj, 0)[0]))
@@ -674,6 +673,11 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
             top["region"] = merged_region
             top["auto_geometry"] = dict(merged_region)
             top["joined_lines"] = [str(obj["id"]) for obj in block[1:]]
+            merged_sources = list(dict.fromkeys(
+                str(ref) for obj in block for ref in (obj.get("source_boxes") or []) if ref is not None
+            ))
+            if merged_sources:
+                top["source_boxes"] = merged_sources
             top.pop("ocr_text_region", None)
             _apply_merged_masks(top, block, letter_items, merged_region)
             bounds = [obj.get("letter_bounds") for obj in block]

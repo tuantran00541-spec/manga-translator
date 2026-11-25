@@ -14,7 +14,7 @@ def _pixel_coordinates(points, shape):
 def continue_linework(source, painted, write_mask, hole=None):
     """Interpolate narrow gaps where the same oriented ink profile is visible on both sides."""
     write = write_mask > 127
-    if not write.any():
+    if not write.any() or source.shape[:2] != painted.shape[:2]:
         return painted
     hidden = write if hole is None else write | (hole > 127)
     known = cv2.erode((~hidden).astype(np.uint8), np.ones((5, 5), np.uint8),
@@ -23,7 +23,8 @@ def continue_linework(source, painted, write_mask, hole=None):
     if np.count_nonzero(near) < 24:
         return painted
 
-    smooth = cv2.GaussianBlur(cv2.cvtColor(source, cv2.COLOR_BGR2GRAY), (3, 3), .65)
+    gray_src = cv2.cvtColor(source, cv2.COLOR_BGR2GRAY) if source.ndim == 3 else source
+    smooth = cv2.GaussianBlur(gray_src, (3, 3), .65)
     edges = cv2.Canny(smooth, 50, 100, L2gradient=True) > 0
     y, x = np.nonzero(edges & near)
     if not 1 < x.size <= 3000:
@@ -72,9 +73,14 @@ def continue_linework(source, painted, write_mask, hole=None):
     supported = (a_bound & b_bound & known[ay, ax] & known[by, bx]).all(axis=1)
     profile_a = cv2.remap(source, a, None, cv2.INTER_LINEAR).astype(np.float32)
     profile_b = cv2.remap(source, b, None, cv2.INTER_LINEAR).astype(np.float32)
-    contrast = np.minimum(np.max(np.abs(profile_a[:, 0] - profile_a[:, -1]), axis=1),
-                          np.max(np.abs(profile_b[:, 0] - profile_b[:, -1]), axis=1))
-    mismatch = np.abs(profile_a - profile_b).mean(axis=(1, 2))
+    if profile_a.ndim == 2:
+        contrast = np.minimum(np.abs(profile_a[:, 0] - profile_a[:, -1]),
+                              np.abs(profile_b[:, 0] - profile_b[:, -1]))
+        mismatch = np.abs(profile_a - profile_b).mean(axis=1)
+    else:
+        contrast = np.minimum(np.max(np.abs(profile_a[:, 0] - profile_a[:, -1]), axis=1),
+                              np.max(np.abs(profile_b[:, 0] - profile_b[:, -1]), axis=1))
+        mismatch = np.abs(profile_a - profile_b).mean(axis=(1, 2))
     good = supported & (contrast >= 30) & (mismatch <= np.minimum(14, .2 * contrast))
     if not good.any():
         return painted
@@ -98,8 +104,8 @@ def continue_linework(source, painted, write_mask, hole=None):
     offset = distance[valid]
     sample = offset + 3
     i = sample.astype(np.int32)
-    fraction = (sample - i)[:, None]
-    along = (step / 48)[:, None]
+    fraction = (sample - i) if profile_a.ndim == 2 else (sample - i)[:, None]
+    along = (step / 48) if profile_a.ndim == 2 else (step / 48)[:, None]
     profile = ((1 - along) * ((1 - fraction) * profile_a[ray, i] + fraction * profile_a[ray, i + 1])
                + along * ((1 - fraction) * profile_b[ray, i] + fraction * profile_b[ray, i + 1]))
     strength = confidence[ray] * np.minimum(1., (2.8 - np.abs(offset)) / 1.35)
@@ -107,7 +113,7 @@ def continue_linework(source, painted, write_mask, hole=None):
     order = np.lexsort((strength, pixel))
     winners = order[np.r_[pixel[order[1:]] != pixel[order[:-1]], True]]
     x, y = x[winners], y[winners]
-    alpha = strength[winners, None]
+    alpha = strength[winners] if painted.ndim == 2 else strength[winners, None]
     restored = painted.copy()
     restored[y, x] = np.rint(painted[y, x] * (1 - alpha) + profile[winners] * alpha).astype(np.uint8)
     return restored

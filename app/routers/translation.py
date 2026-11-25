@@ -103,9 +103,10 @@ def _apply_ai_font_choice(obj: dict, choice: dict | None) -> None:
     if not font_id:
         return
     if font_id == "auto":
-        obj["font_ai_id"] = "auto"
-        obj["font_selection_mode"] = "auto"
-        obj.setdefault("style", {})["font"] = "auto"
+        if obj.get("font_selection_mode") != "user":
+            obj["font_ai_id"] = "auto"
+            obj["font_selection_mode"] = "auto"
+            obj.setdefault("style", {})["font"] = "auto"
         return
     try:
         resolve_font_id(font_id)
@@ -208,10 +209,16 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
         mask = obj.get("bubble_mask")
         source = box_bounds(obj.get("letter_bounds"))
         if source and obj.get("verified_balloon") and isinstance(mask, dict) and mask.get("kind") == "bubble":
+            inscribed = mask_inscribed_rect(mask)
+            fit_region = (
+                list(inscribed)
+                if inscribed[2] > inscribed[0] and inscribed[3] > inscribed[1]
+                else candidate["fit_region"]
+            )
             candidate.update(
                 balloon_mask=mask, balloon_sources=list(obj.get("source_boxes") or []),
                 source_region=list(source),
-                fit_region=list(mask_inscribed_rect(mask)), source_cap_px=obj.get("source_cap_px"),
+                fit_region=fit_region, source_cap_px=obj.get("source_cap_px"),
             )
         candidates.append(candidate)
     if any("balloon_mask" in candidate for candidate in candidates):
@@ -250,10 +257,12 @@ def prepare_page_balloons(chapter_id: str, page_index: int) -> int:
             return 0
         if original.shape[:2] != clean.shape[:2]:
             return 0
-        stitch = snapshot["stitch_core"] or {}
+        stitch = snapshot["stitch_core"] if isinstance(snapshot["stitch_core"], dict) else {}
         y0 = int(stitch.get("source_y1") or 0)
-        core = (int(stitch.get("core_source_y1", y0)) - y0,
-                int(stitch.get("core_source_y2", y0 + original.shape[0])) - y0)
+        cy1 = stitch.get("core_source_y1")
+        cy2 = stitch.get("core_source_y2")
+        core = ((int(cy1) if cy1 is not None else y0) - y0,
+                (int(cy2) if cy2 is not None else y0 + original.shape[0]) - y0)
         plans = plan_balloon_regions(original, clean, boxes, core=core,
                                      preserve_regions=page_preserve_regions(page))
     else:
@@ -589,12 +598,23 @@ async def translate_page_in_context(
             if speaker:
                 obj["speaker"] = speaker
             obj["auto_translation"] = value
-            _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
             if role:
                 obj["typography_role"] = role
             container = getattr(translated, "containers", {}).get(candidate["id"])
-            if container and (not obj.get("verified_balloon") or container in ("bubble", "spiky", "box", "screen")):
+            rejected_container = bool(
+                container and obj.get("verified_balloon")
+                and container not in ("bubble", "spiky", "box", "screen")
+            )
+            if container and not rejected_container:
                 obj["container"] = container
+            font_choice = getattr(translated, "font_choices", {}).get(candidate["id"])
+            if rejected_container and isinstance(font_choice, dict):
+                from app.render.font_guide import font_for
+                font_choice = {
+                    **font_choice,
+                    "font_id": font_for(obj.get("typography_role"), obj.get("container")),
+                }
+            _apply_ai_font_choice(obj, font_choice)
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
                 review += 1

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -68,7 +69,7 @@ def _break_costs(text, spans, ends, *, balloon=False):
                 right = right.rstrip(".,;:!?…")
                 if left.istitle() and left.isalpha() and right.istitle() and right.isalpha():
                     costs[i] = .65
-                if balloon and left.casefold() in _VI_FORWARD_WORDS:
+                if balloon and left.lstrip('"\'“‘(«—-').casefold() in _VI_FORWARD_WORDS:
                     costs[i] = .85
         start = end
     return costs
@@ -96,13 +97,13 @@ def _edge_distances(inside):
     return cv2.distanceTransform(np.pad(inside, 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE)[1:-1, 1:-1]
 
 
-def _exclude_art(safe, inside, image, frame, gap):
+def _exclude_art(safe, inside, image, frame, gap) -> bool:
     surface = image.crop(frame)
     gray = np.asarray(surface.convert("L"))
     occupied = inside != 0
     values = gray[occupied]
     if not values.size:
-        return
+        return False
     if np.count_nonzero(values > 220) > 0.80 * values.size:
         foreign_ink = gray < 135
     elif np.count_nonzero(values < 42) > 0.80 * values.size:
@@ -111,12 +112,14 @@ def _exclude_art(safe, inside, image, frame, gap):
         lab = cv2.cvtColor(np.asarray(surface.convert("RGB")), cv2.COLOR_RGB2LAB).astype(np.float32)
         deviation = np.linalg.norm(lab - np.median(lab[occupied], axis=0), axis=2)
         if np.mean(deviation[occupied] <= 16) < .8:
-            return
+            return False
         foreign_ink = deviation > 32
     foreign_ink &= occupied
     if foreign_ink.any():
         inside[foreign_ink] = 0
         safe &= _edge_distances(inside) > gap
+        return True
+    return False
 
 
 def _line_spans(safe, top, n, height, step, anchor_x):
@@ -202,6 +205,7 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
     w, h = x2 - x1, y2 - y1
     if min(w, h) < 8:
         return None
+    text = unicodedata.normalize("NFC", str(text))
     text, words, ends = _word_spans(text)
     if not words:
         return None
@@ -219,16 +223,20 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
     weight = (distance[rows, cols] - gap) ** 2
     anchor_x = float(np.average(cols, weights=weight))
     anchor_y = float(np.average(rows, weights=weight))
+    art_excluded = False
     if mask is not None:
-        _exclude_art(safe, inside, image, frame, gap)
+        art_excluded = _exclude_art(safe, inside, image, frame, gap)
+    has_reserved = False
     for ox1, oy1, ox2, oy2 in reserved_boxes:
         left, right = max(0, ox1 - x1), min(w, ox2 - x1)
         top, bottom = max(0, oy1 - y1), min(h, oy2 - y1)
         if left < right and top < bottom:
             safe[top:bottom, left:right] = False
-    row_widths = safe.sum(axis=1)
-    if not row_widths.any():
+            has_reserved = True
+    rows, cols = np.nonzero(safe)
+    if not rows.size:
         return None
+    row_widths = safe.sum(axis=1)
     runs = None
     if verified_balloon:
         breaks = np.where(safe, w, np.arange(w, dtype=np.int32))
@@ -316,7 +324,7 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
             reference = round(anchor_y - block_height / 2)
             shift = max(2, round(min(w, h) * .095))
             tops = _track_tops(reference, min_y, max_y - block_height, ink_height, step, n,
-                               window_widths, shift, has_blockers=bool(reserved_boxes))
+                               window_widths, shift, has_blockers=has_reserved or art_excluded)
             for top in tops:
                 spans = [()] * n if verified_balloon else _line_spans(safe, top, n, ink_height, step, anchor_x)
                 if not spans:

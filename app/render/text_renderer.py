@@ -1,4 +1,5 @@
 import math
+import unicodedata
 from pathlib import Path
 
 import numpy as np
@@ -356,7 +357,7 @@ def render_text_in_box(
     raw_h = y2 - y1
     if raw_w <= 0 or raw_h <= 0 or not text or not str(text).strip():
         return image
-    text = str(text).strip()
+    text = unicodedata.normalize("NFC", str(text).strip())
 
     pad = max(
         2,

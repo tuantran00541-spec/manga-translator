@@ -551,6 +551,12 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
             ix1, iy1 = max(ix1, 0), max(iy1, top)
             ix2, iy2 = min(ix2, width), min(iy2, top + height)
             stats[key] = (ix1, iy1 - top, ix2, iy2 - top) if ix2 > ix1 and iy2 > iy1 else None
+        if top:
+            for key in ("frame", "fit_box"):
+                if stats.get(key) is None:
+                    continue
+                fx1, fy1, fx2, fy2 = stats[key]
+                stats[key] = (fx1, fy1 - top, fx2, fy2 - top)
     return canvas.crop((0, top, width, top + height))
 
 
@@ -927,7 +933,7 @@ def render_text_objects(
                 and source_image_loader is not None):
             source = source_image_loader()
             if source is not None:
-                bgr = np.asarray(source)[y1:y2, x1:x2, ::-1]
+                bgr = np.asarray(source.crop((x1, y1, x2, y2)).convert("RGB"))[:, :, ::-1]
                 effective_source_cap = source_cap_px(
                     bgr, (0, 0, x2 - x1, y2 - y1),
                     min_pieces=1 if len("".join(translation.split())) <= 2 else 3,
@@ -1012,7 +1018,7 @@ def render_text_objects(
                 source = source_image_loader()
                 ax1, ay1, ax2, ay2 = style.get("source_letter_box") or (x1, y1, x2, y2)
                 if source is not None and 0 <= ax1 < ax2 <= source.width and 0 <= ay1 < ay2 <= source.height:
-                    crop = np.asarray(source.crop((ax1, ay1, ax2, ay2)))[:, :, :3]
+                    crop = np.asarray(source.crop((ax1, ay1, ax2, ay2)).convert("RGB"))
                     ink = source_ink_hex(crop[:, :, ::-1], (0, 0, crop.shape[1], crop.shape[0]))
                     if ink:
                         style["fill"] = ink
@@ -1052,28 +1058,26 @@ def render_text_objects(
             anchors = anchors_by_id.get(oid, ())
             if pair:
                 anchors += tuple(spot for item in joined_ids for spot in anchors_by_id[item])
-            mask = None
-            if anchors:
-                anchor = anchor_union(anchors)
-                seam = bool(original.get("seam_owner") or coords[1] < core[0] or coords[3] > core[1])
-                outline_limits = (min(0, coords[1]), max(img_h, coords[3])) if seam else core
-                mask = _placement_outline(clean, anchors, style["bubble_mask"], source_image_loader,
-                                          verified_balloon or bool(pair) or oid in chambers,
-                                          coords if not seam and container in ("bubble", "spiky") else None,
-                                          outline_limits)
-                group_ids = {oid, *joined_ids} if pair else {oid}
-                if mask is not None and any(
-                        other_id not in group_ids and any(anchor_coverage(mask, spot) >= .72 for spot in spots)
-                        for other_id, spots in anchors_by_id.items()):
-                    mask = clip_bubble_mask(mask, ink_window(anchor, coords))
-                if mask is None:
-                    coords = (coords if seam and _boxes_overlap(coords, anchor) else ink_window(anchor, coords))
-                style.update(source_letter_box=anchor, verified_balloon=mask is not None)
+        if anchors:
+            anchor = anchor_union(anchors)
+            seam = bool(original.get("seam_owner") or coords[1] < core[0] or coords[3] > core[1])
+            outline_limits = (min(0, coords[1]), max(img_h, coords[3])) if seam else core
+            mask = _placement_outline(clean, anchors, style["bubble_mask"], source_image_loader,
+                                      verified_balloon or bool(pair) or oid in chambers,
+                                      coords if not seam and container in ("bubble", "spiky") else None,
+                                      outline_limits)
+            group_ids = {oid, *joined_ids} if pair else {oid}
+            if mask is not None and any(
+                    other_id not in group_ids and any(anchor_coverage(mask, spot) >= .72 for spot in spots)
+                    for other_id, spots in anchors_by_id.items()):
+                mask = clip_bubble_mask(mask, ink_window(anchor, coords))
+            if mask is None:
+                coords = (coords if seam and _boxes_overlap(coords, anchor) else ink_window(anchor, coords))
             if coords[0] >= coords[2] or coords[1] >= coords[3]:
                 if verdicts is not None:
                     verdicts.append({"id": oid, "guard": "placement_unverified", "review": True})
                 continue
-            style.update(bubble_mask=mask, lock_frame=True)
+            style.update(source_letter_box=anchor, verified_balloon=mask is not None, bubble_mask=mask, lock_frame=True)
             has_outline = mask is not None
             authorized = tuple(mask["bbox"]) if has_outline else coords
         else:

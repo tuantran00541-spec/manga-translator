@@ -650,7 +650,10 @@ class PipelineEditingMixin(PipelineMasksMixin):
                     y2 = max(0, min(y2, ph))
                 if x2 - x1 < 10 or y2 - y1 < 10:
                     raise ValueError("Region too small (min 10px)")
-                obj["region"] = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+                new_region = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+                if obj.get("region") != new_region:
+                    obj["region"] = new_region
+                    obj["geometry_overridden"] = True
 
             if "ocr_text" in changes:
                 obj["ocr_text"] = changes["ocr_text"] or ""

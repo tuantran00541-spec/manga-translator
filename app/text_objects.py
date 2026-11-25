@@ -200,7 +200,7 @@ def _update_fields(obj, updates):
 
 
 def _sync_balloon_ocr(obj, members):
-    if str(obj.get("ocr_text") or "") != str(obj.get("auto_ocr_text") or ""):
+    if not members or str(obj.get("ocr_text") or "") != str(obj.get("auto_ocr_text") or ""):
         return False
     if len(members) == 1:
         text = str(members[0].get("ocr_text") or "")
@@ -225,7 +225,12 @@ def _can_absorb(obj):
             and obj.get("shape", "rectangle") == "rectangle"
             and str(obj.get("ocr_text") or "") == str(obj.get("auto_ocr_text") or "")
             and obj.get("font_selection_mode") in (None, "auto", "default", "ai")
-            and all(k == "font" or value == DEFAULT_TEXT_OBJECT_STYLE.get(k) for k, value in style.items()))
+            and all(
+                k == "font"
+                or value == DEFAULT_TEXT_OBJECT_STYLE.get(k)
+                or (k == "cornerRadius" and str(value) == str(DEFAULT_TEXT_OBJECT_STYLE.get(k)))
+                for k, value in style.items()
+            ))
 
 
 def _combined_machine_translation(ids, covered):

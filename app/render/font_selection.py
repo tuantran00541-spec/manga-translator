@@ -33,7 +33,7 @@ def _title_width_ratio(obj: dict) -> float | None:
     if not isinstance(cap, (float, int)) or cap < 8:
         return None
     letters = decode_mask_value(obj.get("letters_mask"))
-    if letters is None or letters.ndim != 2:
+    if letters is None or letters.ndim != 2 or letters.size == 0:
         return None
     _, _, stats, _ = cv2.connectedComponentsWithStats((letters > 0).astype(np.uint8))
     _, _, widths, heights, areas = stats[1:].T
@@ -53,14 +53,14 @@ def resolve_object_font(
     style_font = _style_font(obj)
     selection_mode = str(obj.get("font_selection_mode") or "").lower()
 
-    if str(ai_font_id or "").strip().lower() == "auto":
-        ai_font_id = None
-        style_font = "auto"
-
     if selection_mode == "user":
         if _valid_font_id(style_font):
             return style_font, "user", {"reason": "explicit_user_selection"}
         return "default", "default", {"reason": "user_selection_rejected", "requested": style_font}
+
+    if str(ai_font_id or "").strip().lower() == "auto":
+        ai_font_id = None
+        style_font = "auto"
 
     if (obj.get("auto_generated") and obj.get("container") == "spiky"
             and obj.get("typography_role") in ("dialogue", "whisper", "thought")

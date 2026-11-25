@@ -5,7 +5,6 @@ import numpy as np
 
 from app.mask_store import decode_mask_value
 from app.render.balloon_layout import box_bounds
-from app.render.source_size import _letter_pieces
 from app.text_objects import source_box_ids
 
 
@@ -32,9 +31,14 @@ def _pixel_bounds(mask, origin):
 
 def _visible_ink(original, anchor):
     x1, y1, x2, y2 = anchor
-    crop = np.asarray(original.crop((max(0, x1 - 2), max(0, y1 - 2),
-                                     min(original.width, x2 + 2), min(original.height, y2 + 2))))
-    return np.ptp(crop.reshape(-1, 3), axis=0).max() >= 12
+    left, top = max(0, x1 - 2), max(0, y1 - 2)
+    right, bottom = min(original.width, x2 + 2), min(original.height, y2 + 2)
+    if left >= right or top >= bottom:
+        return False
+    crop = np.asarray(original.crop((left, top, right, bottom)).convert("RGB"))
+    if crop.size == 0:
+        return False
+    return bool(np.ptp(crop.reshape(-1, 3), axis=0).max() >= 12)
 
 
 def source_ink_bounds(record, original, clean):
@@ -58,13 +62,14 @@ def source_ink_bounds(record, original, clean):
     if original is None or min(right - left, bottom - top) < 8:
         return None
 
-    raw = np.asarray(original.crop(visible))
-    delta = cv2.absdiff(raw, np.asarray(clean.crop(visible))).max(axis=2)
+    raw = np.asarray(original.crop(visible).convert("RGB"))
+    delta = cv2.absdiff(raw, np.asarray(clean.crop(visible).convert("RGB"))).max(axis=2)
     changed = delta >= 20
     if np.count_nonzero(changed) > .55 * changed.size:
         return None
-    labels, pieces = _letter_pieces(changed.astype(np.uint8))
-    keep = pieces[:, cv2.CC_STAT_AREA] > 0
+    _, labels, pieces, _ = cv2.connectedComponentsWithStats(changed.astype(np.uint8), connectivity=8)
+    keep = (pieces[:, cv2.CC_STAT_AREA] >= 12) & (pieces[:, cv2.CC_STAT_HEIGHT] >= 5)
+    keep[0] = False
     anchor = _pixel_bounds(keep[labels], (left, top))
     return anchor if anchor is not None and _visible_ink(original, anchor) else None
 

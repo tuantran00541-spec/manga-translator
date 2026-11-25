@@ -156,25 +156,80 @@ def _trim_mask_to_letters(mask, box, letter_box, letters=None, letters_box=None)
     return mask
 
 
+def _shift_derived_mask(mask: dict, dx: int, dy: int) -> dict:
+    if not dx and not dy:
+        return mask
+    x1, y1, x2, y2 = mask["bbox"]
+    shifted = dict(mask)
+    shifted["bbox"] = [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
+    if "cx" in shifted:
+        shifted["cx"] = shifted["cx"] + dx
+    if "cy" in shifted:
+        shifted["cy"] = shifted["cy"] + dy
+    return shifted
+
+
+def _to_bgr(arr: np.ndarray) -> np.ndarray:
+    if arr.ndim == 3:
+        return arr[:, :, :3][:, :, ::-1].copy()
+    return arr
+
+
 def _derived_mask(image, box, letter_box):
-    arr = np.asarray(image)
+    box_t = tuple(int(v) for v in box)
+    letter_t = tuple(int(v) for v in letter_box) if letter_box is not None else None
+    is_pil = isinstance(image, Image.Image)
+    if is_pil:
+        width, height = image.size
+    else:
+        arr_full = np.asarray(image)
+        height, width = arr_full.shape[:2]
+
+    x1, y1, x2, y2 = box_t
+    margin = max(120, max(x2 - x1, y2 - y1))
+    cx1, cy1 = max(0, x1 - margin), max(0, y1 - margin)
+    cx2, cy2 = min(width, x2 + margin), min(height, y2 + margin)
+    has_crop = cx2 > cx1 and cy2 > cy1
+    if has_crop:
+        crop_obj = image.crop((cx1, cy1, cx2, cy2)) if is_pil else arr_full[cy1:cy2, cx1:cx2]
+        crop_bytes = crop_obj.tobytes()
+    else:
+        crop_obj = None
+        crop_bytes = b""
+
     key = (
-        tuple(int(v) for v in box),
-        tuple(int(v) for v in letter_box) if letter_box is not None else None,
-        arr.shape,
-        hashlib.md5(arr.tobytes()).hexdigest(),
+        box_t,
+        letter_t,
+        (width, height),
+        hashlib.md5(crop_bytes).hexdigest(),
     )
     hit = _DERIVED_MASK_CACHE.get(key)
     if hit is not None:
         return hit
-    bgr = arr[:, :, ::-1].copy() if arr.ndim == 3 else arr
+
     seed = None
-    if letter_box is not None:
+    if letter_t is not None:
         seed = (
-            (int(letter_box[0]) + int(letter_box[2])) // 2,
-            (int(letter_box[1]) + int(letter_box[3])) // 2,
+            (letter_t[0] + letter_t[2]) // 2,
+            (letter_t[1] + letter_t[3]) // 2,
         )
-    mask = derive_bubble_mask(bgr, tuple(int(v) for v in box), seed=seed)
+
+    mask = None
+    full_crop = (cx1 == 0 and cy1 == 0 and cx2 == width and cy2 == height)
+    if has_crop:
+        crop_bgr = _to_bgr(np.asarray(crop_obj))
+        local_box = (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1)
+        local_seed = (seed[0] - cx1, seed[1] - cy1) if seed is not None else None
+        local_mask = derive_bubble_mask(crop_bgr, local_box, seed=local_seed)
+        if local_mask.get("kind") == "bubble" or full_crop:
+            mask = _shift_derived_mask(local_mask, cx1, cy1)
+
+    if mask is None:
+        arr = np.asarray(image) if is_pil else arr_full
+        mask = derive_bubble_mask(_to_bgr(arr), box_t, seed=seed)
+        if mask.get("kind") != "bubble":
+            return mask
+
     if len(_DERIVED_MASK_CACHE) >= _DERIVED_MASK_CACHE_MAX:
         _DERIVED_MASK_CACHE.pop(next(iter(_DERIVED_MASK_CACHE), None), None)
     _DERIVED_MASK_CACHE[key] = mask

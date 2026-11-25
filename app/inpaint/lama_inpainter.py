@@ -1065,7 +1065,7 @@ class Inpainter:
                 collar = (cv2.dilate(local_mask, kernel) > 127) & safe
                 # A single stroke passing the hole can matter more than a smooth crop average.
                 if np.count_nonzero(edges[collar]) < max(10, .008 * np.count_nonzero(collar)):
-                    return 384
+                    return min(max_dim, 384)
         return max_dim
 
     def _lama_fill_single_dynamic(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:

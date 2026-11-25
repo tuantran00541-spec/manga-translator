@@ -442,6 +442,9 @@ function buildChapterExportButton() {
       }
       if (chapterId !== window.currentChapterId) return;
       window.currentManifest = data;
+      if (window.editorState && Number.isInteger(window.editorState.activePageIndex)) {
+        window.renderEditorPanel?.(window.editorState.activePageIndex);
+      }
 
       const anchor = document.createElement("a");
       anchor.href = exportHref(chapterId, forced);

@@ -81,8 +81,12 @@ function renderEditorPanel(pageIndex) {
     placement_outside_bounds: "Chữ vượt vùng đã xác nhận. Chỉnh cỡ chữ hoặc vùng chữ.",
     placement_overset: "Bản dịch quá dài so với vùng chữ gốc. Rút gọn lời hoặc chỉnh vùng chữ.",
     skipped_collision: "Vùng chữ chồng với vùng khác. Chỉnh vị trí hoặc cỡ chữ.",
+    unanchored_glyph: "Ký tự đứng riêng trong vùng ảnh gốc trống. Kiểm tra bản dịch hoặc vùng chữ.",
   };
-  const layoutIssue = page?.rendered && layoutIssueMessages[page?.render_layout_issue_types?.[obj.id]];
+  const issueType = page?.render_layout_issue_types?.[obj.id];
+  const layoutIssue = page?.rendered && issueType
+    ? (layoutIssueMessages[issueType] || "Bố cục vùng chữ cần kiểm tra lại trước khi xuất.")
+    : "";
   if (layoutIssue) {
     const hint = document.createElement("small");
     hint.className = "editor-page-status";
