@@ -12,6 +12,7 @@ from app.config import (
     MIGAN_MODEL_URL,
 )
 from app.detector.boxes import BubbleBox
+from app.detector.ink_mask import PANEL_INK_MASK, PAPER_INK_MASK
 from app.inpaint.api_inpaint import (
     AI_RESCUE_THRESHOLD,
     composite_api_region,
@@ -399,7 +400,9 @@ class Inpainter:
 
         result = image.copy()
         h, w = image.shape[:2]
-        raw_clusters = cluster_boxes(boxes)
+        local_sources = {PANEL_INK_MASK, PAPER_INK_MASK}
+        raw_clusters = cluster_boxes([b for b in boxes if b.mask_source not in local_sources])
+        raw_clusters.extend([b] for b in boxes if b.mask_source in local_sources)
         clusters: list[list[BubbleBox]] = []
         for cluster in raw_clusters:
             parts = split_oversized_cluster_area(cluster, w, h)
@@ -427,6 +430,22 @@ class Inpainter:
             crop_img = image[cy1:cy2, cx1:cx2]
             local_mask = build_mask((cy2 - cy1, cx2 - cx1), [_local_box(b, cx1, cy1) for b in cluster], crop_img)
             local_mask = self._subtract_protected_regions(local_mask, crop_box, protected_regions)
+            if len(cluster) == 1 and cluster[0].panel_fill is not None:
+                box = cluster[0]
+                ink = local_mask[box.y1 - cy1:box.y2 - cy1, box.x1 - cx1:box.x2 - cx1] > 127
+                if ink.any():
+                    result[box.y1:box.y2, box.x1:box.x2][ink] = box.panel_fill[ink]
+                    self._metric_add("smart_fill_regions")
+                continue
+            if len(cluster) == 1 and cluster[0].mask_source == PAPER_INK_MASK:
+                ink = local_mask > 127
+                if ink.any():
+                    near = cv2.dilate(ink.astype(np.uint8), np.ones((17, 17), np.uint8)) > 0
+                    paper = near & ~ink & (np.min(crop_img, axis=2) >= 235)
+                    if paper.any():
+                        result[cy1:cy2, cx1:cx2][ink] = np.rint(np.median(crop_img[paper], axis=0)).astype(np.uint8)
+                        self._metric_add("smart_fill_regions")
+                continue
             others = [_local_box(b, cx1, cy1) for cl in clusters for b in cl if id(b) in pending
                       and b.x1 < cx2 and b.x2 > cx1 and b.y1 < cy2 and b.y2 > cy1]
             hole = None
@@ -443,24 +462,14 @@ class Inpainter:
                 if use_hybrid_api and orig_before is not None and np.any(local_mask > 127):
                     rescue_score = needs_ai_rescue(orig_before, result[cy1:cy2, cx1:cx2], local_mask)
                     if rescue_score >= AI_RESCUE_THRESHOLD:
-                        rescue_mask = local_mask.copy()
-                        for b in cluster:
-                            bx1 = max(0, b.x1 - cx1)
-                            by1 = max(0, b.y1 - cy1)
-                            bx2 = min(cx2 - cx1, b.x2 - cx1)
-                            by2 = min(cy2 - cy1, b.y2 - cy1)
-                            if bx2 > bx1 and by2 > by1:
-                                rescue_mask[by1:by2, bx1:bx2] = 255
-                        rescue_mask = self._subtract_protected_regions(rescue_mask, crop_box, protected_regions)
-                        if np.any(rescue_mask > 127):
-                            ai_candidates.append({
-                                "score": rescue_score,
-                                "crop_box": crop_box,
-                                "local_mask": rescue_mask,
-                                "hole": hole,
-                                "crop": orig_before,
-                                "already_local": True,
-                            })
+                        ai_candidates.append({
+                            "score": rescue_score,
+                            "crop_box": crop_box,
+                            "local_mask": local_mask,
+                            "hole": hole,
+                            "crop": orig_before,
+                            "already_local": True,
+                        })
                 continue
 
             if use_hybrid_api and not rescue_only and np.any(local_mask > 127):

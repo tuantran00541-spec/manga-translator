@@ -858,17 +858,34 @@ def test_overview_pass_catches_oversized_display_text_and_skips_covered_boxes():
     assert detector._overview_boxes(image, [(30, 70, 870, 450, 0.90)]) == []
 
 
-def test_luminous_glow_mask_targets_bright_display_letters_on_dark_ground():
-    from app.detector.kiuyha_detector import _luminous_glow_mask
+def test_bright_lines_without_glyph_evidence_cannot_authorize_inpainting(monkeypatch):
+    _blind_ctd(monkeypatch)
+    image = np.zeros((400, 800, 3), np.uint8)
+    for y in (90, 175, 275):
+        cv2.ellipse(image, (400, y), (330, 38), 0, 180, 340, (230, 230, 230), 16)
+    detector = KiuyhaTextDetector("unused", session=_GivenSession([(35, 40, 770, 325, 0.57)]))
 
-    dark = np.zeros((400, 800, 3), np.uint8)
-    cv2.putText(dark, "DEMON", (80, 260), cv2.FONT_HERSHEY_DUPLEX, 5.0, (255, 255, 255), 24)
-    mask = _luminous_glow_mask(dark, (0, 0, 800, 400))
-    assert mask is not None and mask.shape == (400, 800)
-    assert 0.05 < float((mask > 0).mean()) < 0.75, "masks letters+glow tightly instead of wiping the whole box"
+    (box,) = detector.text_boxes(image)
 
-    light = np.full((400, 800, 3), 240, np.uint8)
-    assert _luminous_glow_mask(light, (0, 0, 800, 400)) is None
+    assert box.needs_review and not box.safe_to_inpaint
+    assert box.mask is None and box.deferred_reason == "missing_glyph_mask"
+
+
+def test_large_free_text_drops_seeds_connected_to_art_outside_the_mask():
+    from app.detector.ink_mask import protect_free_text_art
+
+    gray = np.tile(np.linspace(115, 240, 440, dtype=np.uint8), (265, 1))
+    cv2.putText(gray, "!", (131, 156), cv2.FONT_HERSHEY_DUPLEX, 3.5, 15, 12)
+    cv2.line(gray, (250, 22), (250, 252), 12, 17)
+    letters = (gray < 40)
+    letters[64:, 200:] = False
+    expanded = cv2.dilate(letters.astype(np.uint8), np.ones((33, 33), np.uint8)) > 0
+
+    bounded, ink = protect_free_text_art(gray, expanded, letters)
+
+    assert np.array_equal(ink[:, :200], letters[:, :200])
+    assert not bounded[:, 215:].any()
+    assert np.count_nonzero(bounded) < np.count_nonzero(expanded)
 
 
 def test_repair_mask_skips_hollow_spiky_bubble_frame():

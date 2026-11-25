@@ -22,10 +22,14 @@ from app.detector.ctd_mask import chromatic_stroke_mask, letter_mask, probabilit
 from app.detector.ink_mask import (
     CONTRAST_ARTWORK_MASK,
     LOCAL_INK_MASK,
+    LARGE_TEXT_MASK_AREA,
+    PAPER_INK_MASK,
     PRECISE_INK_MASK_SOURCES,
     expand_local_ink,
     fills_rectangle,
     flat_background_ink,
+    isolated_paper_ink,
+    protect_free_text_art,
 )
 from app.knobs import knob
 from app.model_contracts import validate_kiuyha_session
@@ -493,6 +497,8 @@ def _join_grown(boxes: list[BubbleBox], cores: list[tuple[int, int, int, int]] |
                     letters[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1] |= b.letters
                 sources.add(b.mask_source)
         src_kind = next(iter(sources)) if len(sources) == 1 else "text_segmenter"
+        if len(sources) > 1 and sources <= PRECISE_INK_MASK_SOURCES:
+            src_kind = CONTRAST_ARTWORK_MASK
         if "border_protected_display" in sources:
             src_kind = "border_protected_display"
         joined.append(_text_box(x1, y1, x2, y2, score, mask, boxes[0].source_model,
@@ -666,24 +672,6 @@ def _bright_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
     areas = stats[1:, cv2.CC_STAT_AREA]
     cap = MASKLESS_PIECE_SHARE * (x2 - x1) * (y2 - y1)
     return int(((areas >= MASKLESS_PIECE_PX) & (areas <= cap)).sum())
-
-
-def _luminous_glow_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray | None:
-    x1, y1, x2, y2 = box
-    crop = image[y1:y2, x1:x2]
-    if crop.size == 0 or crop.ndim != 3:
-        return None
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    if float(np.median(gray)) > 100.0:
-        return None
-    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    core = (gray >= 180) | ((hsv[..., 2] >= 165) & (hsv[..., 1] <= 90))
-    if float(core.mean()) < 0.03:
-        return None
-    near = cv2.dilate(core.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))) > 0
-    glow = near & (hsv[..., 2] >= 35)
-    mask = cv2.dilate((core | glow).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))) > 0
-    return mask.astype(np.uint8) * 255
 
 
 def _is_white_bubble_display(image: np.ndarray, box: tuple[int, int, int, int]) -> bool:
@@ -1734,10 +1722,47 @@ class KiuyhaTextDetector:
         boxes = []
         cores = []
         proposals = []
+        paper_boxes = []
+
         def add_box(box: BubbleBox) -> None:
             tight = _tighten_box(box)
-            boxes.append(tight)
-            cores.append(tight.core)
+            if tight.mask_source == PAPER_INK_MASK:
+                paper_boxes.append(tight)
+            else:
+                boxes.append(tight)
+                cores.append(tight.core)
+
+        def defer_box(core, score, reason):
+            proposals.append(BubbleBox(
+                *core, score, source_model=self.source_model, class_name="text",
+                source_role="text_proposal", needs_review=True, deferred_reason=reason,
+            ))
+
+        def add_segmented(rect, score, mask, letters, core):
+            if letters is None or not letters.any():
+                defer_box(core, score, "missing_glyph_mask")
+                return
+            mask, letters = mask > 0, letters > 0
+            source = "text_segmenter"
+            if mask.size >= LARGE_TEXT_MASK_AREA:
+                x1, y1, x2, y2 = rect
+                gray = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+                paper = isolated_paper_ink(gray, mask, letters)
+                if paper is not None:
+                    mask, letters = paper
+                    source = PAPER_INK_MASK
+                else:
+                    bounded = protect_free_text_art(gray, mask, letters)
+                    if bounded is not None:
+                        mask, letters = bounded
+                        source = CONTRAST_ARTWORK_MASK
+                if not mask.any():
+                    defer_box(core, score, "possible_artwork")
+                    return
+            add_box(_text_box(
+                *rect, score, mask.astype(np.uint8) * 255, self.source_model, letters,
+                core=core, mask_source=source,
+            ))
 
         for x1, y1, x2, y2, score in _dedupe_raw_boxes(raw_boxes):
             core = (x1, y1, x2, y2)
@@ -1764,7 +1789,7 @@ class KiuyhaTextDetector:
             if coverage >= MASKLESS_MIN_COVERAGE and not dense:
                 if is_medium_aux and score < NATIVE_AUX_STRICT_CONF and not _has_strong_aux_letter_evidence(letters, mask.size):
                     continue
-                add_box(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
+                add_segmented((x1, y1, x2, y2), score, mask, letters, core)
                 continue
             if (
                 (not is_medium_aux and score >= ENHANCED_CTD_MIN_SCORE)
@@ -1772,10 +1797,8 @@ class KiuyhaTextDetector:
             ):
                 enhanced = _enhanced_letter_mask(image, core)
                 if enhanced is not None:
-                    (ex1, ey1, ex2, ey2), emask, eletters = enhanced
-                    add_box(_text_box(
-                        ex1, ey1, ex2, ey2, score, emask.astype(np.uint8) * 255, self.source_model, eletters, core=core,
-                    ))
+                    rect, enhanced_mask, enhanced_letters = enhanced
+                    add_segmented(rect, score, enhanced_mask, enhanced_letters, core)
                     continue
             if is_medium_aux or score < MASKLESS_MIN_SCORE:
                 continue
@@ -1797,10 +1820,6 @@ class KiuyhaTextDetector:
                 or _bright_pieces(image, rect) >= MASKLESS_MIN_PIECES
             ):
                 continue
-            luminous = None if small else _luminous_glow_mask(image, rect)
-            if luminous is not None and not fills_rectangle(luminous):
-                add_box(_text_box(x1, y1, x2, y2, score, luminous, self.source_model, core=core))
-                continue
             artwork = None if small else chromatic_stroke_mask(crop)
             if artwork is not None:
                 artwork_mask, letters = artwork
@@ -1809,16 +1828,14 @@ class KiuyhaTextDetector:
                     core=core, mask_source=CONTRAST_ARTWORK_MASK,
                 ))
                 continue
-            proposals.append(BubbleBox(
-                *core, score, source_model=self.source_model, class_name="text",
-                source_role="text_proposal", needs_review=True, deferred_reason="missing_glyph_mask",
-            ))
+            defer_box(core, score, "missing_glyph_mask")
         kept = [
             _tighten_box(part)
             for box in _join_grown(boxes, cores)
             for piece in _split_blocks(box)
             for part in _split_sideways(piece)
         ]
+        kept.extend(paper_boxes)
         final = kept + self._rescue_boxes(image, kept)
         _attach_bubble_masks(image, final)
         return final + apply_final_nms(proposals)

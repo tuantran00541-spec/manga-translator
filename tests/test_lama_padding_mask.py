@@ -154,3 +154,31 @@ def test_build_mask_can_skip_ink_repair_and_runtime_threads_stay_balanced():
         threads = recommended_ort_intra_threads(cpus)
         assert threads >= 2
         assert workers * threads <= cpus
+
+
+def test_dark_surrounding_art_and_bubble_edges_survive_contaminated_ctd_mask():
+    from app.detector.boxes import BubbleBox
+    from app.detector.ink_mask import PAPER_INK_MASK, isolated_paper_ink
+    from app.detector.mask_builder import build_mask
+
+    gray = np.full((300, 500), 36, np.uint8)
+    points = np.array([(40, 30), (170, 63), (240, 45), (340, 65), (455, 25),
+                       (423, 160), (450, 270), (220, 220), (47, 263), (68, 144)])
+    cv2.fillPoly(gray, [points], 253)
+    original_paper = gray.copy()
+    cv2.putText(gray, "HELP", (105, 172), cv2.FONT_HERSHEY_DUPLEX, 2.9, 0, 10, cv2.LINE_AA)
+    glyph = (gray != original_paper)
+    grown = original_paper == 253
+    contaminated_seed = glyph | (grown & (np.indices(gray.shape)[1] < 255))
+
+    mask, letters = isolated_paper_ink(gray, grown, contaminated_seed)
+    image = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    box = BubbleBox(0, 0, 500, 300, .9, mask.astype(np.uint8) * 255, letters=letters,
+                    mask_source=PAPER_INK_MASK, safe_to_inpaint=True)
+    inpainter, seen = _inpainter(True)
+    cleaned = inpainter.inpaint(image, [box])
+
+    assert np.array_equal(build_mask(gray.shape, [box], image) > 0, mask)
+    assert np.array_equal(cleaned[~mask], image[~mask])
+    assert np.array_equal(cleaned[..., 0], original_paper)
+    assert not seen

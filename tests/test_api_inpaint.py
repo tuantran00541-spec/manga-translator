@@ -621,9 +621,11 @@ def test_ai_rescue_skips_clean_lama_and_only_rescues_smudged_regions(monkeypatch
     )
 
     api_seen = []
+    api_masks = []
 
     def fake_api(regions, **kwargs):
         api_seen.append(regions[0]["crop"].copy())
+        api_masks.append(regions[0]["mask"].copy())
         return [np.full_like(r["crop"], (190, 200, 210)) for r in regions]
 
     monkeypatch.setattr("app.inpaint.lama_inpainter.inpaint_regions_via_api", fake_api)
@@ -653,8 +655,10 @@ def test_ai_rescue_skips_clean_lama_and_only_rescues_smudged_regions(monkeypatch
 
     # Case C: border_protected_display that fills white over textured art MUST also trigger AI rescue
     api_seen.clear()
+    ink = np.full((100, 110), 255, np.uint8)
+    ink[:, 43:59] = 0
     bpd_box = BubbleBox(
-        75, 70, 185, 170, 0.95, np.full((100, 110), 255, np.uint8),
+        75, 70, 185, 170, 0.95, ink,
         mask_source="border_protected_display",
         safe_to_inpaint=True,
     )
@@ -663,3 +667,4 @@ def test_ai_rescue_skips_clean_lama_and_only_rescues_smudged_regions(monkeypatch
     inp_bpd.inpaint(art, [bpd_box])
     assert len(api_seen) == 1
     assert inp_bpd.last_metrics()["api_inpaint_regions"] == 1
+    assert np.count_nonzero(api_masks[-1]) == np.count_nonzero(ink)

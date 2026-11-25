@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from app.detector.bubble_mask import MASK_ROWS, merge_bubble_masks
+from app.detector.ink_mask import PAPER_INK_MASK
 from app.parameters import DETECTOR_FINAL_NMS_IOU, DETECTOR_NMS_SCORE_FLOOR
 
 SEPARATE_LOBE_MAX_SHARED = 0.10
@@ -91,6 +92,7 @@ class BubbleBox:
     letters: np.ndarray | None = field(default=None, compare=False)
     bubble_mask: dict | None = field(default=None, compare=False)
     core: tuple[int, int, int, int] | None = None
+    panel_fill: np.ndarray | None = field(default=None, compare=False, repr=False)
 
     @property
     def verified_mask(self) -> bool:
@@ -116,6 +118,9 @@ def box_iou(a: BubbleBox, b: BubbleBox) -> float:
 
 
 def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
+    paper_boxes = [box for box in boxes if box.mask_source == PAPER_INK_MASK and box.verified_mask]
+    if paper_boxes:
+        boxes = paper_boxes
     base = max(boxes, key=lambda box: float(box.confidence))
     evidence = [box for box in boxes if box.verified_mask]
     if not evidence:

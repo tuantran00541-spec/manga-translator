@@ -9,7 +9,10 @@ import cv2
 import numpy as np
 
 from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms, bubble_masks_are_separate_lobes
+from app.detector.ink_mask import CONTRAST_ARTWORK_MASK, PANEL_INK_MASK
 from app.image_io import encode_mask, read_image, write_image
+from app.inpaint.clustering import compute_crop_region
+from app.inpaint.panel_fill import fit_panel_grid
 from app.logging_config import logger
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
@@ -27,6 +30,28 @@ def _letters_u8(letters) -> np.ndarray | None:
     if array.dtype == bool:
         return array.astype(np.uint8) * 255
     return array.astype(np.uint8)
+
+
+def _prepare_panel_fill(image: np.ndarray, box: BubbleBox, letters: np.ndarray | None) -> bool:
+    if box.semantic_type != "free_text" or box.mask_source not in {"text_segmenter", CONTRAST_ARTWORK_MASK}:
+        return False
+    if letters is None or box.mask is None or letters.shape != box.mask.shape or not box.verified_mask:
+        return False
+    cx1, cy1, cx2, cy2 = compute_crop_region(box.x1, box.y1, box.x2, box.y2, image.shape[1], image.shape[0])
+    if not (cx1 <= box.x1 < box.x2 <= cx2 and cy1 <= box.y1 < box.y2 <= cy2):
+        return False
+    crop = image[cy1:cy2, cx1:cx2]
+    bounds = np.s_[box.y1 - cy1:box.y2 - cy1, box.x1 - cx1:box.x2 - cx1]
+    seeds = np.zeros(crop.shape[:2], np.uint8)
+    seeds[bounds] = letters
+    pair = fit_panel_grid(crop, seeds)
+    if pair is None:
+        return False
+    mask, colors = pair
+    box.mask = mask[bounds].copy()
+    box.panel_fill = colors[bounds].copy()
+    box.mask_source = PANEL_INK_MASK
+    return True
 
 
 LEFTOVER_OUTLINE_RATIO = 1.5
@@ -325,6 +350,9 @@ class PageProcessingMixin:
                 )
                 if record.get("geometry_overridden"):
                     _effective.allow_rectangle_fallback = True
+                elif _prepare_panel_fill(image, _effective, record.get("_letters_array")):
+                    record["_mask_array"] = _effective.mask
+                    record["mask_source"] = PANEL_INK_MASK
                 effective_boxes.append(_effective)
                 inpainted_records.append(record)
 
