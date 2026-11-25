@@ -909,6 +909,26 @@ def test_white_bubble_display_mask_erases_letters_while_protecting_spiky_border(
     assert float((full & (text_only > 0)).sum()) >= 0.98 * float((text_only > 0).sum()), "bold letters are masked"
 
 
+def test_display_mask_recovers_a_small_outlined_mark_in_a_confirmed_text_row(monkeypatch):
+    from app.detector import kiuyha_detector as detector
+
+    monkeypatch.setattr(detector, "probability", lambda crop: np.ones(crop.shape[:2], dtype=np.float32))
+    image = np.full((300, 410, 3), 255, np.uint8)
+    frame = np.zeros(image.shape[:2], np.uint8)
+    cv2.rectangle(frame, (35, 40), (379, 258), 255, 3)
+    ink = np.zeros_like(frame)
+    cv2.putText(ink, "TEST", (110, 169), cv2.FONT_HERSHEY_DUPLEX, 1.55, 255, 4)
+    marked = np.zeros_like(ink)
+    cv2.polylines(marked, [np.array([(97, 160), (97, 137), (105, 137)], np.int32)], False, 255, 1)
+    image[(frame | ink | marked) > 0] = 0
+
+    (x1, y1, x2, y2), mask, _ = detector._white_bubble_display_mask(image, (53, 61, 350, 224))
+    full = np.zeros_like(frame)
+    full[y1:y2, x1:x2] = mask
+    assert np.all(full[marked > 0] == 255)
+    assert not np.any(full[frame > 0])
+
+
 def test_leftover_pass_stays_inside_original_text_mask_support(monkeypatch):
     import app.detector.kiuyha_detector as detector_module
 

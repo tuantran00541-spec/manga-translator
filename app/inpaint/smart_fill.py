@@ -225,10 +225,12 @@ def _clean_context_mask(
     exclude = mask_bool if hole is None else (mask_bool | (hole > 127))
     k = radius_px * 2 + 1
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
-    ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & ~exclude
+    # A context sample must also have clean neighbors for the gradient and high-pass filters.
+    near_hole = cv2.dilate(exclude.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & ~near_hole
     if int(np.count_nonzero(ring)) < 16 and hole is not None:
         # When `hole` expands beyond `mask_bool`, step outside `exclude` so context is still sampled.
-        ring = (cv2.dilate(exclude.astype(np.uint8), kernel) > 0) & ~exclude
+        ring = (cv2.dilate(exclude.astype(np.uint8), kernel) > 0) & ~near_hole
     if int(np.count_nonzero(ring)) < 16:
         return ring, ring
 
@@ -322,11 +324,7 @@ def restore_inpaint_sharpness(
     local_mask: np.ndarray,
     hole: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Restore crisp luminance acutance inside neural inpaint regions over textured artwork.
-
-    Operates strictly on the Lab L-channel inside `local_mask` and only when the surrounding
-    artwork contains real structural edges that are noticeably crisper than the inpainted fill.
-    """
+    """Recover luminance detail when surrounding ink is crisper than the model output."""
     mask_bool = local_mask > 127
     if (
         not np.any(mask_bool)
@@ -340,10 +338,14 @@ def restore_inpaint_sharpness(
     if int(np.count_nonzero(ring)) < 48:
         return painted
 
-    orig_lab = cv2.cvtColor(original_crop, cv2.COLOR_BGR2LAB)
-    paint_lab = cv2.cvtColor(painted, cv2.COLOR_BGR2LAB)
-    orig_l = orig_lab[:, :, 0].astype(np.float32)
-    paint_l = paint_lab[:, :, 0].astype(np.float32)
+    orig_l = cv2.cvtColor(original_crop, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    # Work against the original known pixels so an edge of the output mask cannot supply detail.
+    composite = original_crop.copy()
+    composite[mask_bool] = painted[mask_bool]
+    if hole is not None:
+        pending = (hole > 127) & ~mask_bool
+        composite[pending] = painted[pending]
+    paint_l = cv2.cvtColor(composite, cv2.COLOR_BGR2GRAY).astype(np.float32)
 
     orig_blur = cv2.GaussianBlur(orig_l, (0, 0), sigmaX=1.2, sigmaY=1.2)
     paint_blur = cv2.GaussianBlur(paint_l, (0, 0), sigmaX=1.2, sigmaY=1.2)
@@ -378,18 +380,19 @@ def restore_inpaint_sharpness(
         )
     )
 
-    # Smooth noise gate so flat shading stays clean while structural strokes sharpen cleanly.
+    # Limit the correction independently of the existing luminance and keep the BGR hue intact.
     abs_d = np.abs(paint_detail)
     gate = np.clip((abs_d - 2.0) / 4.0, 0.0, 1.0)
     l_min = float(np.percentile(orig_l[ring], 1)) - 4.0
     l_max = float(np.percentile(orig_l[ring], 99)) + 4.0
-
-    boosted_l = np.clip(paint_l + paint_detail * (amount * gate), max(0.0, l_min), min(255.0, l_max))
-    out_lab = paint_lab.copy()
-    out_lab[:, :, 0] = np.where(mask_bool, np.clip(np.rint(boosted_l), 0, 255).astype(np.uint8), paint_lab[:, :, 0])
-    sharpened = cv2.cvtColor(out_lab, cv2.COLOR_LAB2BGR)
+    luma = paint_l[mask_bool]
+    pixels = painted[mask_bool].astype(np.float32)
+    correction = amount * gate[mask_bool] * paint_detail[mask_bool]
+    lower = np.maximum(np.minimum(0, l_min - luma), -pixels.min(axis=1))
+    upper = np.minimum(np.maximum(0, l_max - luma), 255 - pixels.max(axis=1))
+    correction = np.clip(correction, lower, upper)
     out = painted.copy()
-    out[mask_bool] = sharpened[mask_bool]
+    out[mask_bool] = np.rint(pixels + correction[:, None]).astype(np.uint8)
     return out
 
 
@@ -410,7 +413,7 @@ def restore_ambient_grain(
     ):
         return painted
 
-    ring, smooth = _clean_context_mask(original_crop, mask_bool, radius_px=12, hole=hole)
+    _, smooth = _clean_context_mask(original_crop, mask_bool, radius_px=12, hole=hole)
     if int(np.count_nonzero(smooth)) < 48:
         return painted
 
@@ -469,8 +472,14 @@ def restore_ambient_grain(
     low = np.percentile(ctx_vals, 1, axis=0) - 4.0
     high = np.percentile(ctx_vals, 99, axis=0) + 4.0
 
+    pixels = paint_f[mask_bool]
+    detail = np.max(np.abs(hp_paint[mask_bool]), axis=1, keepdims=True)
+    amplitude = max(4.0, float(target_std.max()) * 3.0)
+    flatness = np.clip(2 - detail / amplitude, 0.0, 1.0)
+    lower = np.minimum(0, low - pixels)
+    upper = np.maximum(0, high - pixels)
     out = painted.copy()
-    noisy_vals = np.clip(paint_f[mask_bool] + noise[mask_bool], low, high)
+    noisy_vals = pixels + np.clip(noise[mask_bool] * flatness, lower, upper)
     out[mask_bool] = np.clip(np.rint(noisy_vals), 0, 255).astype(np.uint8)
     return out
 
@@ -522,9 +531,18 @@ def blend_painted(
                 ctx_mad = float(np.max(1.4826 * np.median(np.abs(ctx_vals - np.median(ctx_vals, axis=0)), axis=0)))
                 rim_tol = max(18.0, min(42.0, ctx_mad * 4.5 + 12.0))
                 diff = np.max(np.abs(orig_f - paint_f), axis=2)
-                soft = rim & (diff <= rim_tol)
-                t = np.clip((dist[soft] - 1.0) / 1.5, 0.0, 1.0)
-                alpha[soft] = 0.35 + 0.65 * (0.5 - 0.5 * np.cos(np.pi * t))
+                ys, xs = np.nonzero(rim & (diff <= rim_tol))
+                if ys.size:
+                    # A faint text halo can match LaMa's color without matching the nearby paper.
+                    known = ~mask_bool if hole is None else ~(mask_bool | (hole > 127))
+                    support = cv2.boxFilter(known.astype(np.float32), -1, (7, 7), normalize=False)[ys, xs]
+                    totals = cv2.boxFilter(orig_f * known[..., None], -1, (7, 7), normalize=False)[ys, xs]
+                    reference = totals / np.maximum(support[:, None], 1)
+                    local_diff = np.max(np.abs(orig_f[ys, xs] - reference), axis=1)
+                    match = (support >= 6) & (local_diff <= np.clip(4 + ctx_mad * 3, 5, 12))
+                    ys, xs = ys[match], xs[match]
+                    t = np.clip((dist[ys, xs] - 1.0) / 1.5, 0.0, 1.0)
+                    alpha[ys, xs] = 0.35 + 0.65 * (0.5 - 0.5 * np.cos(np.pi * t))
         alpha_3d = alpha[:, :, None]
         blended = painted.astype(np.float32) * alpha_3d + original_crop.astype(np.float32) * (1.0 - alpha_3d)
         image[cy1:cy2, cx1:cx2] = np.clip(np.rint(blended), 0, 255).astype(np.uint8)

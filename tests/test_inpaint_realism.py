@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 
 from app.inpaint.lama_inpainter import Inpainter
+from app.inpaint.linework import continue_linework
 from app.inpaint.smart_fill import match_boundary_tone, restore_ambient_grain, restore_inpaint_sharpness
 
 
@@ -77,6 +78,24 @@ def test_ambient_grain_restoration_matches_noisy_paper_and_skips_flat():
     assert np.array_equal(restore_ambient_grain(pure, pure.copy(), mask, (0, 0, 220, 160)), pure)
 
 
+def test_grain_preserves_reconstructed_colors_outside_the_paper_range():
+    rng = np.random.default_rng(17)
+    paper = np.repeat((182 + rng.integers(-8, 9, (120, 140, 1))).astype(np.uint8), 3, axis=2)
+    mask = np.zeros(paper.shape[:2], np.uint8)
+    mask[30:90, 30:110] = 255
+    painted = paper.copy()
+    painted[mask > 0] = (182, 182, 182)
+    painted[44:76, 48:55] = (22, 48, 89)
+    painted[44:76, 75:82] = (242, 245, 250)
+
+    out = restore_ambient_grain(paper, painted, mask, (0, 0, 140, 120))
+    difference = np.abs(out.astype(np.int16) - painted)
+    assert np.any(difference[mask > 0])
+    assert difference[44:76, 48:55].max() < 15
+    assert difference[44:76, 75:82].max() < 15
+    assert not np.any(difference[mask == 0])
+
+
 def test_boundary_tone_alignment_fixes_spatially_varying_drift():
     crop = np.full((140, 200, 3), 180, np.uint8)
     mask = np.zeros((140, 200), np.uint8)
@@ -132,6 +151,38 @@ def test_rim_feathering_remains_active_with_pending_hole():
     blended = Inpainter._blend_painted(image.copy(), painted, mask, (0, 0, 180, 140), feather=False, hole=hole)
     assert np.array_equal(blended[mask <= 127], image[mask <= 127])
     assert _border_jump(blended, mask) < 6.0
+
+
+def test_rim_blending_does_not_keep_faint_letter_halos():
+    paper = np.full((100, 140, 3), 230, np.uint8)
+    mask = np.zeros(paper.shape[:2], np.uint8)
+    mask[20:80, 25:115] = 255
+    source = paper.copy()
+    source[20, 45:90] = 214
+
+    cleaned = Inpainter._blend_painted(source.copy(), paper, mask, (0, 0, 140, 100), feather=False)
+    assert np.array_equal(cleaned, paper)
+
+
+def test_only_a_matching_visible_line_is_continued_at_native_resolution():
+    truth = np.full((128, 160, 3), (210, 222, 233), np.uint8)
+    cv2.line(truth, (14, 27), (132, 96), (29, 45, 58), 2, cv2.LINE_AA)
+    mask = np.zeros(truth.shape[:2], np.uint8)
+    mask[43:77, 68:91] = 255
+    source = truth.copy()
+    source[mask > 0] = (250, 246, 237)
+    painted = truth.copy()
+    painted[mask > 0] = (210, 222, 233)
+
+    repaired = continue_linework(source, painted, mask)
+    loss = np.abs(truth.astype(np.int16) - repaired).sum()
+    assert loss < .85 * np.abs(truth.astype(np.int16) - painted).sum()
+    assert np.array_equal(repaired[mask == 0], source[mask == 0])
+
+    # A dark mark on the far side may belong to the next string awaiting cleanup.
+    pending = mask.copy()
+    pending[:, 91:] = 255
+    assert np.array_equal(continue_linework(source, painted, mask, hole=pending), painted)
 
 
 def test_lama_context_dilation_stays_tight_on_detailed_artwork():

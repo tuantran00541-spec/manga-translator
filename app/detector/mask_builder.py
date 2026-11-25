@@ -76,6 +76,9 @@ def _repair_mask_from_ink(
     near_mask = cv2.dilate((mask > 127).astype(np.uint8), kernel) > 0
     _, labels, stats, _ = cv2.connectedComponentsWithStats((ink > 0).astype(np.uint8), connectivity=8)
     repair = np.zeros_like(mask)
+    collar = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
+    fringe = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    height, width = gray.shape
     for label, (x, y, w, h, area) in enumerate(
             (tuple(int(v) for v in row) for row in stats[1:]), start=1):
         if area < 12:
@@ -84,13 +87,37 @@ def _repair_mask_from_ink(
             continue
         if any(_is_frame_component(w, h, area, rect) for rect in box_rects):
             continue
-        component = labels[y:y + h, x:x + w] == label
-        if not np.any(component & near_mask[y:y + h, x:x + w]):
+        footprint = np.s_[y:y + h, x:x + w]
+        component = labels[footprint] == label
+        nearby = np.count_nonzero(component & near_mask[footprint])
+        if not nearby:
             continue
-        repair[y:y + h, x:x + w] = np.maximum(
-            repair[y:y + h, x:x + w], component.astype(np.uint8) * 255)
+        anchored = np.count_nonzero(component & (mask[footprint] > 127))
+        if anchored == area:
+            continue
+        if anchored >= .20 * area and nearby >= .90 * area:
+            repair[footprint][component] = 255
+            continue
+
+        # An unconfirmed component needs a locally observed flat background.
+        ys = slice(max(0, y - 6), min(height, y + h + 6))
+        xs = slice(max(0, x - 6), min(width, x + w + 6))
+        part = (labels[ys, xs] == label).astype(np.uint8)
+        rim = ((cv2.dilate(part, collar) > 0) & (cv2.dilate(part, fringe) == 0) & (mask[ys, xs] <= 127))
+        paper = rim & (ink[ys, xs] == 0)
+        if np.count_nonzero(paper) < max(24, .72 * np.count_nonzero(rim)):
+            continue
+        local = crop_img[ys, xs].astype(np.int16)
+        values = local[paper]
+        background = np.median(values, axis=0)
+        difference = np.abs(values - background)
+        if difference.ndim == 2:
+            difference = difference.max(axis=1)
+        if np.mean(difference <= 11) < .90:
+            continue
+        repair[ys, xs][part != 0] = 255
     if np.any(repair > 127):
-        mask = np.maximum(mask, cv2.dilate(repair, kernel, iterations=1))
+        mask = np.maximum(mask, cv2.dilate(repair, fringe, iterations=1))
     return mask
 
 

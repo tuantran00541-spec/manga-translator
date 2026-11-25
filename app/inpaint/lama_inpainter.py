@@ -22,6 +22,7 @@ from app.inpaint.api_inpaint import (
     region_complexity_score,
 )
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
+from app.inpaint.linework import continue_linework
 from app.inpaint.smart_fill import (
     blend_painted,
     match_boundary_tone,
@@ -435,7 +436,10 @@ class Inpainter:
 
             if cluster and all(getattr(b, "mask_source", "") == "border_protected_display" for b in cluster):
                 orig_before = result[cy1:cy2, cx1:cx2].copy() if use_hybrid_api else None
-                result = self._paint_border_protected_display(result, local_mask, crop_box)
+                if hole is None:
+                    result = self._paint_border_protected_display(result, local_mask, crop_box)
+                else:
+                    result = self._paint_border_protected_display(result, local_mask, crop_box, hole=hole)
                 if use_hybrid_api and orig_before is not None and np.any(local_mask > 127):
                     rescue_score = needs_ai_rescue(orig_before, result[cy1:cy2, cx1:cx2], local_mask)
                     if rescue_score >= AI_RESCUE_THRESHOLD:
@@ -756,6 +760,7 @@ class Inpainter:
         image: np.ndarray,
         local_mask: np.ndarray,
         crop_box: tuple[int, int, int, int],
+        hole: np.ndarray | None = None,
     ) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop = image[cy1:cy2, cx1:cx2]
@@ -765,15 +770,17 @@ class Inpainter:
         if not np.any(mask_bool):
             return image
 
+        hidden = local_mask if hole is None else cv2.bitwise_or(local_mask, hole)
+        clean_context = hidden <= 127
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-        paper_px = crop[(~mask_bool) & (gray >= 235)]
+        paper_px = crop[clean_context & (gray >= 235)]
         paper_color = (
             np.median(paper_px, axis=0).astype(np.float32)
             if len(paper_px)
             else np.array([254.0, 254.0, 254.0], dtype=np.float32)
         )
         filled = crop.copy()
-        surface = self._smart_fill_surface(
+        surface = None if hole is not None else self._smart_fill_surface(
             crop,
             local_mask,
             np.clip(np.rint(paper_color), 0, 255).astype(np.uint8),
@@ -787,9 +794,9 @@ class Inpainter:
         # Repair only tiny notches where giant display letters protruded into colored panel art.
         if crop.ndim == 3 and crop.shape[2] == 3:
             hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-            colored_art = (~mask_bool) & (hsv[..., 1] >= 45) & (hsv[..., 2] >= 35) & (gray < 220)
+            art = clean_context & (gray < 220) & ((hsv[..., 1] >= 45) | (gray < 130))
             near_art = cv2.dilate(
-                colored_art.astype(np.uint8),
+                art.astype(np.uint8),
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (41, 41)),
             ) > 0
             art_overlap = mask_bool & near_art
@@ -811,13 +818,15 @@ class Inpainter:
                     ay2 = min(crop.shape[0], by + bh + 48)
                     ax1 = max(0, bx - 48)
                     ax2 = min(crop.shape[1], bx + bw + 48)
-                    sub_img = filled[ay1:ay2, ax1:ax2].copy()
-                    sub_mask = comp_mask[ay1:ay2, ax1:ax2].astype(np.uint8) * 255
-                    painted_sub = self._lama_fill_single(sub_img, sub_mask)
-                    painted_sub = match_boundary_tone(sub_img, painted_sub, sub_mask)
-                    painted_sub = restore_inpaint_sharpness(sub_img, painted_sub, sub_mask)
-                    sub_img[sub_mask > 127] = painted_sub[sub_mask > 127]
-                    filled[ay1:ay2, ax1:ax2] = sub_img
+                    region = np.s_[ay1:ay2, ax1:ax2]
+                    source = crop[region]
+                    sub_mask = comp_mask[region].astype(np.uint8) * 255
+                    sub_hole = hidden[region]
+                    painted_sub = self._lama_fill_single(source, sub_hole)
+                    painted_sub = match_boundary_tone(source, painted_sub, sub_mask, hole=sub_hole)
+                    painted_sub = restore_inpaint_sharpness(source, painted_sub, sub_mask, hole=sub_hole)
+                    painted_sub = continue_linework(source, painted_sub, sub_mask, hole=sub_hole)
+                    filled[region][sub_mask > 127] = painted_sub[sub_mask > 127]
                     did_lama = True
             if did_lama:
                 self._metric_add("lama_regions")
@@ -826,7 +835,7 @@ class Inpainter:
         else:
             self._metric_add("smart_fill_regions")
 
-        filled = restore_ambient_grain(crop, filled, local_mask, crop_box)
+        filled = restore_ambient_grain(crop, filled, local_mask, crop_box, hole=hole)
         result = image.copy()
         result_crop = result[cy1:cy2, cx1:cx2]
         result_crop[mask_bool] = filled[mask_bool]
@@ -911,7 +920,7 @@ class Inpainter:
         self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
-        fill_mask = model_mask if hole is None else hole
+        fill_mask = model_mask if hole is None else cv2.bitwise_or(model_mask, hole)
 
         # Trim dead margin outside the actual mask extent when it meaningfully shrinks LaMa pixels,
         # preserving wider structural context around detailed artwork for FFC line continuation.
@@ -975,26 +984,14 @@ class Inpainter:
         else:
             work_painted = self._lama_fill_single(work_crop, work_fill)
 
-        if (tx1, ty1, tx2, ty2) == (0, 0, crop_w, crop_h):
-            painted = work_painted
-        else:
-            painted = crop.copy()
-            painted[ty1:ty2, tx1:tx2] = work_painted
-
-        # Use `hole` (pending neighboring boxes only) rather than `fill_mask` so tone matching,
-        # sharpness restoration, ambient grain, and rim blending always sample the real untouched
-        # artwork right outside `write_mask`.
-        painted = match_boundary_tone(crop, painted, write_mask, hole=hole)
-        painted = restore_inpaint_sharpness(crop, painted, write_mask, hole=hole)
-        painted = restore_ambient_grain(crop, painted, write_mask, crop_box, hole=hole)
-        return self._blend_painted(
-            image,
-            painted,
-            write_mask,
-            crop_box,
-            feather,
-            hole=hole,
-        )
+        # Base finishing on real context outside the write mask and any still-unpainted text.
+        work_hole = hole[ty1:ty2, tx1:tx2] if hole is not None else None
+        work_box = (cx1 + tx1, cy1 + ty1, cx1 + tx2, cy1 + ty2)
+        painted = match_boundary_tone(work_crop, work_painted, work_write, hole=work_hole)
+        painted = restore_inpaint_sharpness(work_crop, painted, work_write, hole=work_hole)
+        painted = continue_linework(work_crop, painted, work_write, hole=work_hole)
+        painted = restore_ambient_grain(work_crop, painted, work_write, work_box, hole=work_hole)
+        return self._blend_painted(image, painted, work_write, work_box, feather, hole=work_hole)
 
     def _migan_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
                     feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
@@ -1063,7 +1060,12 @@ class Inpainter:
         if np.any(context):
             edge_density = float(np.mean(edges[context] > 0))
             if edge_density < 0.025:
-                return min(max_dim, 384)
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
+                safe = cv2.erode(context.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+                collar = (cv2.dilate(local_mask, kernel) > 127) & safe
+                # A single stroke passing the hole can matter more than a smooth crop average.
+                if np.count_nonzero(edges[collar]) < max(10, .008 * np.count_nonzero(collar)):
+                    return 384
         return max_dim
 
     def _lama_fill_single_dynamic(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:

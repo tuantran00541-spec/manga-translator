@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import pytest
 
@@ -87,6 +88,52 @@ def test_border_protected_display_inpaints_art_notches_per_component():
     inpainter._paint_border_protected_display(img, mask, (0, 0, 800, 600))
     assert len(seen_shapes) == 2
     assert all(w < 200 and h < 200 for h, w in seen_shapes)
+
+
+def test_border_protected_display_uses_original_context_and_conceals_full_ink():
+    inpainter, _ = _inpainter(True)
+    seen = []
+    inpainter._lama_fill_single = lambda crop, hole: (seen.append((crop.copy(), hole.copy())), crop.copy())[1]
+    image = np.full((240, 260, 3), 253, np.uint8)
+    image[140:] = (35, 90, 160)
+    mask = np.zeros(image.shape[:2], np.uint8)
+    mask[113:166, 122:146] = 255
+    image[mask > 0] = (16, 16, 16)
+
+    inpainter._paint_border_protected_display(image, mask, (0, 0, 260, 240))
+    assert len(seen) == 1
+    crop, model_mask = seen[0]
+    assert np.count_nonzero(model_mask) == np.count_nonzero(mask)
+    assert np.all(crop[model_mask > 0] == 16)
+
+
+def test_sparse_contour_at_the_hole_keeps_native_resolution():
+    inpainter, seen = _inpainter(True)
+    image = np.full((512, 512, 3), 215, np.uint8)
+    mask = np.zeros(image.shape[:2], np.uint8)
+    mask[230:282, 230:282] = 255
+    cv2.line(image, (165, 212), (344, 296), (26, 32, 42), 2, cv2.LINE_AA)
+
+    inpainter._lama_fill_single_dynamic(image, mask)
+    assert max(seen["canvas"].shape[:2]) == 512
+
+
+def test_mask_repair_does_not_claim_art_next_to_confirmed_text():
+    from app.detector.boxes import BubbleBox
+    from app.detector.mask_builder import build_mask
+
+    canvas = np.full((120, 200, 3), (220, 180, 140), np.uint8)
+    y, x = np.indices(canvas.shape[:2])
+    canvas[(x >= 100) & (y > .77 * (x - 103) + 52)] = (125, 181, 175)
+    cv2.line(canvas, (101, 51), (169, 103), (45, 35, 25), 3)
+    canvas[44:60, 72:92] = (30, 30, 30)
+    mask = np.zeros((100, 170), np.uint8)
+    mask[34:50, 57:77] = 255
+    box = BubbleBox(15, 10, 185, 110, .95, mask, safe_to_inpaint=True)
+
+    expanded = build_mask(canvas.shape[:2], [box], canvas)
+    assert expanded[51, 82] == 255
+    assert expanded[81, 140] == 0
 
 
 def test_build_mask_can_skip_ink_repair_and_runtime_threads_stay_balanced():

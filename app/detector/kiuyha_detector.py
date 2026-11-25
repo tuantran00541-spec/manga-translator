@@ -690,6 +690,38 @@ def _is_white_bubble_display(image: np.ndarray, box: tuple[int, int, int, int]) 
     return bright >= OVERVIEW_WHITE_BUBBLE_MIN_SHARE and dark >= OVERVIEW_WHITE_BUBBLE_DARK_SHARE
 
 
+def _restore_outline_glyphs(gray, letters, protected, labels, stats, candidates, core):
+    """Accept small outlined glyphs when CTD, a text row and surrounding white paper agree."""
+    heights = stats[np.unique(labels[letters]), cv2.CC_STAT_HEIGHT]
+    cap = float(np.median(heights))
+    if cap < 8:
+        return
+    left, top, right, bottom = core
+    pad = round(cap)
+    collar = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    margin = max(8, round(.26 * cap))
+    for cid in candidates:
+        x, y, w, h, _ = (int(v) for v in stats[cid])
+        if not (.48 * cap <= h <= 1.25 * cap and 3 <= w <= .9 * cap
+                and left + 6 <= x and x + w <= right - 6 and top + 6 <= y and y + h <= bottom - 6):
+            continue
+        row = letters[y:y + h, max(0, x - pad):min(gray.shape[1], x + w + pad)]
+        if np.mean(row.any(axis=1)) < .55:
+            continue
+        bounds = np.s_[max(0, y - margin):y + h + margin, max(0, x - margin):x + w + margin]
+        comp = labels[bounds] == cid
+        values = gray[bounds]
+        _, faint = cv2.connectedComponents(((values < 228) & ~letters[bounds]).astype(np.uint8))
+        outline = np.isin(faint, np.unique(faint[comp]))
+        if outline[0].any() or outline[-1].any() or outline[:, 0].any() or outline[:, -1].any():
+            continue
+        paper = (cv2.dilate(outline.astype(np.uint8), collar) > 0) & ~outline & ~letters[bounds]
+        if np.count_nonzero(paper) < 20 or np.mean(values[paper] >= 228) < .85:
+            continue
+        letters[bounds] |= comp
+        protected[bounds] &= ~comp
+
+
 def _white_bubble_display_mask(
     image: np.ndarray,
     box: tuple[int, int, int, int],
@@ -742,6 +774,7 @@ def _white_bubble_display_mask(
     letter_mask_local = np.zeros((ch, cw), bool)
     protect_local = np.zeros((ch, cw), bool)
     unassigned: list[tuple[int, int]] = []
+    outline_candidates = []
 
     for cid in range(1, n_c):
         cx, cy, bw, bh, area = (int(v) for v in cstats[cid])
@@ -759,6 +792,8 @@ def _white_bubble_display_mask(
             continue
         if fill < 0.28 and (outer_touch >= 0.40 or (outer_touch >= 0.22 and ctd_high < 0.70)):
             protect_local |= comp
+            if ctd_high >= .70:
+                outline_candidates.append(cid)
             continue
         in_core = (
             cx + bw > (x1 - cx1) + 4
@@ -787,6 +822,9 @@ def _white_bubble_display_mask(
         comp = clabels == cid
         if area < 4000 and (comp & near_core_letters).any():
             letter_mask_local |= comp
+    if outline_candidates:
+        _restore_outline_glyphs(gray, letter_mask_local, protect_local, clabels, cstats,
+                                outline_candidates, (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1))
 
     protect_wall = cv2.dilate(
         protect_local.astype(np.uint8),
