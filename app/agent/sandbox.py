@@ -417,8 +417,8 @@ class Job:
         return self.proc.poll() is None or (os.name == "posix" and _group_alive(self.proc.pid))
 
     def detach(self) -> None:
-        # Leave background process running; _Capture daemon thread continues draining stdout.
-        return None
+        if os.name == "posix":
+            subprocess.Popen(["cat"], stdin=self.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
     def stop(self) -> None:
         _kill_group(self.proc)

@@ -27,7 +27,6 @@ _MD_LINK_URL_RE = re.compile(r"\]\([^)]*\)")
 _HEADING_RE = re.compile(r"h[1-6]")
 _MAX_WALK_DEPTH = 200
 _MIN_MAIN_TEXT_CHARS = 200
-_MIN_READABLE_CHARS = 80
 
 
 def rewrite(url: str) -> str:
@@ -127,8 +126,6 @@ def _walk(node, out: list[str], base: str, depth: int = 0) -> None:
 
 def low_quality(text: str) -> bool:
     stripped = text.strip()
-    if len(stripped) < _MIN_READABLE_CHARS:
-        return True
     lower = stripped.lower()
     if len(stripped) < 1024 and any(word in lower for word in JS_GATED):
         return True

@@ -655,7 +655,7 @@ def loads_args(raw: str):
     fixed = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(raw or ""))
     fixed = re.sub(
         r'\\(["\\/bfnrtu])|\\',
-        lambda m: m.group(0) if m.group(1) else r"\\\\",
+        lambda m: m.group(0) if m.group(1) else r"\\",
         fixed,
     )
     try:

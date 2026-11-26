@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import platform
 import subprocess
 import tempfile
@@ -32,7 +33,8 @@ def test_engine_choice_is_saved_checked_and_shown(home, monkeypatch):
     monkeypatch.setattr(sandbox, "docker_ready", lambda: True)
     assert sandbox.backend() == "docker" and sandbox.full()
     args, shell = sandbox.wrap("ls", sandbox.Policy("read-only", False), home, "/scratch")
-    assert not shell and args[:2] == ["docker", "run"] and f"{home}:/workspace:ro" in args and "--network" in args and args[-4:] == ["node:20-slim", "sh", "-c", "ls"]
+    mount = f"type=bind,src={os.path.realpath(home)},dst=/workspace,readonly"
+    assert not shell and args[:2] == ["docker", "run"] and mount in args and "--network" in args and args[-4:] == ["node:20-slim", "sh", "-c", "ls"]
     assert "/workspace" in sandbox.Policy().describe(home)
     monkeypatch.setattr(sandbox, "docker_ready", lambda: False)
     assert sandbox.backend() != "docker", "a chosen engine that does not answer falls back to the OS sandbox"

@@ -1863,14 +1863,14 @@ def test_a_models_request_fields_from_the_profile_are_sent_and_dropped_when_refu
         return FakeResponse(422, {"error": "unknown field top_k"}) if "top_k" in payload else FakeResponse(200, ok)
 
     monkeypatch.setattr(client, "_post", fake_post)
-    monkeypatch.setattr(client, "_REFUSED_EXTRA", set())
+    monkeypatch.setattr(client, "_REFUSED_EXTRA", {})
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"models": {"qwen": {"request": {"reasoning_effort": "xhigh", "top_k": 20, "model": "x"}}}}))
     session = manager(home).create(PROVIDERS["openai"], "k", "qwen-3.8-27b", ws, "bypass", complete=client.complete)
     run_to_idle(session, "hi")
     assert sent[0]["reasoning_effort"] == "xhigh" and sent[0]["top_k"] == 20 and sent[0]["model"] == "qwen-3.8-27b"
     assert all("top_k" not in s and "reasoning_effort" not in s for s in sent[1:]) and len(sent) >= 3, "a refusal is remembered"
-    assert client.REQUEST_EXTRA.get() == {}, "the fields stay with the session's own calls"
+    assert not client.REQUEST_EXTRA.get(), "the fields stay with the session's own calls"
 
 
 def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
