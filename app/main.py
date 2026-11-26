@@ -26,14 +26,13 @@ from app.manifest_utils import (
     cleanup_stale_temp_artifacts,
     recover_page_artifact_transactions,
 )
-from app.media_downloader import cleanup_expired_media_jobs
 from app.parameters import (
     FIXED_LAMA_CONCURRENT_INFERENCE,
     INPAINT_PRELOAD_ENABLED,
     STALE_TEMP_MAX_AGE_SECONDS,
     USE_DYNAMIC_LAMA,
 )
-from app.routers import account, agent, ai_mode, api_proxy, automation, chapters, editor, export, extension, image, media, ocr, render, render_commit, translation, visual_qc
+from app.routers import account, agent, ai_mode, api_proxy, automation, chapters, editor, export, extension, image, ocr, render, render_commit, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
 
@@ -80,7 +79,6 @@ async def lifespan(app: FastAPI):
             recovered_transactions,
         )
     removed_temp_artifacts = _cleanup_extra_stale_artifacts()
-    removed_temp_artifacts += cleanup_expired_media_jobs()
     for root in (PROCESSED_DIR, OUTPUT_DIR):
         if not root.exists():
             continue
@@ -300,7 +298,6 @@ app.include_router(account.router)
 app.include_router(agent.router)
 app.include_router(api_proxy.router)
 app.include_router(extension.router)
-app.include_router(media.router)
 
 
 def _current_rss_bytes() -> int | None:

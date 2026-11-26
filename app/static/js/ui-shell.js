@@ -68,30 +68,26 @@
   }
 
   function setLandingMode(mode = "home") {
-    const resolved = ["import", "agent", "media"].includes(mode) ? mode : "home";
+    const resolved = ["import", "agent"].includes(mode) ? mode : "home";
     document.body.dataset.landingMode = resolved;
     const home = document.getElementById("home-view");
     const importView = document.getElementById("import-view");
     const agentView = document.getElementById("agent-view");
-    const mediaView = document.getElementById("media-view");
     if (home) home.hidden = resolved !== "home";
     if (importView) importView.hidden = resolved !== "import";
     if (agentView) agentView.hidden = resolved !== "agent";
-    if (mediaView) mediaView.hidden = resolved !== "media";
-    setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Chaos", media: "Tải video" }[resolved]);
+    setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Chaos" }[resolved]);
     if (resolved === "agent") window.openAgentView?.();
-    if (resolved === "media") window.openMediaView?.();
-
+    
     if (resolved === "home") window.loadRecentChapters?.();
     const start = document.getElementById("start-action");
     if (start) start.textContent = "Dự án mới";
     if ((document.body.dataset.appStage || "landing") !== "landing") return;
-
+    
     if (start) start.hidden = resolved !== "home";
     syncSidebar("landing");
     closeSidebar();
     if (resolved === "import") queueMicrotask(() => document.getElementById("chapter-url")?.focus());
-    if (resolved === "media") queueMicrotask(() => document.getElementById("media-url")?.focus());
   }
 
   function setAppStage(stage) {

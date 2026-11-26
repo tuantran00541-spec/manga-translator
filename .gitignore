@@ -6,8 +6,6 @@ models/*.onnx
 !models/kiuyha-tuned-transient-1024.onnx
 models/*.pt
 models/*.pth
-models/whisper/
-models/piper/
 
 __pycache__/
 *.py[cod]

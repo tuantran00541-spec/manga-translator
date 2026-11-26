@@ -6,7 +6,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 RAW_DIR = BASE_DIR / "data" / "raw"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 OUTPUT_DIR = BASE_DIR / "data" / "output"
-MEDIA_DIR = BASE_DIR / "data" / "media"
 MODELS_DIR = BASE_DIR / "models"
 LOGS_DIR = BASE_DIR / "logs"
 
@@ -40,7 +39,7 @@ WORKERS = int(os.getenv("WORKERS", "1"))
 
 
 def ensure_directories() -> None:
-    for d in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR, MEDIA_DIR, MODELS_DIR, LOGS_DIR):
+    for d in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR, MODELS_DIR, LOGS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
