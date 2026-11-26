@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import math
 import re
+import threading
+from collections import OrderedDict
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -35,7 +38,8 @@ SOURCE_MATCH_MAX_FONT_SIZE = 200
 BOX_RULE_EXPAND = 64
 
 _CURVED_CONTAINERS = frozenset({"bubble", "spiky"})
-_DERIVED_MASK_CACHE: dict = {}
+_DERIVED_MASK_CACHE: OrderedDict = OrderedDict()
+_DERIVED_MASK_CACHE_LOCK = threading.Lock()
 _DERIVED_MASK_CACHE_MAX = 64
 
 
@@ -97,19 +101,29 @@ def _mask_has_narrow_waist(mask) -> bool:
         return False
     if waist["orientation"] == "vertical":
         return True
+    lobe_widths = waist.get("lobe_widths")
+    if not lobe_widths:
+        return False
     narrowest = max((b - a for a, b in mask_row_spans(mask, waist["cut_y"])), default=0)
-    return 2 * narrowest < min(waist["lobe_widths"])
+    return 2 * narrowest < min(lobe_widths)
 
 
 def _mask_layout_y(mask, *, inner_body: bool = False) -> int:
-    _, centre = _mask_centroid(mask)
+    centroid = _mask_centroid(mask)
+    if centroid is None:
+        bbox = mask.get("bbox") if isinstance(mask, dict) else None
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            return (int(bbox[1]) + int(bbox[3])) // 2
+        return 0
+    _, centre = centroid
     if _mask_has_narrow_waist(mask):
         return int(mask.get("cy", centre))
     if inner_body:
-        x1, y1, x2, y2 = mask["bbox"]
-        left, top, right, bottom = mask_inscribed_rect(mask)
-        if (right - left) * (bottom - top) >= 0.3 * (x2 - x1) * (y2 - y1):
-            return (top + bottom) // 2
+        x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
+        if x2 > x1 and y2 > y1:
+            left, top, right, bottom = mask_inscribed_rect(mask)
+            if (right - left) * (bottom - top) >= 0.3 * (x2 - x1) * (y2 - y1):
+                return (top + bottom) // 2
     return centre
 
 
@@ -181,31 +195,37 @@ def _derived_mask(image, box, letter_box):
     is_pil = isinstance(image, Image.Image)
     if is_pil:
         width, height = image.size
+        mode_sig = image.mode
     else:
         arr_full = np.asarray(image)
         height, width = arr_full.shape[:2]
+        mode_sig = (arr_full.shape[2:] if arr_full.ndim > 2 else (), str(arr_full.dtype))
 
     x1, y1, x2, y2 = box_t
     margin = max(120, max(x2 - x1, y2 - y1))
     cx1, cy1 = max(0, x1 - margin), max(0, y1 - margin)
     cx2, cy2 = min(width, x2 + margin), min(height, y2 + margin)
     has_crop = cx2 > cx1 and cy2 > cy1
+    crop_arr = None
     if has_crop:
-        crop_obj = image.crop((cx1, cy1, cx2, cy2)) if is_pil else arr_full[cy1:cy2, cx1:cx2]
-        crop_bytes = crop_obj.tobytes()
+        if is_pil:
+            crop_pil = image.crop((cx1, cy1, cx2, cy2))
+            try:
+                crop_arr = np.ascontiguousarray(crop_pil)
+            finally:
+                crop_pil.close()
+        else:
+            crop_arr = np.ascontiguousarray(arr_full[cy1:cy2, cx1:cx2])
+        digest = hashlib.md5(memoryview(crop_arr)).hexdigest()
     else:
-        crop_obj = None
-        crop_bytes = b""
+        digest = ""
 
-    key = (
-        box_t,
-        letter_t,
-        (width, height),
-        hashlib.md5(crop_bytes).hexdigest(),
-    )
-    hit = _DERIVED_MASK_CACHE.get(key)
-    if hit is not None:
-        return hit
+    key = (box_t, letter_t, (width, height), mode_sig, digest)
+    with _DERIVED_MASK_CACHE_LOCK:
+        hit = _DERIVED_MASK_CACHE.get(key)
+        if hit is not None:
+            _DERIVED_MASK_CACHE.move_to_end(key)
+            return copy.deepcopy(hit)
 
     seed = None
     if letter_t is not None:
@@ -216,8 +236,8 @@ def _derived_mask(image, box, letter_box):
 
     mask = None
     full_crop = (cx1 == 0 and cy1 == 0 and cx2 == width and cy2 == height)
-    if has_crop:
-        crop_bgr = _to_bgr(np.asarray(crop_obj))
+    if has_crop and crop_arr is not None:
+        crop_bgr = _to_bgr(crop_arr)
         local_box = (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1)
         local_seed = (seed[0] - cx1, seed[1] - cy1) if seed is not None else None
         local_mask = derive_bubble_mask(crop_bgr, local_box, seed=local_seed)
@@ -227,12 +247,12 @@ def _derived_mask(image, box, letter_box):
     if mask is None:
         arr = np.asarray(image) if is_pil else arr_full
         mask = derive_bubble_mask(_to_bgr(arr), box_t, seed=seed)
-        if mask.get("kind") != "bubble":
-            return mask
 
-    if len(_DERIVED_MASK_CACHE) >= _DERIVED_MASK_CACHE_MAX:
-        _DERIVED_MASK_CACHE.pop(next(iter(_DERIVED_MASK_CACHE), None), None)
-    _DERIVED_MASK_CACHE[key] = mask
+    with _DERIVED_MASK_CACHE_LOCK:
+        _DERIVED_MASK_CACHE[key] = copy.deepcopy(mask)
+        _DERIVED_MASK_CACHE.move_to_end(key)
+        while len(_DERIVED_MASK_CACHE) > _DERIVED_MASK_CACHE_MAX:
+            _DERIVED_MASK_CACHE.popitem(last=False)
     return mask
 
 
@@ -285,6 +305,20 @@ def _lines_fit_ellipse(draw, lines, font, box_w: int, box_h: int, stroke_w: int)
     )
 
 
+def _crop_gray_roi(image: Image.Image, rx1: int, ry1: int, rx2: int, ry2: int) -> np.ndarray:
+    cropped = image.crop((rx1, ry1, rx2, ry2))
+    try:
+        if cropped.mode == "L":
+            return np.asarray(cropped).copy()
+        gray_img = cropped.convert("L")
+        try:
+            return np.asarray(gray_img).copy()
+        finally:
+            gray_img.close()
+    finally:
+        cropped.close()
+
+
 def _box_frame(image: Image.Image, box):
     x1, y1, x2, y2 = (int(v) for v in box)
     width, height = image.size
@@ -292,7 +326,10 @@ def _box_frame(image: Image.Image, box):
     cx2, cy2 = min(width, x2), min(height, y2)
     if cx2 - cx1 < 40 or cy2 - cy1 < 40:
         return None
-    grey = np.asarray(image.convert("L"))[cy1:cy2, cx1:cx2]
+    ex1, ex2 = max(0, x1 - BOX_RULE_EXPAND), min(width, x2 + BOX_RULE_EXPAND)
+    ey1, ey2 = max(0, y1 - BOX_RULE_EXPAND), min(height, y2 + BOX_RULE_EXPAND)
+    roi_grey = _crop_gray_roi(image, ex1, ey1, ex2, ey2)
+    grey = roi_grey[cy1 - ey1:cy2 - ey1, cx1 - ex1:cx2 - ex1]
     if grey.size == 0:
         return None
     dark = grey < 110
@@ -331,22 +368,19 @@ def _box_frame(image: Image.Image, box):
             fy1, fy2 = cy1 + top[1], cy1 + bottom[0]
     first_fx = (fx1, fx2)
     first_fy = (fy1, fy2)
-    full_grey = np.asarray(image.convert("L"))
     for axis in ("x", "y"):
         if axis == "x":
-            ex1, ex2 = max(0, x1 - BOX_RULE_EXPAND), min(width, x2 + BOX_RULE_EXPAND)
-            crop = full_grey[cy1:cy2, ex1:ex2] < 110
+            crop = roi_grey[cy1 - ey1:cy2 - ey1, :] < 110
             share = crop.mean(axis=0) if crop.size else np.array([])
             lo, hi, extent = cx1 - ex1, cx2 - ex1, box_w
-            strips = lambda a, b: full_grey[cy1:cy2, ex1 + a:ex1 + b]
+            strips = lambda a, b: roi_grey[cy1 - ey1:cy2 - ey1, a:b]
             first_groups = col_groups
             unmeasured = first_fx == (cx1, cx2)
         else:
-            ey1, ey2 = max(0, y1 - BOX_RULE_EXPAND), min(height, y2 + BOX_RULE_EXPAND)
-            crop = full_grey[ey1:ey2, cx1:cx2] < 110
+            crop = roi_grey[:, cx1 - ex1:cx2 - ex1] < 110
             share = crop.mean(axis=1) if crop.size else np.array([])
             lo, hi, extent = cy1 - ey1, cy2 - ey1, box_h
-            strips = lambda a, b: full_grey[ey1 + a:ey1 + b, cx1:cx2]
+            strips = lambda a, b: roi_grey[a:b, cx1 - ex1:cx2 - ex1]
             first_groups = row_groups
             unmeasured = first_fy == (cy1, cy2)
         groups = rule_groups(share) if share.size else []
@@ -396,12 +430,20 @@ def _box_frame(image: Image.Image, box):
 def _screen_frame(image: Image.Image, box):
     x1, y1, x2, y2 = (int(v) for v in box)
     width, height = image.size
-    grey = np.asarray(image.convert("L"))
     box_w, box_h = x2 - x1, y2 - y1
     if box_w < 40 or box_h < 40:
         return (x1, x2, y1, y2, False, False)
-    my1, my2 = y1 + box_h // 5, y2 - box_h // 5
-    mx1, mx2 = x1 + box_w // 5, x2 - box_w // 5
+    cx1, cy1 = max(0, x1), max(0, y1)
+    cx2, cy2 = min(width, x2), min(height, y2)
+    if cx2 - cx1 < 40 or cy2 - cy1 < 40:
+        return (x1, x2, y1, y2, False, False)
+    rx1, ry1 = max(0, cx1 - 16), max(0, cy1 - 16)
+    rx2, ry2 = min(width, cx2 + 16), min(height, cy2 + 16)
+    grey = _crop_gray_roi(image, rx1, ry1, rx2, ry2)
+    my1 = max(ry1, min(ry2, y1 + box_h // 5)) - ry1
+    my2 = max(ry1, min(ry2, y2 - box_h // 5)) - ry1
+    mx1 = max(rx1, min(rx2, x1 + box_w // 5)) - rx1
+    mx2 = max(rx1, min(rx2, x2 - box_w // 5)) - rx1
 
     def groups(share):
         out = []
@@ -416,7 +458,10 @@ def _screen_frame(image: Image.Image, box):
             out.append((start, len(share)))
         return [(a, b) for a, b in out if b - a <= 24]
 
-    def side(share, lo, edge: int, from_start: bool):
+    def side(strip, axis: int, lo: int, edge: int, from_start: bool):
+        if strip.size == 0:
+            return None
+        share = (strip > 180).mean(axis=axis)
         found = None
         for a, b in groups(share):
             ga, gb = lo + a, lo + b
@@ -428,24 +473,14 @@ def _screen_frame(image: Image.Image, box):
                 found = ga
         return found
 
-    left = side(
-        (grey[my1:my2, max(0, x1 - 16):min(width, x1 + 64)] > 180).mean(axis=0),
-        max(0, x1 - 16), x1, True,
-    )
-    rx0 = max(0, x2 - 64)
-    right = side(
-        (grey[my1:my2, rx0:min(width, x2 + 16)] > 180).mean(axis=0),
-        rx0, x2, False,
-    )
-    top = side(
-        (grey[max(0, y1 - 16):min(height, y1 + 64), mx1:mx2] > 180).mean(axis=1),
-        max(0, y1 - 16), y1, True,
-    )
-    by0 = max(0, y2 - 64)
-    bottom = side(
-        (grey[by0:min(height, y2 + 16), mx1:mx2] > 180).mean(axis=1),
-        by0, y2, False,
-    )
+    lx0, lx1 = max(rx1, x1 - 16), min(rx2, x1 + 64)
+    left = side(grey[my1:my2, lx0 - rx1:lx1 - rx1], 0, lx0, x1, True)
+    rx0, rx1_end = max(rx1, x2 - 64), min(rx2, x2 + 16)
+    right = side(grey[my1:my2, rx0 - rx1:rx1_end - rx1], 0, rx0, x2, False)
+    ty0, ty1 = max(ry1, y1 - 16), min(ry2, y1 + 64)
+    top = side(grey[ty0 - ry1:ty1 - ry1, mx1:mx2], 1, ty0, y1, True)
+    by0, by1 = max(ry1, y2 - 64), min(ry2, y2 + 16)
+    bottom = side(grey[by0 - ry1:by1 - ry1, mx1:mx2], 1, by0, y2, False)
     fx1, fx2, measured_x = x1, x2, False
     if left is not None and right is not None and left < (x1 + x2) // 2 < right and right - left >= 40:
         fx1, fx2, measured_x = left, right, True
@@ -547,11 +582,15 @@ def _fits(
     curved: bool = False, bands=None, anchor_y: int | None = None,
     keep_compounds: bool = False,
 ) -> tuple[bool, list[str]]:
+    if box_w <= 0 or box_h <= 0 or not str(text or "").strip():
+        return False, []
     font = get_font_object(font_path_str, size)
     lines = _wrap_text(draw, text, font, box_w, keep_compounds=keep_compounds)
     if not lines:
         return False, []
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
+    if line_height <= 0:
+        return False, lines
     total_h = line_height * len(lines)
     widths = [draw.textbbox((0, 0), line, font=font)[2] for line in lines]
     whole = [word for line in lines for word in line.split()] == text.split()
@@ -622,9 +661,11 @@ def _fit_text(
     keep_compounds: bool = False,
 ) -> tuple[int, list[str], bool]:
     minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
-    lo, hi = minimum_size, max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
+    hi_max = max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
+    lo, hi = minimum_size, hi_max
     best_size = minimum_size
     best_lines: list[str] = []
+    found_fit = False
 
     while lo <= hi:
         mid = (lo + hi) // 2
@@ -633,17 +674,26 @@ def _fit_text(
         if ok:
             best_size = mid
             best_lines = lines
+            found_fit = True
             lo = mid + 1
         else:
             hi = mid - 1
 
-    hi_max = max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
+    # Probe a small upward window past binary search in case font hinting is
+    # slightly non-monotonic, stopping after 4 consecutive misses.
+    misses = 0
     for size in range(best_size + 1, hi_max + 1):
         ok, lines = _fits(draw, text, box_w, box_h, font_path_str, size, stroke_w,
                           keep_compounds=keep_compounds)
         if ok:
             best_size = size
             best_lines = lines
+            found_fit = True
+            misses = 0
+        else:
+            misses += 1
+            if misses >= 4:
+                break
 
     if (curved or bands is not None) and best_lines:
         for size in _scan_sizes(best_size, minimum_size - 1):
@@ -654,15 +704,14 @@ def _fit_text(
             if ok:
                 return size, lines, True
         min_font = get_font_object(font_path_str, minimum_size)
-        return minimum_size, _wrap_text(draw, text, min_font, box_w), False
+        return minimum_size, _wrap_text(
+            draw, text, min_font, box_w, keep_compounds=keep_compounds
+        ), False
 
     if not best_lines:
         min_font = get_font_object(font_path_str, minimum_size)
-        best_lines = _wrap_text(draw, text, min_font, box_w)
-    fits = bool(best_lines) and _fits(
-        draw, text, box_w, box_h, font_path_str, best_size, stroke_w, keep_compounds=keep_compounds,
-    )[0]
-    return best_size, best_lines, fits
+        best_lines = _wrap_text(draw, text, min_font, box_w, keep_compounds=keep_compounds)
+    return best_size, best_lines, found_fit
 
 
 def _greedy_groups(draw, words: Sequence[str], font, width: int) -> list[list[str]]:

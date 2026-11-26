@@ -6,18 +6,34 @@ import re
 from urllib.parse import urljoin, urlparse
 
 import requests
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, FeatureNotFound, NavigableString, Tag
 
 SKIP = ("script", "style", "noscript", "svg", "form", "iframe", "template", "button")
 CHROME = ("nav", "footer", "aside")
-JS_GATED = ("enable javascript", "javascript required", "turn on javascript", "please enable javascript", "browser not supported")
+JS_GATED = (
+    "enable javascript",
+    "javascript required",
+    "turn on javascript",
+    "please enable javascript",
+    "browser not supported",
+)
 RAW_GITHUB = "https://raw.githubusercontent.com"
-GITHUB_PAGES = {"trending", "topics", "collections", "explore", "search", "marketplace", "orgs", "users", "settings", "sponsors", "features",
-                "about", "login", "notifications", "issues", "pulls", "apps", "enterprise", "pricing", "readme", "events", "codespaces", "new"}
+GITHUB_PAGES = {
+    "trending", "topics", "collections", "explore", "search", "marketplace", "orgs", "users",
+    "settings", "sponsors", "features", "about", "login", "notifications", "issues", "pulls",
+    "apps", "enterprise", "pricing", "readme", "events", "codespaces", "new",
+}
+_MD_LINK_URL_RE = re.compile(r"\]\([^)]*\)")
+_HEADING_RE = re.compile(r"h[1-6]")
+_MAX_WALK_DEPTH = 200
+_MIN_MAIN_TEXT_CHARS = 200
+_MIN_READABLE_CHARS = 80
 
 
 def rewrite(url: str) -> str:
     parts = urlparse(url)
+    if parts.scheme.lower() not in ("http", "https"):
+        return url
     if parts.netloc.lower() not in ("github.com", "www.github.com"):
         return url
     path = [p for p in parts.path.split("/") if p]
@@ -30,22 +46,51 @@ def rewrite(url: str) -> str:
     return url
 
 
+def _safe_href(raw_href: object, base: str) -> str:
+    if isinstance(raw_href, list):
+        raw_href = raw_href[0] if raw_href else ""
+    href = str(raw_href or "").strip()
+    if not href or href.startswith("#"):
+        return ""
+    lowered = href.lower()
+    if lowered.startswith(("javascript:", "data:", "vbscript:")):
+        return ""
+    try:
+        resolved = urljoin(base, href) if base else href
+    except ValueError:
+        return ""
+    scheme = urlparse(resolved).scheme.lower()
+    if scheme and scheme not in ("http", "https"):
+        return ""
+    return resolved
+
+
 def to_markdown(html: str, base: str = "") -> str:
-    soup = BeautifulSoup(html, "lxml")
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except FeatureNotFound:
+        soup = BeautifulSoup(html, "html.parser")
     for tag in soup(SKIP):
         tag.decompose()
-    root = soup.find("main") or soup.find("article")
+    root = None
+    for candidate in (soup.find("main"), soup.find("article")):
+        if candidate is not None and len(candidate.get_text(" ", strip=True)) >= _MIN_MAIN_TEXT_CHARS:
+            root = candidate
+            break
     if root is None:
-        root = soup.body or soup
-        for tag in root.find_all(CHROME):
-            tag.decompose()
+        root = soup.find("main") or soup.find("article") or soup.body or soup
+    for tag in root.find_all(CHROME):
+        tag.decompose()
     lines: list[str] = []
-    _walk(root, lines, base)
+    _walk(root, lines, base, depth=0)
     text = "\n".join(line.rstrip() for line in "".join(lines).split("\n"))
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def _walk(node, out: list[str], base: str) -> None:
+def _walk(node, out: list[str], base: str, depth: int = 0) -> None:
+    if depth >= _MAX_WALK_DEPTH:
+        out.append(node.get_text(" ", strip=True) if isinstance(node, Tag) else str(node))
+        return
     for child in node.children:
         if isinstance(child, NavigableString):
             out.append(re.sub(r"\s+", " ", str(child)))
@@ -55,11 +100,11 @@ def _walk(node, out: list[str], base: str) -> None:
         name = child.name
         if name in SKIP:
             continue
-        if re.fullmatch(r"h[1-6]", name):
+        if _HEADING_RE.fullmatch(name):
             out.append(f"\n\n{'#' * int(name[1])} {child.get_text(' ', strip=True)}\n\n")
         elif name == "a" and child.get("href"):
             label = child.get_text(" ", strip=True)
-            href = urljoin(base, child["href"]) if not child["href"].startswith(("#", "javascript:")) else ""
+            href = _safe_href(child.get("href"), base)
             out.append(f"[{label}]({href})" if label and href else label)
         elif name == "pre":
             out.append(f"\n\n```\n{child.get_text()}\n```\n\n")
@@ -67,43 +112,61 @@ def _walk(node, out: list[str], base: str) -> None:
             out.append(f"`{child.get_text()}`")
         elif name == "li":
             out.append("\n- ")
-            _walk(child, out, base)
+            _walk(child, out, base, depth + 1)
         elif name == "tr":
             out.append("\n" + " | ".join(cell.get_text(" ", strip=True) for cell in child.find_all(["th", "td"])))
         elif name in ("table", "ul", "ol", "p", "div", "section", "blockquote", "figure", "dl"):
             out.append("\n\n" if name in ("p", "blockquote", "table") else "\n")
-            _walk(child, out, base)
+            _walk(child, out, base, depth + 1)
             out.append("\n")
         elif name == "br":
             out.append("\n")
         else:
-            _walk(child, out, base)
+            _walk(child, out, base, depth + 1)
 
 
 def low_quality(text: str) -> bool:
-    lower = text.lower()
-    if len(text) < 1024 and any(word in lower for word in JS_GATED):
+    stripped = text.strip()
+    if len(stripped) < _MIN_READABLE_CHARS:
         return True
-    lines = [line for line in text.split("\n") if line.strip()]
-    return len(lines) > 10 and sum(len(line.strip()) < 60 and "](" in line for line in lines) / len(lines) > 0.6
+    lower = stripped.lower()
+    if len(stripped) < 1024 and any(word in lower for word in JS_GATED):
+        return True
+    lines = [line.strip() for line in stripped.split("\n") if line.strip()]
+    if len(lines) <= 10:
+        return False
+    nav_lines = sum(
+        "](" in line and len(_MD_LINK_URL_RE.sub("]", line)) < 60
+        for line in lines
+    )
+    return nav_lines / len(lines) > 0.6
 
 
 def readable(body: bytes, kind: str, encoding: str | None, base: str) -> tuple[str, list[str]]:
-    text = body.decode(encoding or "utf-8", errors="replace")
+    try:
+        text = body.decode(encoding or "utf-8", errors="replace")
+    except LookupError:
+        text = body.decode("utf-8", errors="replace")
     notes: list[str] = []
-    if "json" in kind:
+    kind_lower = str(kind or "").lower()
+    if "json" in kind_lower:
         try:
             return json.dumps(json.loads(text), indent=2, ensure_ascii=False), notes
         except ValueError:
             return text, notes
-    if "html" in kind or text.lstrip()[:15].lower().startswith(("<!doctype", "<html")):
+    if "html" in kind_lower or text.lstrip()[:15].lower().startswith(("<!doctype", "<html")):
         text = to_markdown(text, base)
         if low_quality(text):
-            notes.append("The page looks like it needs JavaScript or is mostly menus; what is here may not be its content. Try another source, a raw or API URL, or search for the text elsewhere.")
+            notes.append(
+                "The page looks like it needs JavaScript or is mostly menus; what is here may not be its content. "
+                "Try another source, a raw or API URL, or search for the text elsewhere."
+            )
     return text, notes
 
 
 def find(text: str, pattern: str, context: int = 2, limit: int = 40) -> str:
+    context = max(0, int(context))
+    limit = max(1, int(limit))
     try:
         rx = re.compile(pattern, re.I)
     except re.error:
@@ -126,8 +189,20 @@ def find(text: str, pattern: str, context: int = 2, limit: int = 40) -> str:
 
 
 def browsed(url: str, key: str) -> str:
-    reply = requests.post(os.environ.get("TINYFISH_FETCH_URL") or "https://api.fetch.tinyfish.ai", json={"urls": [url], "format": "markdown"}, timeout=(10, 60),
-                          headers={"X-API-Key": key, "Content-Type": "application/json", "Accept": "application/json"})
-    reply.raise_for_status()
-    rows = reply.json().get("results") or []
-    return str(rows[0].get("text") or "").strip() if rows and isinstance(rows[0], dict) else ""
+    endpoint = os.environ.get("TINYFISH_FETCH_URL") or "https://api.fetch.tinyfish.ai"
+    with requests.post(
+        endpoint,
+        json={"urls": [url], "format": "markdown"},
+        timeout=(10, 60),
+        allow_redirects=False,
+        headers={"X-API-Key": key, "Content-Type": "application/json", "Accept": "application/json"},
+    ) as reply:
+        reply.raise_for_status()
+        try:
+            payload = reply.json()
+        except ValueError:
+            return ""
+    if not isinstance(payload, dict):
+        return ""
+    rows = payload.get("results") or []
+    return str(rows[0].get("text") or "").strip() if isinstance(rows, list) and rows and isinstance(rows[0], dict) else ""

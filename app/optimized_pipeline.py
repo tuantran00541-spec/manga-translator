@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import uuid
 from pathlib import Path
 
@@ -15,6 +16,31 @@ from app.region_policy import subtract_regions_from_mask
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._repaint_stats_local = threading.local()
+        self._last_repaint_detector_stats_fallback: dict | None = None
+
+    def _stats_local(self) -> threading.local:
+        local = self.__dict__.get("_repaint_stats_local")
+        if local is None:
+            local = threading.local()
+            self.__dict__["_repaint_stats_local"] = local
+        return local
+
+    @property
+    def _last_repaint_detector_stats(self) -> dict | None:
+        return getattr(
+            self._stats_local(),
+            "stats",
+            self.__dict__.get("_last_repaint_detector_stats_fallback"),
+        )
+
+    @_last_repaint_detector_stats.setter
+    def _last_repaint_detector_stats(self, value: dict | None) -> None:
+        self._stats_local().stats = value
+        self.__dict__["_last_repaint_detector_stats_fallback"] = value
+
     def _exact_manual_repaint_candidate(
         self,
         image: np.ndarray,
@@ -23,7 +49,8 @@ class OptimizedChapterPipeline(ChapterPipeline):
         force_lama: bool,
     ) -> np.ndarray:
         binary = (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
-        if not np.any(binary):
+        user_pixels = int(np.count_nonzero(binary))
+        if user_pixels == 0:
             return image.copy()
 
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
@@ -31,14 +58,18 @@ class OptimizedChapterPipeline(ChapterPipeline):
             connectivity=8,
         )
         result = image.copy()
+        scratch = image.copy()
         h, w = image.shape[:2]
         used_components = 0
 
+        valid_labels: list[tuple[int, int, int, int, int]] = []
         for label in range(1, num_labels):
             x, y, bbox_w, bbox_h, area = (int(v) for v in stats[label])
-            if area <= 0 or bbox_w <= 0 or bbox_h <= 0:
-                continue
+            if area > 0 and bbox_w > 0 and bbox_h > 0:
+                valid_labels.append((label, x, y, bbox_w, bbox_h))
 
+        total_valid = len(valid_labels)
+        for idx, (label, x, y, bbox_w, bbox_h) in enumerate(valid_labels):
             crop_box = compute_manual_crop_region(
                 x,
                 y,
@@ -53,18 +84,20 @@ class OptimizedChapterPipeline(ChapterPipeline):
             local_mask[component] = 255
 
             component_candidate = self.inpainter._smart_paint_region(
-                image.copy(),
+                scratch,
                 local_mask,
                 crop_box,
                 feather=False,
                 force_lama=force_lama,
             )
-            authority = labels == label
-            result[authority] = component_candidate[authority]
+            result[cy1:cy2, cx1:cx2][component] = component_candidate[
+                cy1:cy2, cx1:cx2
+            ][component]
+            if idx + 1 < total_valid:
+                scratch[cy1:cy2, cx1:cx2] = image[cy1:cy2, cx1:cx2]
             used_components += 1
 
         if force_lama:
-            user_pixels = int(np.count_nonzero(binary > MANUAL_MASK_THRESHOLD))
             self._last_repaint_detector_stats = {
                 "mask_mode": "exact_user_mask",
                 "detector_source": "not_used",
@@ -92,7 +125,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         preserve_regions: list[dict] | None = None,
     ) -> str:
         if not apply_manual_mask:
-            return super()._do_reinpaint(
+            clean_path_posix = super()._do_reinpaint(
                 processed_dir,
                 img_path,
                 image,
@@ -103,6 +136,11 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 apply_manual_mask=False,
                 preserve_regions=preserve_regions,
             )
+            if preserve_regions and reuse_auto_clean:
+                clean_image = read_image(Path(clean_path_posix))
+                self._restore_preserve_pixels(clean_image, image, preserve_regions)
+                self._atomic_write_clean(processed_dir, Path(clean_path_posix), clean_image)
+            return clean_path_posix
 
         standard_mask_path = (
             Path(manual_mask_posix)
@@ -132,21 +170,15 @@ class OptimizedChapterPipeline(ChapterPipeline):
             preserve_regions,
         )
 
-        suppressed_standard_path = processed_dir / (
-            f".exact-standard-{uuid.uuid4().hex}.png"
-        )
-        suppressed_lama_path = processed_dir / (
-            f".exact-lama-{uuid.uuid4().hex}.png"
-        )
         clean_path_posix = super()._do_reinpaint(
             processed_dir,
             img_path,
             image,
             boxes,
-            manual_mask_posix=suppressed_standard_path.as_posix(),
-            manual_lama_mask_posix=suppressed_lama_path.as_posix(),
+            manual_mask_posix=None,
+            manual_lama_mask_posix=None,
             reuse_auto_clean=reuse_auto_clean,
-            apply_manual_mask=True,
+            apply_manual_mask=False,
             preserve_regions=preserve_regions,
         )
 
@@ -159,7 +191,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         ):
             clean_image = read_image(Path(clean_path_posix))
             standard_candidate = self._exact_manual_repaint_candidate(
-                clean_image.copy(),
+                clean_image,
                 standard_mask,
                 force_lama=False,
             )
@@ -171,7 +203,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
             if clean_image is None:
                 clean_image = read_image(Path(clean_path_posix))
             lama_candidate = self._exact_manual_repaint_candidate(
-                image.copy(),
+                image,
                 lama_mask,
                 force_lama=True,
             )
@@ -187,14 +219,30 @@ class OptimizedChapterPipeline(ChapterPipeline):
         if self._restore_mask_path(processed_dir, img_path).exists():
             if clean_image is None:
                 clean_image = read_image(Path(clean_path_posix))
-            needs_rewrite = self._apply_restore_mask(clean_image, image, processed_dir, img_path) or needs_rewrite
+            needs_rewrite = (
+                self._apply_restore_mask(clean_image, image, processed_dir, img_path)
+                or needs_rewrite
+            )
 
         if needs_rewrite and clean_image is not None:
-            clean_path = Path(clean_path_posix)
-            tmp_clean_path = processed_dir / (
-                f"{clean_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
-            )
-            write_image(tmp_clean_path, clean_image)
-            atomic_replace(tmp_clean_path, clean_path)
+            self._atomic_write_clean(processed_dir, Path(clean_path_posix), clean_image)
 
         return clean_path_posix
+
+    @staticmethod
+    def _atomic_write_clean(
+        processed_dir: Path,
+        clean_path: Path,
+        clean_image: np.ndarray,
+    ) -> None:
+        tmp_clean_path = processed_dir / (
+            f"{clean_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+        )
+        try:
+            write_image(tmp_clean_path, clean_image)
+            atomic_replace(tmp_clean_path, clean_path)
+        finally:
+            try:
+                tmp_clean_path.unlink(missing_ok=True)
+            except OSError:
+                pass

@@ -3,15 +3,24 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import threading
+import uuid
 
 from app.ai_providers import (
-    CLOUD_PROVIDER_ID, PROVIDERS, cloud_job_key, normalize_provider_id, resolve_provider, validate_provider_label
+    CLOUD_PROVIDER_ID,
+    PROVIDERS,
+    cloud_job_key,
+    normalize_provider_id,
+    resolve_provider,
+    validate_provider_label,
 )
 
 _SERVICE_NAME = "manga-translator"
 _GEMINI_ACCOUNT = "gemini-api-key"
 _DEEPSEEK_ACCOUNT = "deepseek-api-key"
 _PROVIDER_CONFIG_INDEX_ACCOUNT = "ai-provider-config-index"
+_MAX_CUSTOM_PROVIDERS = 100
+_STORE_LOCK = threading.RLock()
 
 
 def _provider_account(provider_id: str) -> str:
@@ -22,7 +31,9 @@ def _provider_config_account(provider_id: str) -> str:
     return f"ai-provider-{normalize_provider_id(provider_id)}-config"
 
 
-def _provider_meta(provider_id: str, provider_label: str | None = None) -> tuple[str, tuple[str, ...], str]:
+def _provider_meta(
+    provider_id: str, provider_label: str | None = None
+) -> tuple[str, tuple[str, ...], str]:
     normalized = normalize_provider_id(provider_id)
     provider = PROVIDERS.get(normalized)
     if provider is not None:
@@ -30,71 +41,130 @@ def _provider_meta(provider_id: str, provider_label: str | None = None) -> tuple
     return normalized, (), validate_provider_label(provider_label, default=normalized)
 
 
+def _validate_secret_value(value: str, provider: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise ValueError(f"{provider} API key is required")
+    if len(cleaned) > 65536:
+        raise ValueError(f"{provider} API key is unexpectedly long")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in cleaned):
+        raise ValueError(f"{provider} API key contains invalid control characters")
+    return cleaned
+
+
 class SecretStoreUnavailable(RuntimeError):
     pass
 
 
 class _GuardedKeyring:
-
     def __init__(self, keyring, error):
         self._keyring, self._error = keyring, error
 
     def __getattr__(self, name):
-        method = getattr(self._keyring, name)
+        attr = getattr(self._keyring, name)
+        if not callable(attr):
+            return attr
 
         def call(*args, **kwargs):
             try:
-                return method(*args, **kwargs)
+                return attr(*args, **kwargs)
             except (KeyboardInterrupt, SystemExit, GeneratorExit):
                 raise
             except self._error:
                 raise
             except BaseException as exc:
-                raise self._error(f"secure storage backend failed ({type(exc).__name__})") from exc
+                raise self._error(
+                    f"secure storage backend failed ({type(exc).__name__})"
+                ) from exc
 
         return call
 
 
 def _secrets_file() -> Path:
-    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "manga-translator" / "secrets.json"
+    return (
+        Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        / "manga-translator"
+        / "secrets.json"
+    )
 
 
 class _FileKeyring:
-
     def __init__(self, error):
         self._error = error
 
-    def _read(self) -> dict:
+    def _read(self) -> dict[str, str]:
         path = _secrets_file()
         try:
-            return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            if not path.is_file():
+                return {}
+            if path.is_symlink():
+                raise self._error("local secrets file cannot be a symlink")
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except self._error:
+            raise
         except (OSError, ValueError) as exc:
-            raise self._error(f"cannot read {path}: {exc}") from exc
+            raise self._error(f"cannot read local secrets file ({type(exc).__name__})") from exc
+        if not isinstance(loaded, dict):
+            raise self._error("local secrets file is corrupted")
+        return loaded
 
     def _write(self, data: dict) -> None:
         path = _secrets_file()
+        temp: Path | None = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            temp = path.with_suffix(".tmp")
-            with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
-                json.dump(data, handle)
+            if os.name != "nt":
+                try:
+                    os.chmod(path.parent, 0o700)
+                except OSError:
+                    pass
+            temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:12]}.tmp")
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+            fd = os.open(temp, flags, 0o600)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except Exception:
+                try:
+                    temp.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
+            if os.name != "nt":
+                try:
+                    os.chmod(temp, 0o600)
+                except OSError:
+                    pass
             os.replace(temp, path)
+            temp = None
         except OSError as exc:
-            raise self._error(f"cannot write {path}: {exc}") from exc
+            raise self._error(f"cannot write local secrets file ({type(exc).__name__})") from exc
+        finally:
+            if temp is not None:
+                try:
+                    temp.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def get_password(self, service: str, account: str) -> str | None:
-        return self._read().get(f"{service}/{account}")
+        with _STORE_LOCK:
+            val = self._read().get(f"{service}/{account}")
+            return val if isinstance(val, str) else None
 
     def set_password(self, service: str, account: str, value: str) -> None:
-        data = self._read()
-        data[f"{service}/{account}"] = value
-        self._write(data)
+        with _STORE_LOCK:
+            data = self._read()
+            data[f"{service}/{account}"] = value
+            self._write(data)
 
     def delete_password(self, service: str, account: str) -> None:
-        data = self._read()
-        if data.pop(f"{service}/{account}", None) is None:
-            raise self._error("password not found")
-        self._write(data)
+        with _STORE_LOCK:
+            data = self._read()
+            if data.pop(f"{service}/{account}", None) is None:
+                raise self._error("password not found")
+            self._write(data)
 
 
 _os_store_works: bool | None = None
@@ -102,16 +172,24 @@ _os_store_works: bool | None = None
 
 def _os_store_usable(keyring) -> bool:
     global _os_store_works
-    if _os_store_works is None:
-        try:
-            from keyring.backends import fail  # type: ignore
+    with _STORE_LOCK:
+        if _os_store_works is None:
+            try:
+                from keyring.backends import fail  # type: ignore
 
-            _os_store_works = not isinstance(keyring.get_keyring(), fail.Keyring)
-        except (KeyboardInterrupt, SystemExit, GeneratorExit):
-            raise
-        except BaseException:
-            _os_store_works = False
-    return _os_store_works
+                unusable: tuple[type, ...] = (fail.Keyring,)
+                try:
+                    from keyring.backends import null  # type: ignore
+
+                    unusable = (fail.Keyring, null.Keyring)
+                except ImportError:
+                    pass
+                _os_store_works = not isinstance(keyring.get_keyring(), unusable)
+            except (KeyboardInterrupt, SystemExit, GeneratorExit):
+                raise
+            except BaseException:
+                _os_store_works = False
+        return _os_store_works
 
 
 def _keyring_module():
@@ -148,15 +226,10 @@ def _get_api_key(account: str, env_names: tuple[str, ...], provider: str) -> str
 
 
 def _set_api_key(account: str, value: str, provider: str) -> None:
-    value = (value or "").strip()
-    if not value:
-        raise ValueError(f"{provider} API key is required")
-    if len(value) > 65536:
-        raise ValueError(f"{provider} API key is unexpectedly long")
-
+    cleaned = _validate_secret_value(value, provider)
     keyring, KeyringError = _keyring_module()
     try:
-        keyring.set_password(_SERVICE_NAME, account, value)
+        keyring.set_password(_SERVICE_NAME, account, cleaned)
     except KeyringError as exc:
         raise SecretStoreUnavailable(
             f"Cannot save {provider} API key to OS secure storage: {exc}"
@@ -180,8 +253,12 @@ def _key_status(
     env_names: tuple[str, ...],
     provider: str,
 ) -> dict:
-    if any(os.getenv(name) for name in env_names):
-        return {"configured": True, "source": "environment", "count": 1}
+    for env_name in env_names:
+        env_value = os.getenv(env_name)
+        if env_value and env_value.strip():
+            keys = split_keys(env_value)
+            if keys:
+                return {"configured": True, "source": "environment", "count": len(keys)}
     try:
         keys = split_keys(_get_api_key(account, env_names, provider))
         return {
@@ -240,7 +317,7 @@ def split_keys(raw: str | None) -> list[str]:
         except ValueError:
             values = None
         if isinstance(values, list):
-            return [str(v).strip() for v in values if str(v).strip()]
+            return [v.strip() for v in values if isinstance(v, str) and v.strip()]
     return [raw] if raw else []
 
 
@@ -253,42 +330,57 @@ def _raw_provider_key(provider_id: str, provider_label: str | None) -> str | Non
     return _get_api_key(_provider_account(provider_id), env_names, label)
 
 
-def get_provider_api_keys(provider_id: str, *, provider_label: str | None = None) -> list[str]:
-    if provider_id == CLOUD_PROVIDER_ID:
+def get_provider_api_keys(
+    provider_id: str, *, provider_label: str | None = None
+) -> list[str]:
+    if (provider_id or "").strip().lower() == CLOUD_PROVIDER_ID:
         key = cloud_job_key()
         return [key] if key else []
     return split_keys(_raw_provider_key(provider_id, provider_label))
 
 
-def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
+def get_provider_api_key(
+    provider_id: str, *, provider_label: str | None = None
+) -> str | None:
     keys = get_provider_api_keys(provider_id, provider_label=provider_label)
     return keys[0] if keys else None
 
 
-def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | None = None, append: bool = False) -> int:
+def set_provider_api_key(
+    provider_id: str,
+    value: str,
+    *,
+    provider_label: str | None = None,
+    append: bool = False,
+) -> int:
     provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {
         "gemini": _GEMINI_ACCOUNT,
         "deepseek": _DEEPSEEK_ACCOUNT,
     }.get(provider_id, _provider_account(provider_id))
-    value = (value or "").strip()
-    if value.startswith("["):
+    cleaned = _validate_secret_value(value, label)
+    if cleaned.startswith("["):
         raise ValueError(f"{label} API key is invalid")
-    keys = [value]
-    if append:
-        keyring, KeyringError = _keyring_module()
-        try:
-            stored = split_keys(keyring.get_password(_SERVICE_NAME, account))
-        except KeyringError as exc:
-            raise SecretStoreUnavailable(f"Cannot read {label} API key from OS secure storage: {exc}") from exc
-        keys = stored + [k for k in keys if k not in stored]
-        if len(keys) > MAX_KEYS:
-            raise ValueError(f"At most {MAX_KEYS} keys per provider")
-    _set_api_key(account, keys[0] if len(keys) == 1 else json.dumps(keys), label)
-    return len(keys)
+    with _STORE_LOCK:
+        keys = [cleaned]
+        if append:
+            keyring, KeyringError = _keyring_module()
+            try:
+                stored = split_keys(keyring.get_password(_SERVICE_NAME, account))
+            except KeyringError as exc:
+                raise SecretStoreUnavailable(
+                    f"Cannot read {label} API key from OS secure storage: {exc}"
+                ) from exc
+            keys = stored + [k for k in keys if k not in stored]
+            if len(keys) > MAX_KEYS:
+                raise ValueError(f"At most {MAX_KEYS} keys per provider")
+        _set_api_key(account, keys[0] if len(keys) == 1 else json.dumps(keys), label)
+        return len(keys)
 
 
-def delete_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> None:
+def delete_provider_api_key(
+    provider_id: str, *, provider_label: str | None = None
+) -> None:
     provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {
         "gemini": _GEMINI_ACCOUNT,
@@ -297,7 +389,9 @@ def delete_provider_api_key(provider_id: str, *, provider_label: str | None = No
     _delete_api_key(account, label)
 
 
-def provider_key_status(provider_id: str, *, provider_label: str | None = None) -> dict:
+def provider_key_status(
+    provider_id: str, *, provider_label: str | None = None
+) -> dict:
     provider_id, env_names, label = _provider_meta(provider_id, provider_label)
     if provider_id == "gemini":
         return gemini_key_status()
@@ -330,7 +424,7 @@ def _custom_provider_ids() -> list[str]:
             continue
         if provider_id not in PROVIDERS and provider_id not in result:
             result.append(provider_id)
-    return result[:100]
+    return result[:_MAX_CUSTOM_PROVIDERS]
 
 
 def _set_custom_provider_ids(values: list[str]) -> None:
@@ -344,7 +438,7 @@ def _set_custom_provider_ids(values: list[str]) -> None:
         keyring.set_password(
             _SERVICE_NAME,
             _PROVIDER_CONFIG_INDEX_ACCOUNT,
-            json.dumps(normalized[:100], separators=(",", ":")),
+            json.dumps(normalized[:_MAX_CUSTOM_PROVIDERS], separators=(",", ":")),
         )
     except KeyringError as exc:
         raise SecretStoreUnavailable(
@@ -378,17 +472,22 @@ def set_provider_config(
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    keyring, KeyringError = _keyring_module()
-    try:
-        keyring.set_password(_SERVICE_NAME, _provider_config_account(normalized), payload)
-    except KeyringError as exc:
-        raise SecretStoreUnavailable(
-            f"Cannot save {label} provider configuration to OS secure storage: {exc}"
-        ) from exc
-    ids = _custom_provider_ids()
-    if normalized not in ids:
-        ids.append(normalized)
-        _set_custom_provider_ids(ids)
+    with _STORE_LOCK:
+        ids = _custom_provider_ids()
+        if normalized not in ids and len(ids) >= _MAX_CUSTOM_PROVIDERS:
+            raise ValueError(f"At most {_MAX_CUSTOM_PROVIDERS} custom AI providers")
+        keyring, KeyringError = _keyring_module()
+        try:
+            keyring.set_password(
+                _SERVICE_NAME, _provider_config_account(normalized), payload
+            )
+        except KeyringError as exc:
+            raise SecretStoreUnavailable(
+                f"Cannot save {label} provider configuration to OS secure storage: {exc}"
+            ) from exc
+        if normalized not in ids:
+            ids.append(normalized)
+            _set_custom_provider_ids(ids)
 
 
 def get_provider_config(provider_id: str) -> dict | None:
@@ -439,17 +538,20 @@ def delete_provider_config(provider_id: str) -> None:
     normalized = normalize_provider_id(provider_id)
     if normalized in PROVIDERS:
         return
-    keyring, KeyringError = _keyring_module()
-    try:
-        keyring.delete_password(_SERVICE_NAME, _provider_config_account(normalized))
-    except KeyringError as exc:
-        detail = str(exc).lower()
-        if "not found" not in detail and "no password" not in detail:
-            raise SecretStoreUnavailable(
-                f"Cannot delete AI provider configuration: {exc}"
-            ) from exc
-    ids = [provider_id for provider_id in _custom_provider_ids() if provider_id != normalized]
-    _set_custom_provider_ids(ids)
+    with _STORE_LOCK:
+        keyring, KeyringError = _keyring_module()
+        try:
+            keyring.delete_password(
+                _SERVICE_NAME, _provider_config_account(normalized)
+            )
+        except KeyringError as exc:
+            detail = str(exc).lower()
+            if "not found" not in detail and "no password" not in detail:
+                raise SecretStoreUnavailable(
+                    f"Cannot delete AI provider configuration: {exc}"
+                ) from exc
+        ids = [pid for pid in _custom_provider_ids() if pid != normalized]
+        _set_custom_provider_ids(ids)
 
 
 _CLOUD_ACCOUNT = "manga-cloud-account-token"

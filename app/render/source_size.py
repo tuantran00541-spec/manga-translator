@@ -46,16 +46,34 @@ def _foreground_ink(gray: np.ndarray) -> np.ndarray:
     return bright if _fg_score(bright) > _fg_score(dark) else dark
 
 
+def _clamped_crop(raw: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarray | None:
+    if raw is None or raw.ndim < 2:
+        return None
+    height, width = raw.shape[:2]
+    cx1 = max(0, min(width, x1))
+    cy1 = max(0, min(height, y1))
+    cx2 = max(0, min(width, x2))
+    cy2 = max(0, min(height, y2))
+    if cx2 <= cx1 or cy2 <= cy1:
+        return None
+    return raw[cy1:cy2, cx1:cx2]
+
+
 def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> int | None:
     x1, y1, x2, y2 = (int(v) for v in rect)
     if bounds is not None:
         bx1, by1, bx2, by2 = (int(v) for v in bounds)
         x1, y1 = max(x1, bx1), max(y1, by1)
         x2, y2 = min(x2, bx2), min(y2, by2)
-    crop = raw[max(0, y1):y2, max(0, x1):x2]
-    if crop.size == 0 or min(crop.shape[:2]) < 8:
+    crop = _clamped_crop(raw, x1, y1, x2, y2)
+    if crop is None or crop.size == 0 or min(crop.shape[:2]) < 8:
         return None
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    if crop.ndim == 3 and crop.shape[2] >= 3:
+        gray = cv2.cvtColor(crop[..., :3], cv2.COLOR_BGR2GRAY)
+    elif crop.ndim == 3 and crop.shape[2] == 1:
+        gray = crop[..., 0]
+    else:
+        gray = crop
     ink = _foreground_ink(gray)
     _labels, stats = _letter_pieces(ink)
     pieces = sorted((int(h), int(area)) for _x, _y, _w, h, area in stats if area > 0)
@@ -91,10 +109,10 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
 
 def source_ink_hex(raw: np.ndarray, rect) -> str | None:
     x1, y1, x2, y2 = (int(v) for v in rect)
-    crop = raw[max(0, y1):y2, max(0, x1):x2]
-    if crop.ndim != 3 or crop.size == 0 or min(crop.shape[:2]) < 8:
+    crop = _clamped_crop(raw, x1, y1, x2, y2)
+    if crop is None or crop.ndim != 3 or crop.shape[2] < 3 or crop.size == 0 or min(crop.shape[:2]) < 8:
         return None
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(crop[..., :3], cv2.COLOR_BGR2GRAY)
     ink = _foreground_ink(gray)
     labels, stats = _letter_pieces(ink)
     letters = (stats[:, 4] > 0)[labels].astype(np.uint8)
@@ -107,7 +125,7 @@ def source_ink_hex(raw: np.ndarray, rect) -> str | None:
 
 @lru_cache(maxsize=32)
 def _metrics(font_path: str) -> tuple[float, float, float]:
-    from app.render.text_renderer import _calc_line_height, get_font_object
+    from app.render.font_metrics import _calc_line_height, get_font_object
 
     font = get_font_object(font_path, 100)
     draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
@@ -122,10 +140,10 @@ def matching_font_px(font_path, cap_px: int) -> int:
 
 def char_budget(font_path, rect, cap_px: int) -> int:
     x1, y1, x2, y2 = (int(v) for v in rect)
-    raw_w, raw_h = x2 - x1, y2 - y1
+    raw_w, raw_h = max(0, x2 - x1), max(0, y2 - y1)
     pad = max(2, min(RENDER_DEFAULT_PADDING, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
     size = matching_font_px(font_path, cap_px) * BUDGET_SCALE
     _cap, char_w, line_h = _metrics(str(font_path))
-    per_line = int((raw_w - 2 * pad) / (char_w * size))
-    lines = int((raw_h - 2 * pad) / (line_h * size))
+    per_line = int(max(0, raw_w - 2 * pad) / (max(0.1, char_w) * size))
+    lines = int(max(0, raw_h - 2 * pad) / (max(0.1, line_h) * size))
     return max(4, per_line * max(1, lines))

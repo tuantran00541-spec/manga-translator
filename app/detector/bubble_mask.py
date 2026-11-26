@@ -60,7 +60,7 @@ def _rect_mask(box: tuple[int, int, int, int]) -> dict:
         "bbox": [x1, y1, x2, y2],
         "cx": (x1 + x2) // 2,
         "cy": (y1 + y2) // 2,
-        "rows": [[[a, b]]] * MASK_ROWS if w > 0 else _empty_rows(),
+        "rows": [[[a, b]] for _ in range(MASK_ROWS)] if w > 0 else _empty_rows(),
         "kind": "rect",
     }
 
@@ -195,7 +195,12 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
     ch, cw = crop_img.shape[:2]
     box_area = max(1, (x2 - x1) * (y2 - y1))
 
-    gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY) if crop_img.ndim == 3 else crop_img
+    if crop_img.ndim == 3 and crop_img.shape[2] >= 3:
+        gray = cv2.cvtColor(crop_img[..., :3], cv2.COLOR_BGR2GRAY)
+    elif crop_img.ndim == 3 and crop_img.shape[2] == 1:
+        gray = crop_img[..., 0]
+    else:
+        gray = crop_img
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
     edges = cv2.Canny(blurred, _CANNY_LOW, _CANNY_HIGH, L2gradient=True)
     edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
@@ -208,18 +213,21 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
             letter_points = (xs + x1 - ox1, ys + y1 - oy1)
 
     best = None
+    visited = np.zeros(edges.shape, dtype=bool)
     for sx, sy in _seed_candidates(box, seed):
         start = _flood_seed(edges, (sx - ox1, sy - oy1))
-        if start is None:
+        if start is None or visited[start[1], start[0]]:
             continue
         flooded = edges.copy()
         retval, _, _, rect = cv2.floodFill(
             flooded, None, start, 127, loDiff=0, upDiff=0, flags=4)
+        flooded_mask = flooded == 127
+        visited |= flooded_mask
         if retval < _FLOOD_MIN_BOX_SHARE * box_area:
             continue
         if retval > _FLOOD_MAX_BOX_SHARE * box_area:
             continue
-        interior = flooded == 127
+        interior = flooded_mask
         if float((gray[interior] < 100).mean()) >= 0.5:
             continue
         filled = np.zeros(interior.shape, np.uint8)
@@ -230,8 +238,9 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
         coverage = 1.0
         if letter_points is not None:
             lx, ly = letter_points
-            inside = interior[ly, lx]
-            coverage = float(inside.mean())
+            valid = (lx >= 0) & (lx < cw) & (ly >= 0) & (ly < ch)
+            covered = int(np.count_nonzero(interior[ly[valid], lx[valid]])) if valid.any() else 0
+            coverage = float(covered) / len(lx)
             if coverage < 0.7:
                 continue
         fx, fy, fw, fh = rect
@@ -268,16 +277,10 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
         row = np.flatnonzero(interior[y])
         if len(row) == 0:
             continue
-        runs: list[tuple[int, int]] = []
-        start = int(row[0])
-        prev = start
-        for v in row[1:]:
-            v = int(v)
-            if v != prev + 1:
-                runs.append((start + ox1, prev + 1 + ox1))
-                start = v
-            prev = v
-        runs.append((start + ox1, prev + 1 + ox1))
+        breaks = np.flatnonzero(np.diff(row) != 1)
+        starts = np.r_[0, breaks + 1]
+        ends = np.r_[breaks, len(row) - 1]
+        runs = [(int(row[s]) + ox1, int(row[e]) + 1 + ox1) for s, e in zip(starts, ends)]
         spans.append((y + oy1, y + oy1 + 1, runs))
     rows = _rows_from_spans(spans, (bx1, by1, bx2, by2))
     if sum(1 for row in rows if row) < _MIN_NONEMPTY_ROWS:
@@ -332,7 +335,6 @@ def mask_inscribed_rect(mask: dict | None) -> tuple[int, int, int, int]:
     widest = [_widest_interval(row) for row in rows]
     if all(w is None for w in widest):
         return (x1, y1, x2, y2)
-    row_h = (y2 - y1) / MASK_ROWS
     best = None
     for top in range(MASK_ROWS):
         if widest[top] is None:
@@ -449,26 +451,24 @@ def _interval_waist(rows: list, height: int, width: int, row_h: float,
     if min(split_rows) >= MASK_ROWS // 2 or max(split_rows) < MASK_ROWS // 2:
         return None
     gaps = []
-    for i in split_rows:
-        ordered = sorted((int(a), int(b)) for a, b in rows[i])
-        by_width = sorted(ordered, key=lambda ab: ab[1] - ab[0], reverse=True)[:2]
-        by_width.sort()
-        gaps.append((by_width[0][1], by_width[1][0],
-                     (by_width[0][1] + by_width[1][0]) // 2))
-    mids = sorted(g[2] for g in gaps)
-    median_mid = mids[len(mids) // 2]
-    if max(mids) - min(mids) > 0.25 * width:
-        return None
-    gap_width = float(np.median([g[1] - g[0] for g in gaps]))
     left_widths = []
     right_widths = []
     for i in split_rows:
         ordered = sorted((int(a), int(b)) for a, b in rows[i])
         by_width = sorted(ordered, key=lambda ab: ab[1] - ab[0], reverse=True)[:2]
         by_width.sort()
+        gaps.append((by_width[0][1], by_width[1][0],
+                     (by_width[0][1] + by_width[1][0]) // 2))
         left_widths.append(by_width[0][1] - by_width[0][0])
         right_widths.append(by_width[1][1] - by_width[1][0])
+    mids = sorted(g[2] for g in gaps)
+    median_mid = mids[len(mids) // 2]
+    if max(mids) - min(mids) > 0.25 * width:
+        return None
+    gap_width = float(np.median([g[1] - g[0] for g in gaps]))
     lobe_min = min(float(np.median(left_widths)), float(np.median(right_widths)))
+    if lobe_min <= 0:
+        return None
     if gap_width < SPLIT_MIN_GAP_RATIO * lobe_min:
         return None
     if gap_width > SPLIT_MAX_GAP_RATIO * lobe_min:
@@ -485,23 +485,36 @@ def _interval_waist(rows: list, height: int, width: int, row_h: float,
 
 
 def _letters_inside_mask(mask: dict, xs, ys) -> float:
-    if len(xs) == 0:
+    xs_arr = np.asarray(xs)
+    ys_arr = np.asarray(ys)
+    if xs_arr.size == 0:
         return 0.0
     x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
     rows = mask["rows"]
-    if y2 <= y1 or len(rows) != MASK_ROWS:
+    if y2 <= y1 or x2 <= x1 or len(rows) != MASK_ROWS:
         return 0.0
     height = y2 - y1
+    in_box = (xs_arr >= x1) & (xs_arr < x2) & (ys_arr >= y1) & (ys_arr < y2)
+    if not in_box.any():
+        return 0.0
+    bx = xs_arr[in_box] - x1
+    by = ys_arr[in_box]
+    indices = np.minimum(MASK_ROWS - 1, ((by - y1) * MASK_ROWS) // height)
+    # Match _band_index rounding boundary adjustment.
+    next_edge = y1 + ((indices + 1) * height) // MASK_ROWS
+    bump = (indices + 1 < MASK_ROWS) & (by >= next_edge)
+    indices = np.where(bump, indices + 1, indices)
     inside = 0
-    for x, y in zip(xs, ys):
-        if not (x1 <= x < x2 and y1 <= y < y2):
+    for band_idx in np.unique(indices):
+        intervals = rows[int(band_idx)]
+        if not intervals:
             continue
-        index = _band_index(y1, height, int(y))
-        for a, b in rows[index]:
-            if x1 + int(a) <= x < x1 + int(b):
-                inside += 1
-                break
-    return inside / len(xs)
+        band_xs = bx[indices == band_idx]
+        hit = np.zeros(band_xs.shape, dtype=bool)
+        for a, b in intervals:
+            hit |= (band_xs >= int(a)) & (band_xs < int(b))
+        inside += int(np.count_nonzero(hit))
+    return inside / float(xs_arr.size)
 
 
 def _mask_row_width_sum(mask: dict) -> int:
@@ -549,15 +562,18 @@ def _letter_gap_waist(mask: dict, letters, box) -> dict | None:
     total = len(xs)
     if total == 0:
         return None
-    present = np.zeros(xs.max() + 1, dtype=bool)
-    present[xs] = True
+    min_x, max_x = int(xs.min()), int(xs.max())
+    present = np.zeros(max_x - min_x + 1, dtype=bool)
+    present[xs - min_x] = True
     gaps: list[tuple[int, int]] = []
     in_gap = False
-    for x in range(int(xs.min()), int(xs.max()) + 1):
-        if not present[x] and not in_gap:
+    start = min_x
+    for idx, has_ink in enumerate(present):
+        x = min_x + idx
+        if not has_ink and not in_gap:
             start = x
             in_gap = True
-        elif present[x] and in_gap:
+        elif has_ink and in_gap:
             gaps.append((start, x - 1))
             in_gap = False
     mx1, my1, mx2, my2 = (int(v) for v in mask["bbox"])
@@ -600,7 +616,7 @@ def _letter_gap_waist(mask: dict, letters, box) -> dict | None:
                 (right_mask, xs[right], ys[right])):
             letter_x1, letter_x2 = int(side_xs.min()), int(side_xs.max())
             letter_w = max(1, letter_x2 - letter_x1)
-            ly1, ly2 = int(side_ys.min()), int(side_ys.max())
+            ly1, ly2 = int(side_ys.min()), int(side_ys.max()) + 1
             span_x1, span_x2 = None, None
             for a, b, intervals in _mask_spans(piece):
                 if b <= ly1 or a >= ly2:
@@ -643,15 +659,18 @@ def _row_gap_waist(mask: dict, letters, box) -> dict | None:
     total = len(xs)
     if total == 0:
         return None
-    present = np.zeros(ys.max() + 1, dtype=bool)
-    present[ys] = True
+    min_y, max_y = int(ys.min()), int(ys.max())
+    present = np.zeros(max_y - min_y + 1, dtype=bool)
+    present[ys - min_y] = True
     gaps: list[tuple[int, int]] = []
     in_gap = False
-    for y in range(int(ys.min()), int(ys.max()) + 1):
-        if not present[y] and not in_gap:
+    start = min_y
+    for idx, has_ink in enumerate(present):
+        y = min_y + idx
+        if not has_ink and not in_gap:
             start = y
             in_gap = True
-        elif present[y] and in_gap:
+        elif has_ink and in_gap:
             gaps.append((start, y - 1))
             in_gap = False
     mx1, my1, mx2, my2 = (int(v) for v in mask["bbox"])
@@ -717,18 +736,20 @@ def _row_gap_waist(mask: dict, letters, box) -> dict | None:
 
 
 def split_bubble_mask(mask: dict, waist: dict) -> tuple[dict, dict] | None:
-    if not isinstance(mask, dict) or mask.get("kind") != "bubble":
+    if not isinstance(mask, dict) or mask.get("kind") != "bubble" or not isinstance(waist, dict):
         return None
-    spans = _mask_spans(mask)
-    x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
-    if waist["orientation"] == "horizontal":
-        cut = int(waist["cut_y"])
-        above = [(a, b, xs) for a, b, xs in spans if b <= cut]
-        below = [(a, b, xs) for a, b, xs in spans if a >= cut]
+    try:
+        spans = _mask_spans(mask)
+        orientation = waist["orientation"]
+        cut = int(waist["cut_y"]) if orientation == "horizontal" else int(waist["cut_x"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if orientation == "horizontal":
+        above = [(a, min(b, cut), xs) for a, b, xs in spans if a < cut and min(b, cut) > a]
+        below = [(max(a, cut), b, xs) for a, b, xs in spans if b > cut and b > max(a, cut)]
         if not above or not below:
             return None
         return (_mask_from_spans(above, mask), _mask_from_spans(below, mask))
-    cut = int(waist["cut_x"])
     left = [(a, b, [(p, min(q, cut)) for p, q in xs if p < cut])
             for a, b, xs in spans]
     right = [(a, b, [(max(p, cut), q) for p, q in xs if q > cut])
@@ -742,7 +763,7 @@ def split_bubble_mask(mask: dict, waist: dict) -> tuple[dict, dict] | None:
 
 def _mask_from_spans(spans: list[tuple[int, int, list[tuple[int, int]]]],
                      source: dict) -> dict:
-    xs = [p for _, _, intervals in spans for p, q in intervals for p in (p, q)]
+    xs = [v for _, _, intervals in spans for p, q in intervals for v in (p, q)]
     ys = [v for a, b, _ in spans for v in (a, b)]
     bbox = (min(xs), min(ys), max(xs), max(ys))
     rows = _rows_from_spans(spans, bbox)
@@ -800,10 +821,26 @@ def clip_bubble_mask(mask: dict | None, box: tuple[int, int, int, int]) -> dict 
     return clipped_mask
 
 
+def _valid_mask_bbox(mask: dict) -> bool:
+    bbox = mask.get("bbox")
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return False
+    try:
+        x1, y1, x2, y2 = (int(v) for v in bbox)
+    except (TypeError, ValueError):
+        return False
+    return x2 > x1 and y2 > y1
+
+
 def merge_bubble_masks(masks: list[dict | None]) -> dict | None:
-    usable = [m for m in masks
-              if isinstance(m, dict) and m.get("kind") in ("bubble", "rect")
-              and isinstance(m.get("rows"), list) and len(m["rows"]) == MASK_ROWS]
+    usable = [
+        m for m in masks
+        if isinstance(m, dict)
+        and m.get("kind") in ("bubble", "rect")
+        and isinstance(m.get("rows"), list)
+        and len(m["rows"]) == MASK_ROWS
+        and _valid_mask_bbox(m)
+    ]
     if not usable:
         return None
     if len(usable) == 1:
@@ -811,16 +848,23 @@ def merge_bubble_masks(masks: list[dict | None]) -> dict | None:
     spans: list[tuple[int, int, list[tuple[int, int]]]] = []
     for mask in usable:
         spans.extend(_mask_spans(mask))
-    xs = [p for _, _, intervals in spans for p, q in intervals for p in (p, q)]
+    xs = [v for _, _, intervals in spans for p, q in intervals for v in (p, q)]
     ys = [v for a, b, _ in spans for v in (a, b)]
     if not xs or not ys:
         return None
     bbox = (min(xs), min(ys), max(xs), max(ys))
     rows = _rows_from_spans(spans, bbox)
     kind = "bubble" if any(m.get("kind") == "bubble" for m in usable) else "rect"
-    seeds = [(int(m["cx"]), int(m["cy"])) for m in usable
-             if bbox[0] <= int(m.get("cx", 0)) < bbox[2]
-             and bbox[1] <= int(m.get("cy", 0)) < bbox[3]]
+    seeds: list[tuple[int, int]] = []
+    for m in usable:
+        if "cx" not in m or "cy" not in m:
+            continue
+        try:
+            mx, my = int(m["cx"]), int(m["cy"])
+        except (TypeError, ValueError):
+            continue
+        if bbox[0] <= mx < bbox[2] and bbox[1] <= my < bbox[3]:
+            seeds.append((mx, my))
     cx, cy = seeds[0] if seeds else ((bbox[0] + bbox[2]) // 2, (bbox[1] + bbox[3]) // 2)
     return {"bbox": [bbox[0], bbox[1], bbox[2], bbox[3]],
             "cx": cx, "cy": cy, "rows": rows, "kind": kind}

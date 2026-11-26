@@ -19,19 +19,25 @@ import uuid
 MODES = ("read-only", "workspace-write", "full-access")
 MAX_OUTPUT_BYTES = 8_000_000
 RUNAWAY_BYTES = 200_000_000
-HOME_SECRETS = (".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-credentials", ".npmrc", ".pypirc", ".claude.json",
-                ".config/gcloud", ".config/gh", ".config/git", ".config/opencode", ".config/google-chrome", ".config/chromium",
-                ".config/BraveSoftware", ".local/share/keyrings", ".local/share/python_keyring", ".password-store", ".mozilla",
-                ".claude/.credentials.json", ".codex/auth.json", ".codex/config.toml", ".manga-agent/mcp.json", ".cache/huggingface/token",
-                ".config/manga-translator",
-                "Library/Keychains", "Library/Application Support/Google/Chrome")
+HOME_SECRETS = (
+    ".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-credentials", ".npmrc", ".pypirc", ".claude.json",
+    ".config/gcloud", ".config/gh", ".config/git", ".config/opencode", ".config/google-chrome", ".config/chromium",
+    ".config/BraveSoftware", ".local/share/keyrings", ".local/share/python_keyring", ".password-store", ".mozilla",
+    ".claude/.credentials.json", ".codex/auth.json", ".codex/config.toml", ".manga-agent/mcp.json", ".cache/huggingface/token",
+    ".config/manga-translator",
+    "Library/Keychains", "Library/Application Support/Google/Chrome",
+)
 SYSTEM_SECRETS = ("/run/user", "/run/secrets", "/var/run/secrets")
 EXTRA_DENY: list[str] = []
 SECRET_NAME = re.compile(r"(?i)(api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private|bearer)")
 FULL = ("landlock", "seatbelt", "docker")
 DOCKER_IMAGE = "python:3.12-slim"
+_DOCKER_IMAGE_RE = re.compile(r"^[A-Za-z0-9][\w./:@-]{0,199}$")
 DOCKER_CHECK_S = 60
+_SANDBOX_LOCK = threading.Lock()
 _docker_seen: list = [0.0, False]
+_labelled: set[str] = set()
+_MAX_LABELLED = 512
 DROP_ENV = {"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "GNOME_KEYRING_CONTROL", "KRB5CCNAME"}
 
 
@@ -46,20 +52,25 @@ def secret_paths() -> list[str]:
 
 
 DOTENV_PUBLIC = {".env.example", ".env.sample"}
+ENV_DEPTH = 4
+ENV_SKIP = {
+    ".git", "node_modules", ".venv", "venv", "__pycache__",
+    ".mypy_cache", ".pytest_cache", "site-packages", "data", "models",
+}
 
 
 def workspace_secrets(root: Path) -> list[str]:
     hits, top = [], str(root)
     for folder, dirs, names in os.walk(top):
-        if folder[len(top):].count(os.sep) >= ENV_DEPTH:
+        if folder[len(top) :].count(os.sep) >= ENV_DEPTH:
             dirs[:] = []
         dirs[:] = [d for d in dirs if d not in ENV_SKIP]
-        hits += [os.path.join(folder, n) for n in names if n.startswith(".env") and n not in DOTENV_PUBLIC]
+        hits += [
+            os.path.join(folder, n)
+            for n in names
+            if n.lower().startswith(".env") and n.lower() not in DOTENV_PUBLIC
+        ]
     return sorted({os.path.realpath(p) for p in hits if os.path.isfile(p)})
-
-
-ENV_DEPTH = 4
-ENV_SKIP = {".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache", "site-packages", "data", "models"}
 
 
 @dataclass(frozen=True)
@@ -72,14 +83,18 @@ class Policy:
             return "Commands run without a sandbox: full file and network access."
         kind = backend()
         if kind == "none":
-            return ("Commands run UNSANDBOXED with the full privileges of this user: no sandbox backend is available "
-                    "on this machine, so there is no file confinement, no network block, and no credential-folder "
-                    "protection — treat every command as running with your user's full access.")
+            return (
+                "Commands run UNSANDBOXED with the full privileges of this user: no sandbox backend is available "
+                "on this machine, so there is no file confinement, no network block, and no credential-folder "
+                "protection — treat every command as running with your user's full access."
+            )
         net = "allowed" if self.network else "blocked"
         if kind == "docker":
             mount = "read-only" if self.mode == "read-only" else "writable"
-            return (f"Commands run in a Linux container ({settings()['image']}): the workspace is mounted {mount} at /workspace and nothing else "
-                    f"of this machine is visible; use /workspace paths in commands; network {net}.")
+            return (
+                f"Commands run in a Linux container ({settings()['image']}): the workspace is mounted {mount} at /workspace and nothing else "
+                f"of this machine is visible; use /workspace paths in commands; network {net}."
+            )
         if kind == "low-integrity":
             where = f"only inside {root} and a private temp folder"
             if self.mode == "read-only":
@@ -89,6 +104,13 @@ class Policy:
         return f"Commands run in a sandbox: they can read everything except credential folders, write {where}; network {net}."
 
 
+def _valid_docker_image(image: object) -> str:
+    candidate = image.strip() if isinstance(image, str) else ""
+    if candidate and _DOCKER_IMAGE_RE.fullmatch(candidate):
+        return candidate
+    return DOCKER_IMAGE
+
+
 def settings() -> dict:
     data = {}
     try:
@@ -96,19 +118,20 @@ def settings() -> dict:
     except (OSError, ValueError):
         pass
     engine = os.environ.get("MANGA_AGENT_SANDBOX") or (data.get("engine") if isinstance(data, dict) else "") or "auto"
-    image = data.get("image") if isinstance(data, dict) and isinstance(data.get("image"), str) and data["image"].strip() else DOCKER_IMAGE
-    return {"engine": engine if engine in ("auto", "docker") else "auto", "image": image.strip()}
+    image = _valid_docker_image(data.get("image") if isinstance(data, dict) else None)
+    return {"engine": engine if engine in ("auto", "docker") else "auto", "image": image}
 
 
 def save_settings(engine: str, image: str = "") -> dict:
     if engine not in ("auto", "docker"):
         raise ValueError("engine must be auto or docker")
-    if image and not re.fullmatch(r"[\w./:@-]{1,200}", image):
+    cleaned_image = image.strip() if isinstance(image, str) else ""
+    if cleaned_image and not _DOCKER_IMAGE_RE.fullmatch(cleaned_image):
         raise ValueError("image must be a plain image name such as python:3.12-slim")
     path = Path.home() / ".manga-agent" / "sandbox.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps({"engine": "docker" if engine == "docker" else "auto", "image": image or DOCKER_IMAGE})
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    text = json.dumps({"engine": "docker" if engine == "docker" else "auto", "image": cleaned_image or DOCKER_IMAGE})
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp")
     with open(tmp, "w", encoding="utf-8") as handle:
         handle.write(text)
     for pause in (0.0, 0.2, 0.5, 1.0):
@@ -119,22 +142,33 @@ def save_settings(engine: str, image: str = "") -> dict:
             return settings()
         except PermissionError:
             if path.exists():
-                path.chmod(0o600)
+                try:
+                    path.chmod(0o600)
+                except OSError:
+                    pass
     tmp.unlink(missing_ok=True)
     raise PermissionError(f"cannot write {path}")
 
 
 def docker_ready() -> bool:
-    if time.time() - _docker_seen[0] < DOCKER_CHECK_S:
-        return _docker_seen[1]
+    now = time.time()
+    with _SANDBOX_LOCK:
+        if now - _docker_seen[0] < DOCKER_CHECK_S:
+            return bool(_docker_seen[1])
     ok = False
     if shutil.which("docker"):
         try:
-            done = subprocess.run(["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True, timeout=10)
+            done = subprocess.run(
+                ["docker", "info", "--format", "{{.OSType}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
             ok = done.returncode == 0 and done.stdout.strip() == "linux"
         except (OSError, subprocess.TimeoutExpired):
             ok = False
-    _docker_seen[:] = [time.time(), ok]
+    with _SANDBOX_LOCK:
+        _docker_seen[:] = [time.time(), ok]
     return ok
 
 
@@ -169,18 +203,41 @@ def writable_roots(policy: Policy, root: Path, scratch: str) -> list[str]:
     return roots
 
 
+def _sb_quote(path: str) -> str | None:
+    if any(ch in path for ch in ("\x00", "\r", "\n")):
+        return None
+    escaped = path.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def _seatbelt_profile(policy: Policy, root: Path, scratch: str) -> str:
-    forms = ["(version 1)", "(allow default)", "(deny file-write*)",
-             '(allow file-write* (literal "/dev/null") (literal "/dev/tty") (subpath "/dev/fd"))']
+    forms = [
+        "(version 1)",
+        "(allow default)",
+        "(deny file-write*)",
+        '(allow file-write* (literal "/dev/null") (literal "/dev/tty") (subpath "/dev/fd"))',
+    ]
     paths = [os.path.realpath(p) for p in writable_roots(policy, root, scratch) if p != "/dev"]
-    forms.append("(allow file-write* " + " ".join(f'(subpath "{p}")' for p in paths) + ")")
-    forms += [f'(deny file-read* (subpath "{p}"))' for p in secret_paths() + workspace_secrets(root)]
+    quoted_write = [q for p in paths if (q := _sb_quote(p)) is not None]
+    if quoted_write:
+        forms.append("(allow file-write* " + " ".join(f"(subpath {q})" for q in quoted_write) + ")")
+    for secret in secret_paths() + workspace_secrets(root):
+        q = _sb_quote(secret)
+        if q is not None:
+            forms.append(f"(deny file-read* (subpath {q}))")
     if not policy.network:
-        forms.append('(deny network-outbound (remote ip))')
+        forms.append("(deny network-outbound (remote ip))")
     return " ".join(forms)
 
 
 BASH = shutil.which("bash") if os.name == "posix" else None
+
+
+def _docker_mount_args(src: str, dst: str, *, readonly: bool = False) -> list[str]:
+    if "," not in src:
+        spec = f"type=bind,src={src},dst={dst}" + (",readonly" if readonly else "")
+        return ["--mount", spec]
+    return ["-v", f"{src}:{dst}" + (":ro" if readonly else "")]
 
 
 def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[str] | str, bool]:
@@ -189,9 +246,25 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
         return ([BASH, "-c", command], False) if BASH else (command, True)
     if kind == "docker":
         image = settings()["image"]
-        mount = f"{root}:/workspace" + (":ro" if policy.mode == "read-only" else "")
-        args = ["docker", "run", "--rm", "-i", "--init", "--name", f"manga-agent-{uuid.uuid4().hex[:12]}", "--pids-limit", "512",
-                "-v", mount, "-v", f"{scratch}:/tmp", "-w", "/workspace", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp"]
+        root_real = os.path.realpath(root)
+        args = [
+            "docker", "run", "--rm", "-i", "--init",
+            "--name", f"manga-agent-{uuid.uuid4().hex[:12]}",
+            "--pids-limit", "512",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            *_docker_mount_args(root_real, "/workspace", readonly=policy.mode == "read-only"),
+            *_docker_mount_args(scratch, "/tmp", readonly=False),
+            "-w", "/workspace", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp",
+        ]
+        if os.name == "posix" and os.path.exists("/dev/null"):
+            root_path = Path(root_real)
+            for secret in workspace_secrets(root_path):
+                try:
+                    rel = Path(secret).relative_to(root_path).as_posix()
+                except ValueError:
+                    continue
+                args += _docker_mount_args("/dev/null", f"/workspace/{rel}", readonly=True)
         if not policy.network:
             args += ["--network", "none"]
         if hasattr(os, "getuid"):
@@ -201,9 +274,18 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
         from app.agent import win_low
 
         win_low.label(scratch)
-        if policy.mode == "workspace-write" and str(root) not in _labelled:
-            win_low.label(str(root))
-            _labelled.add(str(root))
+        root_str = str(root)
+        need_label = False
+        if policy.mode == "workspace-write":
+            with _SANDBOX_LOCK:
+                if root_str not in _labelled:
+                    need_label = True
+        if need_label:
+            win_low.label(root_str)
+            with _SANDBOX_LOCK:
+                if len(_labelled) >= _MAX_LABELLED:
+                    _labelled.clear()
+                _labelled.add(root_str)
         return [sys.executable, str(Path(__file__).with_name("win_low.py")), "--", command], False
     if kind == "landlock":
         args = [sys.executable, str(Path(__file__).with_name("landlock_run.py"))]
@@ -217,9 +299,6 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
     return ["sandbox-exec", "-p", _seatbelt_profile(policy, root, scratch), BASH or "/bin/sh", "-c", command], False
 
 
-_labelled: set[str] = set()
-
-
 def _env_for(policy: Policy, scratch: str) -> dict | None:
     env = None if policy.mode == "full-access" else clean_env()
     if policy.mode == "read-only" or (env is not None and backend() == "low-integrity"):
@@ -229,25 +308,79 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
 
 
 class Job:
-
-    def __init__(self, command: str, policy: Policy, root: Path, tty: bool = False, scratch: str | None = None, env: dict | None = None):
-        self.command, self.started, self.outside, self.tty = command, time.time(), policy.mode == "full-access", tty and os.name == "posix"
+    def __init__(
+        self,
+        command: str,
+        policy: Policy,
+        root: Path,
+        tty: bool = False,
+        scratch: str | None = None,
+        env: dict | None = None,
+    ):
+        self.command = command
+        self.started = time.time()
+        self.outside = policy.mode == "full-access"
+        self.tty = tty and os.name == "posix"
         self.own_scratch = scratch is None
         self.scratch = scratch or tempfile.mkdtemp(prefix="agent-job-")
-        target, shell = wrap(command, policy, root, os.path.realpath(self.scratch))
-        base = _env_for(policy, self.scratch)
-        env = {**base, **{k: os.pathsep.join(filter(None, [v, base.get(k)])) if k in ("PATH", "PYTHONPATH") else v for k, v in (env or {}).items()}}
-        if tty and os.name == "posix":
-            import pty
-            master, slave = pty.openpty()
-            env = {**(env or os.environ), "TERM": "dumb"}
-            self.proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=slave, stderr=slave, stdin=slave, start_new_session=True, env=env)
-            os.close(slave)
-            self.stdout, self.stdin = os.fdopen(master, "rb", buffering=0), os.fdopen(os.dup(master), "wb", buffering=0)
-        else:
-            self.proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE,
-                                         start_new_session=os.name == "posix", env=env)
-            self.stdout, self.stdin = self.proc.stdout, self.proc.stdin
+        master = slave = -1
+        try:
+            target, shell = wrap(command, policy, root, os.path.realpath(self.scratch))
+            base = _env_for(policy, self.scratch)
+            merged_env = {
+                **base,
+                **{
+                    k: os.pathsep.join(filter(None, [v, base.get(k)])) if k in ("PATH", "PYTHONPATH") else v
+                    for k, v in (env or {}).items()
+                },
+            }
+            if self.tty:
+                import pty
+
+                master, slave = pty.openpty()
+                merged_env = {**merged_env, "TERM": "dumb"}
+                self.proc = subprocess.Popen(
+                    target,
+                    shell=shell,
+                    cwd=root,
+                    stdout=slave,
+                    stderr=slave,
+                    stdin=slave,
+                    start_new_session=True,
+                    env=merged_env,
+                )
+                os.close(slave)
+                slave = -1
+                dup_master = os.dup(master)
+                try:
+                    self.stdout = os.fdopen(master, "rb", buffering=0)
+                    master = -1
+                    self.stdin = os.fdopen(dup_master, "wb", buffering=0)
+                except Exception:
+                    os.close(dup_master)
+                    raise
+            else:
+                self.proc = subprocess.Popen(
+                    target,
+                    shell=shell,
+                    cwd=root,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.PIPE,
+                    start_new_session=os.name == "posix",
+                    env=merged_env,
+                )
+                self.stdout, self.stdin = self.proc.stdout, self.proc.stdin
+        except Exception:
+            for fd in (slave, master):
+                if fd >= 0:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+            if self.own_scratch:
+                shutil.rmtree(self.scratch, ignore_errors=True)
+            raise
         self.out = _Capture(self.stdout, lambda: _kill_group(self.proc))
         self.out.start()
         self.cursor = 0
@@ -271,7 +404,7 @@ class Job:
             raise OSError("the job no longer reads input") from exc
 
     def read(self) -> str:
-        data = bytes(self.out.data[self.cursor:])
+        data = self.out.read_from(self.cursor)
         self.cursor += len(data)
         return data.decode("utf-8", errors="replace")
 
@@ -284,12 +417,19 @@ class Job:
         return self.proc.poll() is None or (os.name == "posix" and _group_alive(self.proc.pid))
 
     def detach(self) -> None:
-        if os.name == "posix":
-            subprocess.Popen(["cat"], stdin=self.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        # Leave background process running; _Capture daemon thread continues draining stdout.
+        return None
 
     def stop(self) -> None:
         _kill_group(self.proc)
-        self.proc.wait()
+        try:
+            self.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                self.proc.kill()
+                self.proc.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
         self.out.join(5)
         for stream in (self.stdin, self.stdout):
             try:
@@ -301,8 +441,14 @@ class Job:
             shutil.rmtree(self.scratch, ignore_errors=True)
 
 
-def run(command: str, policy: Policy, root: Path, timeout: int, stdin: str | None = None,
-        split: bool = False) -> tuple[int | None, str]:
+def run(
+    command: str,
+    policy: Policy,
+    root: Path,
+    timeout: int,
+    stdin: str | None = None,
+    split: bool = False,
+) -> tuple[int | None, str]:
     scratch = tempfile.mkdtemp(prefix="agent-run-")
     try:
         target, shell = wrap(command, policy, root, os.path.realpath(scratch))
@@ -312,10 +458,10 @@ def run(command: str, policy: Policy, root: Path, timeout: int, stdin: str | Non
 
 
 class _Capture(threading.Thread):
-
     def __init__(self, stream, on_runaway):
         super().__init__(daemon=True)
         self.stream, self.on_runaway = stream, on_runaway
+        self._lock = threading.Lock()
         self.data, self.total = bytearray(), 0
 
     def run(self) -> None:
@@ -326,16 +472,26 @@ class _Capture(threading.Thread):
                 return
             if not chunk:
                 return
-            self.total += len(chunk)
-            if len(self.data) < MAX_OUTPUT_BYTES:
-                self.data += chunk[:MAX_OUTPUT_BYTES - len(self.data)]
-            if self.total > RUNAWAY_BYTES:
+            runaway = False
+            with self._lock:
+                self.total += len(chunk)
+                if len(self.data) < MAX_OUTPUT_BYTES:
+                    self.data += chunk[: MAX_OUTPUT_BYTES - len(self.data)]
+                runaway = self.total > RUNAWAY_BYTES
+            if runaway:
                 self.on_runaway()
                 return
 
+    def read_from(self, offset: int) -> bytes:
+        with self._lock:
+            return bytes(self.data[offset:])
+
     def text(self) -> str:
-        cut = f"\n[output cut: {self.total - len(self.data)} bytes more]" if self.total > len(self.data) else ""
-        return self.data.decode("utf-8", errors="replace") + cut
+        with self._lock:
+            raw = bytes(self.data)
+            total = self.total
+        cut = f"\n[output cut: {total - len(raw)} bytes more]" if total > len(raw) else ""
+        return raw.decode("utf-8", errors="replace") + cut
 
 
 def _group_alive(pgid: int) -> bool:
@@ -368,40 +524,77 @@ def _kill_group(proc: subprocess.Popen) -> None:
         if os.name == "posix":
             os.killpg(proc.pid, signal.SIGKILL)
         else:
+            if proc.poll() is None:
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
             proc.kill()
     except OSError:
         pass
 
 
-def _execute(target, shell: bool, root: Path, timeout: int, stdin: str | None, split: bool,
-             env: dict | None) -> tuple[int | None, str]:
+def _execute(
+    target,
+    shell: bool,
+    root: Path,
+    timeout: int,
+    stdin: str | None,
+    split: bool,
+    env: dict | None,
+) -> tuple[int | None, str]:
     posix = os.name == "posix"
-    proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE if split else subprocess.STDOUT,
-                            stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
-                            start_new_session=posix, env=env)
-    out, err = _Capture(proc.stdout, lambda: _kill_group(proc)), _Capture(proc.stderr, lambda: _kill_group(proc)) if split else None
+    proc = subprocess.Popen(
+        target,
+        shell=shell,
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE if split else subprocess.STDOUT,
+        stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+        start_new_session=posix,
+        env=env,
+    )
+    out = _Capture(proc.stdout, lambda: _kill_group(proc))
+    err = _Capture(proc.stderr, lambda: _kill_group(proc)) if split else None
     for reader in (out, err):
         if reader:
             reader.start()
-    if stdin is not None:
+    if stdin is not None and proc.stdin is not None:
         def feed() -> None:
             try:
                 proc.stdin.write(stdin.encode("utf-8"))
-                proc.stdin.close()
             except OSError:
                 pass
+            finally:
+                try:
+                    proc.stdin.close()
+                except OSError:
+                    pass
+
         threading.Thread(target=feed, daemon=True).start()
+    code: int | None = None
     try:
-        code: int | None = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        code = None
-    _kill_group(proc)
-    proc.wait()
-    for reader in (out, err):
-        if reader:
-            reader.join(5)
-    for stream in (proc.stdout, proc.stderr):
-        if stream:
-            stream.close()
+        try:
+            code = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            code = None
+    finally:
+        _kill_group(proc)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        for reader in (out, err):
+            if reader:
+                reader.join(5)
+        for stream in (proc.stdout, proc.stderr):
+            if stream:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
     return code, (err if split else out).text()

@@ -1,11 +1,9 @@
-
 import argparse
 import asyncio
 import json
 import re
 import sys
 import time
-import traceback
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -13,6 +11,8 @@ from typing import Any
 from anthropic import Anthropic
 
 from connections import create_connection
+
+MAX_AGENT_TURNS = 30
 
 EVALUATION_PROMPT = """You are an AI assistant with access to tools.
 
@@ -50,31 +50,59 @@ Response Requirements:
 
 
 def parse_evaluation_file(file_path: Path) -> list[dict[str, Any]]:
-    try:
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        evaluations = []
+    tree = ET.parse(file_path)
+    root = tree.getroot()
+    evaluations: list[dict[str, Any]] = []
 
-        for qa_pair in root.findall(".//qa_pair"):
-            question_elem = qa_pair.find("question")
-            answer_elem = qa_pair.find("answer")
+    for qa_pair in root.findall(".//qa_pair"):
+        question_elem = qa_pair.find("question")
+        answer_elem = qa_pair.find("answer")
 
-            if question_elem is not None and answer_elem is not None:
-                evaluations.append({
+        if question_elem is not None and answer_elem is not None:
+            evaluations.append(
+                {
                     "question": (question_elem.text or "").strip(),
                     "answer": (answer_elem.text or "").strip(),
-                })
+                }
+            )
 
-        return evaluations
-    except Exception as e:
-        print(f"Error parsing evaluation file {file_path}: {e}")
-        return []
+    return evaluations
 
 
-def extract_xml_content(text: str, tag: str) -> str | None:
-    pattern = rf"<{tag}>(.*?)</{tag}>"
+def extract_xml_content(text: str | None, tag: str) -> str | None:
+    if not text:
+        return None
+    escaped = re.escape(tag)
+    pattern = rf"<{escaped}>(.*?)</{escaped}>"
     matches = re.findall(pattern, text, re.DOTALL)
     return matches[-1].strip() if matches else None
+
+
+def _json_default(obj: Any) -> Any:
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if hasattr(obj, "__dict__"):
+        return obj.__dict__
+    return str(obj)
+
+
+def _serialize_tool_result(tool_result: Any) -> str:
+    if isinstance(tool_result, str):
+        return tool_result
+    if isinstance(tool_result, (dict, list)):
+        return json.dumps(tool_result, ensure_ascii=False, default=_json_default)
+    if hasattr(tool_result, "model_dump"):
+        return json.dumps(tool_result.model_dump(), ensure_ascii=False, default=str)
+    return str(tool_result)
+
+
+def _extract_response_text(content: Any) -> str:
+    parts = [
+        block.text
+        for block in (content or [])
+        if getattr(block, "type", None) == "text" and isinstance(getattr(block, "text", None), str)
+    ]
+    return "\n".join(parts).strip()
 
 
 async def agent_loop(
@@ -83,8 +111,10 @@ async def agent_loop(
     question: str,
     tools: list[dict[str, Any]],
     connection: Any,
+    *,
+    max_turns: int = MAX_AGENT_TURNS,
 ) -> tuple[str, dict[str, Any]]:
-    messages = [{"role": "user", "content": question}]
+    messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
 
     response = await asyncio.to_thread(
         client.messages.create,
@@ -97,35 +127,47 @@ async def agent_loop(
 
     messages.append({"role": "assistant", "content": response.content})
 
-    tool_metrics = {}
+    tool_metrics: dict[str, dict[str, Any]] = {}
+    turns = 0
 
-    while response.stop_reason == "tool_use":
-        tool_use = next(block for block in response.content if block.type == "tool_use")
-        tool_name = tool_use.name
-        tool_input = tool_use.input
+    while response.stop_reason == "tool_use" and turns < max_turns:
+        tool_use_blocks = [
+            block for block in (response.content or []) if getattr(block, "type", None) == "tool_use"
+        ]
+        if not tool_use_blocks:
+            break
+        turns += 1
 
-        tool_start_ts = time.time()
-        try:
-            tool_result = await connection.call_tool(tool_name, tool_input)
-            tool_response = json.dumps(tool_result) if isinstance(tool_result, (dict, list)) else str(tool_result)
-        except Exception as e:
-            tool_response = f"Error executing tool {tool_name}: {str(e)}\n"
-            tool_response += traceback.format_exc()
-        tool_duration = time.time() - tool_start_ts
+        tool_results: list[dict[str, Any]] = []
+        for tool_use in tool_use_blocks:
+            tool_name = tool_use.name
+            tool_input = tool_use.input
 
-        if tool_name not in tool_metrics:
-            tool_metrics[tool_name] = {"count": 0, "durations": []}
-        tool_metrics[tool_name]["count"] += 1
-        tool_metrics[tool_name]["durations"].append(tool_duration)
+            tool_start_ts = time.monotonic()
+            is_error = False
+            try:
+                tool_result = await connection.call_tool(tool_name, tool_input)
+                tool_response = _serialize_tool_result(tool_result)
+            except Exception as exc:
+                is_error = True
+                tool_response = f"Error executing tool {tool_name}: {type(exc).__name__}: {exc}"
+            tool_duration = time.monotonic() - tool_start_ts
 
-        messages.append({
-            "role": "user",
-            "content": [{
-                "type": "tool_result",
-                "tool_use_id": tool_use.id,
-                "content": tool_response,
-            }]
-        })
+            if tool_name not in tool_metrics:
+                tool_metrics[tool_name] = {"count": 0, "durations": []}
+            tool_metrics[tool_name]["count"] += 1
+            tool_metrics[tool_name]["durations"].append(tool_duration)
+
+            tool_results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tool_use.id,
+                    "content": tool_response,
+                    **({"is_error": True} if is_error else {}),
+                }
+            )
+
+        messages.append({"role": "user", "content": tool_results})
 
         response = await asyncio.to_thread(
             client.messages.create,
@@ -137,11 +179,7 @@ async def agent_loop(
         )
         messages.append({"role": "assistant", "content": response.content})
 
-    response_text = next(
-        (block.text for block in response.content if hasattr(block, "text")),
-        None,
-    )
-    return response_text, tool_metrics
+    return _extract_response_text(response.content), tool_metrics
 
 
 async def evaluate_single_task(
@@ -152,7 +190,7 @@ async def evaluate_single_task(
     connection: Any,
     task_index: int,
 ) -> dict[str, Any]:
-    start_time = time.time()
+    start_time = time.monotonic()
 
     print(f"Task {task_index + 1}: Running task with question: {qa_pair['question']}")
     response, tool_metrics = await agent_loop(client, model, qa_pair["question"], tools, connection)
@@ -161,13 +199,13 @@ async def evaluate_single_task(
     summary = extract_xml_content(response, "summary")
     feedback = extract_xml_content(response, "feedback")
 
-    duration_seconds = time.time() - start_time
+    duration_seconds = time.monotonic() - start_time
 
     return {
         "question": qa_pair["question"],
         "expected": qa_pair["answer"],
         "actual": response_value,
-        "score": int(response_value == qa_pair["answer"]) if response_value else 0,
+        "score": int(response_value == qa_pair["answer"]) if response_value is not None else 0,
         "total_duration": duration_seconds,
         "tool_calls": tool_metrics,
         "num_tool_calls": sum(len(metrics["durations"]) for metrics in tool_metrics.values()),
@@ -245,26 +283,28 @@ async def run_evaluation(
         total_tool_calls=total_tool_calls,
     )
 
-    report += "".join([
-        TASK_TEMPLATE.format(
-            task_num=i + 1,
-            question=qa_pair["question"],
-            expected_answer=qa_pair["answer"],
-            actual_answer=result["actual"] or "N/A",
-            correct_indicator="✅" if result["score"] else "❌",
-            total_duration=result["total_duration"],
-            tool_calls=json.dumps(result["tool_calls"], indent=2),
-            summary=result["summary"] or "N/A",
-            feedback=result["feedback"] or "N/A",
-        )
-        for i, (qa_pair, result) in enumerate(zip(qa_pairs, results))
-    ])
+    report += "".join(
+        [
+            TASK_TEMPLATE.format(
+                task_num=i + 1,
+                question=qa_pair["question"],
+                expected_answer=qa_pair["answer"],
+                actual_answer=result["actual"] if result["actual"] is not None else "N/A",
+                correct_indicator="✅" if result["score"] else "❌",
+                total_duration=result["total_duration"],
+                tool_calls=json.dumps(result["tool_calls"], indent=2),
+                summary=result["summary"] if result["summary"] is not None else "N/A",
+                feedback=result["feedback"] if result["feedback"] is not None else "N/A",
+            )
+            for i, (qa_pair, result) in enumerate(zip(qa_pairs, results))
+        ]
+    )
 
     return report
 
 
 def parse_headers(header_list: list[str]) -> dict[str, str]:
-    headers = {}
+    headers: dict[str, str] = {}
     if not header_list:
         return headers
 
@@ -273,12 +313,12 @@ def parse_headers(header_list: list[str]) -> dict[str, str]:
             key, value = header.split(":", 1)
             headers[key.strip()] = value.strip()
         else:
-            print(f"Warning: Ignoring malformed header: {header}")
+            print(f"Warning: Ignoring malformed header: {header}", file=sys.stderr)
     return headers
 
 
 def parse_env_vars(env_list: list[str]) -> dict[str, str]:
-    env = {}
+    env: dict[str, str] = {}
     if not env_list:
         return env
 
@@ -287,11 +327,11 @@ def parse_env_vars(env_list: list[str]) -> dict[str, str]:
             key, value = env_var.split("=", 1)
             env[key.strip()] = value.strip()
         else:
-            print(f"Warning: Ignoring malformed environment variable: {env_var}")
+            print(f"Warning: Ignoring malformed environment variable: {env_var}", file=sys.stderr)
     return env
 
 
-async def main():
+async def main() -> None:
     parser = argparse.ArgumentParser(
         description="Evaluate MCP servers using test questions",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -315,18 +355,18 @@ Examples:
     stdio_group = parser.add_argument_group("stdio options")
     stdio_group.add_argument("-c", "--command", help="Command to run MCP server (stdio only)")
     stdio_group.add_argument("-a", "--args", nargs="+", help="Arguments for the command (stdio only)")
-    stdio_group.add_argument("-e", "--env", nargs="+", help="Environment variables in KEY=VALUE format (stdio only)")
+    stdio_group.add_argument("-e", "--env", action="extend", nargs="+", help="Environment variables in KEY=VALUE format (stdio only)")
 
     remote_group = parser.add_argument_group("sse/http options")
     remote_group.add_argument("-u", "--url", help="MCP server URL (sse/http only)")
-    remote_group.add_argument("-H", "--header", nargs="+", dest="headers", help="HTTP headers in 'Key: Value' format (sse/http only)")
+    remote_group.add_argument("-H", "--header", action="extend", nargs="+", dest="headers", help="HTTP headers in 'Key: Value' format (sse/http only)")
 
     parser.add_argument("-o", "--output", type=Path, help="Output file for evaluation report (default: stdout)")
 
     args = parser.parse_args()
 
     if not args.eval_file.exists():
-        print(f"Error: Evaluation file not found: {args.eval_file}")
+        print(f"Error: Evaluation file not found: {args.eval_file}", file=sys.stderr)
         sys.exit(1)
 
     headers = parse_headers(args.headers) if args.headers else None
@@ -341,21 +381,25 @@ Examples:
             url=args.url,
             headers=headers,
         )
-    except ValueError as e:
-        print(f"Error: {e}")
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
     print(f"🔗 Connecting to MCP server via {args.transport}...")
 
-    async with connection:
-        print("✅ Connected successfully")
-        report = await run_evaluation(args.eval_file, connection, args.model)
+    try:
+        async with connection:
+            print("✅ Connected successfully")
+            report = await run_evaluation(args.eval_file, connection, args.model)
 
-        if args.output:
-            args.output.write_text(report)
-            print(f"\n✅ Report saved to {args.output}")
-        else:
-            print("\n" + report)
+            if args.output:
+                args.output.write_text(report, encoding="utf-8")
+                print(f"\n✅ Report saved to {args.output}")
+            else:
+                print("\n" + report)
+    except (ET.ParseError, OSError) as exc:
+        print(f"Error reading evaluation file {args.eval_file}: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

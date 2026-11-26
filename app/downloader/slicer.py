@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-import os
 
 import cv2
 import numpy as np
 from loguru import logger
 
+from app.image_io import read_image, write_image
 from app.parameters import (
     SLICE_BACKGROUND_DISTANCE,
     SLICE_CLOSE_KERNEL_SIZE,
@@ -26,70 +26,80 @@ from app.parameters import (
 )
 
 
-def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata: bool = False):
-    data = np.fromfile(str(image_path), dtype=np.uint8)
-    image = cv2.imdecode(data, cv2.IMREAD_COLOR)
-    if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
-        try:
-            with image_path.open("rb") as source_file:
-                os.posix_fadvise(source_file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
-        except OSError:
-            pass
-    if image is None:
+def _horizontal_kernel_width(width: int) -> int:
+    if width <= 1:
+        return 1
+    max_odd = width if width % 2 == 1 else width - 1
+    return max(1, min(max_odd, max(3, (width // 12) | 1)))
+
+
+def slice_image(
+    image_path: Path, out_dir: Path, prefix: str, *, return_metadata: bool = False
+):
+    try:
+        image = read_image(image_path)
+    except (OSError, ValueError):
         logger.warning("Skipping undecodable image {}", image_path)
         return []
 
     h, w = image.shape[:2]
     ext = ".png"
-
-    def save_segment(path: Path, seg: np.ndarray):
-        params = [cv2.IMWRITE_PNG_COMPRESSION, 1] if ext == ".png" else []
-        succ, buf = cv2.imencode(ext, seg, params)
-        if succ:
-            with path.open("wb") as out_file:
-                out_file.write(buf.tobytes())
-                out_file.flush()
-                if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
-                    try:
-                        os.posix_fadvise(out_file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
-                    except OSError:
-                        pass
-        else:
-            if not cv2.imwrite(str(path), seg, params):
-                raise ValueError(f"Could not write image segment at {path}")
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     if h <= SLICE_MAX_HEIGHT:
         out_path = out_dir / f"{prefix}_00{ext}"
-        save_segment(out_path, image)
+        write_image(out_path, image)
         if not return_metadata:
             return [out_path]
-        return [{
-            "path": out_path, "width": w, "height": h,
-            "source_y1": 0, "source_y2": h,
-            "core_y1": 0, "core_y2": h, "core_source_y1": 0, "core_source_y2": h,
-            "unsafe_before": False, "unsafe_after": False, "source_height": h,
-        }]
+        return [
+            {
+                "path": out_path,
+                "width": w,
+                "height": h,
+                "source_y1": 0,
+                "source_y2": h,
+                "core_y1": 0,
+                "core_y2": h,
+                "core_source_y1": 0,
+                "core_source_y2": h,
+                "unsafe_before": False,
+                "unsafe_after": False,
+                "source_height": h,
+            }
+        ]
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     occupied = _get_content_row_mask(gray, h, w, color=image)
     cut_rows = _find_cut_rows(gray, h, w, unsafe_rows=occupied)
+    del gray, occupied
+
     boundaries = [0] + cut_rows + [h]
     paths = []
     meta = []
     for i in range(len(boundaries) - 1):
         core_start, core_end = int(boundaries[i]), int(boundaries[i + 1])
+        if core_end <= core_start:
+            continue
         segment = image[core_start:core_end, :]
         out_path = out_dir / f"{prefix}_{i:02d}{ext}"
-        save_segment(out_path, segment)
+        write_image(out_path, segment)
         paths.append(out_path)
-        meta.append({
-            "path": out_path, "width": w, "height": core_end - core_start,
-            "source_y1": core_start, "source_y2": core_end,
-            "core_y1": 0, "core_y2": core_end - core_start,
-            "core_source_y1": core_start, "core_source_y2": core_end,
-            "unsafe_before": False, "unsafe_after": False,
-            "source_height": h,
-        })
+        meta.append(
+            {
+                "path": out_path,
+                "width": w,
+                "height": core_end - core_start,
+                "source_y1": core_start,
+                "source_y2": core_end,
+                "core_y1": 0,
+                "core_y2": core_end - core_start,
+                "core_source_y1": core_start,
+                "core_source_y2": core_end,
+                "unsafe_before": False,
+                "unsafe_after": False,
+                "source_height": h,
+            }
+        )
     return meta if return_metadata else paths
 
 
@@ -114,6 +124,8 @@ def _find_cut_rows(
         min_height = min(SLICE_MIN_HEIGHT, remaining // 2)
         allowed_lo = y + min_height
         allowed_hi = min(y + SLICE_MAX_HEIGHT, h - min_height)
+        if allowed_lo > allowed_hi:
+            break
         target = max(allowed_lo, min(allowed_hi, y + SLICE_TARGET_HEIGHT))
 
         lo = max(allowed_lo, target - SLICE_SEARCH_WINDOW)
@@ -131,7 +143,7 @@ def _find_cut_rows(
                 safe_rows, scores, allowed_hi + 1, h - min_height, target
             )
 
-        if cut is None:
+        if cut is None or cut <= y:
             break
 
         cuts.append(int(cut))
@@ -142,32 +154,41 @@ def _find_cut_rows(
 
 def _content(gray: np.ndarray) -> np.ndarray:
     """Detect pixels that stand out from their local background (supports white, black, and colored gutters)."""
-    kernel = max(3, (gray.shape[1] // 12) | 1)
+    if gray.ndim != 2 or gray.shape[1] < 2:
+        return np.zeros_like(gray, dtype=np.uint8)
+    kernel = _horizontal_kernel_width(gray.shape[1])
     background = cv2.blur(gray, (kernel, 1))
-    dev = np.abs(gray.astype(np.int16) - background.astype(np.int16))
+    dev = cv2.absdiff(gray, background)
     return np.where(dev > SLICE_BACKGROUND_DISTANCE, np.uint8(255), np.uint8(0))
 
 
 def _row_std(gray: np.ndarray, chunk: int = 1024) -> np.ndarray:
-    h, w = gray.shape
-    sums = np.empty(h, np.int64)
-    squares = np.empty(h, np.int64)
+    h, w = gray.shape[:2]
+    if h == 0 or w == 0:
+        return np.zeros(h, dtype=np.float32)
+    sums = np.empty(h, dtype=np.int64)
+    squares = np.empty(h, dtype=np.int64)
     for top in range(0, h, chunk):
-        part = gray[top:top + chunk].astype(np.int32)
-        sums[top:top + chunk] = part.sum(axis=1)
-        squares[top:top + chunk] = (part * part).sum(axis=1)
-    return np.sqrt((w * squares - sums * sums) / float(w * w)).astype(np.float32)
+        part = gray[top : top + chunk].astype(np.int32)
+        sums[top : top + chunk] = part.sum(axis=1, dtype=np.int64)
+        squares[top : top + chunk] = (part * part).sum(axis=1, dtype=np.int64)
+    variance = np.maximum(0.0, (w * squares - sums * sums) / float(w * w))
+    return np.sqrt(variance).astype(np.float32)
 
 
-def _row_transitions(gray: np.ndarray, threshold: int = 28, chunk: int = 1024) -> np.ndarray:
+def _row_transitions(
+    gray: np.ndarray, threshold: int = 28, chunk: int = 1024
+) -> np.ndarray:
     """Count horizontal high-contrast stroke transitions per row (peaks sharply on text lines)."""
-    h, w = gray.shape
-    if w < 2:
+    h, w = gray.shape[:2]
+    if h == 0 or w < 2:
         return np.zeros(h, dtype=np.float32)
     counts = np.empty(h, dtype=np.float32)
     for top in range(0, h, chunk):
-        part = gray[top:top + chunk].astype(np.int16)
-        counts[top:top + chunk] = np.count_nonzero(np.abs(np.diff(part, axis=1)) > threshold, axis=1)
+        part = gray[top : top + chunk].astype(np.int16)
+        counts[top : top + chunk] = np.count_nonzero(
+            np.abs(np.diff(part, axis=1)) > threshold, axis=1
+        )
     return counts
 
 
@@ -175,12 +196,18 @@ def _get_row_scores(gray: np.ndarray) -> np.ndarray:
     row_std = _row_std(gray)
     content_count_per_row = np.count_nonzero(_content(gray), axis=1).astype(np.float32)
     text_transitions = _row_transitions(gray)
-    return row_std + content_count_per_row * SLICE_CONTENT_SCORE_WEIGHT + text_transitions * 3.0
+    return (
+        row_std
+        + content_count_per_row * SLICE_CONTENT_SCORE_WEIGHT
+        + text_transitions * 3.0
+    )
 
 
 def _safe_cut_rows(unsafe_rows: np.ndarray) -> np.ndarray:
     window = 2 * SAFE_CUT_BAND + 1
-    integral = np.r_[0, np.cumsum(unsafe_rows, dtype=np.int32)]
+    if unsafe_rows.size < window:
+        return np.empty(0, dtype=np.intp)
+    integral = np.r_[0, np.cumsum(unsafe_rows.astype(bool), dtype=np.int32)]
     return np.flatnonzero(integral[window:] == integral[:-window]) + SAFE_CUT_BAND
 
 
@@ -191,33 +218,43 @@ def _find_safe_cut(
     hi: int,
     target: int,
 ) -> int | None:
-    if lo > hi:
+    if lo > hi or safe_rows.size == 0:
         return None
 
     start, end = np.searchsorted(safe_rows, (lo, hi + 1))
-    candidates = safe_rows[start:end]
-    if candidates.size == 0:
+    if start >= end:
         return None
 
-    # Group contiguous safe rows into runs and prefer the center of a wide safe gap
-    # instead of hugging the 12px boundary next to a speech bubble or panel border.
-    breaks = np.flatnonzero(np.diff(candidates) > 1) + 1
-    runs = np.split(candidates, breaks)
+    # Expand to the enclosing contiguous safe runs so gap width/midpoint are not
+    # skewed when a wide gutter straddles lo or hi.
+    run_start = int(start)
+    while run_start > 0 and safe_rows[run_start] - safe_rows[run_start - 1] == 1:
+        run_start -= 1
+    run_end = int(end)
+    n_safe = int(safe_rows.size)
+    while run_end < n_safe and safe_rows[run_end] - safe_rows[run_end - 1] == 1:
+        run_end += 1
+
+    enclosing = safe_rows[run_start:run_end]
+    breaks = np.flatnonzero(np.diff(enclosing) > 1) + 1
+    runs = np.split(enclosing, breaks)
 
     best_cut: int | None = None
     best_rank: tuple[float, float] | None = None
     for run in runs:
         r_lo, r_hi = int(run[0]), int(run[-1])
+        clamped_lo = max(r_lo, int(lo))
+        clamped_hi = min(r_hi, int(hi))
+        if clamped_lo > clamped_hi:
+            continue
         width = r_hi - r_lo + 1
         if r_lo <= target <= r_hi:
-            # Target already inside this safe gap: stay near target while keeping generous clearance.
             margin = min(64, width // 2)
-            cut = max(r_lo + margin, min(r_hi - margin, int(target)))
+            ideal = max(r_lo + margin, min(r_hi - margin, int(target)))
         else:
-            # Cut at the midpoint of this safe gap so both adjacent slices keep maximum clean margin.
-            cut = (r_lo + r_hi) // 2
+            ideal = (r_lo + r_hi) // 2
+        cut = max(clamped_lo, min(clamped_hi, ideal))
         dist = abs(cut - int(target))
-        # Modest preference for wider safe gaps (up to 160px bonus) when two gaps are comparably close.
         clearance_bonus = min(width, 160) * 0.35
         rank = (dist - clearance_bonus, float(scores[cut]))
         if best_rank is None or rank < best_rank:
@@ -237,24 +274,26 @@ def _find_low_content_cut(
     if lo > hi or len(scores) == 0:
         return None
 
-    lo = max(FALLBACK_BAND, int(lo))
-    hi = min(len(scores) - FALLBACK_BAND - 1, int(hi))
+    radius = FALLBACK_BAND
+    lo = max(radius, int(lo))
+    hi = min(len(scores) - radius - 1, int(hi))
     if lo > hi:
         return None
 
-    radius = FALLBACK_BAND
-    padded = np.pad(scores.astype(np.float64), (1, 0), mode="constant")
-    integral = np.cumsum(padded)
+    win_start = lo - radius
+    win_end = hi + radius + 1
+    local = np.asarray(scores[win_start:win_end], dtype=np.float64)
+    integral = np.concatenate(([0.0], np.cumsum(local)))
     rows = np.arange(lo, hi + 1)
-    starts = rows - radius
-    ends = rows + radius + 1
-    band_score = (integral[ends] - integral[starts]) / float(2 * radius + 1)
+    width = 2 * radius + 1
+    band_score = (integral[width:] - integral[:-width]) / float(width)
 
     best = float(np.min(band_score))
     tolerance = max(1.0, abs(best) * SLICE_FALLBACK_TOLERANCE_RATIO)
     low_content = rows[band_score <= best + tolerance]
     if unsafe_rows is not None and low_content.size:
-        safe_candidates = low_content[~unsafe_rows[low_content]]
+        unsafe_bool = np.asarray(unsafe_rows, dtype=bool)
+        safe_candidates = low_content[~unsafe_bool[low_content]]
         if safe_candidates.size:
             low_content = safe_candidates
     if low_content.size == 0:
@@ -275,7 +314,6 @@ def _get_content_row_mask(
     full_edges = cv2.Canny(gray, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH)
     mask = np.any(full_edges, axis=1)
 
-    # Downsample tall webtoon strips by 2x for morphological contour analysis (~5x faster, same row bounds).
     scale = 2 if (w >= 400 and h >= 1600) else 1
     if scale == 2:
         sh, sw = max(1, h // 2), max(1, w // 2)
@@ -284,8 +322,11 @@ def _get_content_row_mask(
         sh, sw = h, w
         work = gray
 
-    edges = (cv2.Canny(work, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH)
-             if scale == 2 else full_edges)
+    edges = (
+        cv2.Canny(work, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH)
+        if scale == 2
+        else full_edges
+    )
 
     combined = cv2.bitwise_or(edges, _content(work))
 
@@ -309,10 +350,10 @@ def _get_content_row_mask(
             y_end = min(h, (y_box + h_box) * scale + SLICE_CONTOUR_PAD_Y)
             mask[y_start:y_end] = True
 
-    if color is not None:
-        channel_min = cv2.reduce(color, 1, cv2.REDUCE_MIN)
-        channel_max = cv2.reduce(color, 1, cv2.REDUCE_MAX)
-        spans = cv2.subtract(channel_max, channel_min)
-        mask |= np.any(spans[:, 0] >= SLICE_BACKGROUND_DISTANCE, axis=1)
+    if color is not None and color.ndim == 3 and color.shape[0] == h and color.shape[1] >= 2:
+        kernel = _horizontal_kernel_width(color.shape[1])
+        color_bg = cv2.blur(color, (kernel, 1))
+        color_dev = cv2.absdiff(color, color_bg)
+        mask |= np.any(color_dev >= SLICE_BACKGROUND_DISTANCE, axis=(1, 2))
 
     return mask

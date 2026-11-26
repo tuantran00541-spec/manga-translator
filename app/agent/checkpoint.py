@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
+import stat
 
 MAX_TURNS = 30
 MAX_FILE_BYTES = 2_000_000
@@ -9,6 +11,10 @@ MAX_MARKS = 30
 MAX_AUTO_MARKS = 10
 MAX_DROPPED = 20
 MAX_RAN = 200
+
+
+def _norm_key(path: Path | str) -> str:
+    return os.path.normpath(str(path))
 
 
 class Checkpoints:
@@ -36,22 +42,39 @@ class Checkpoints:
             self._keep(lambda m: m["turn"] >= self.first)
 
     def save(self, path: Path) -> None:
-        if not self.turns or str(path) in self.turns[-1] or str(path) in self.skipped[-1]:
+        key = _norm_key(path)
+        if not self.turns or key in self.turns[-1] or key in self.skipped[-1]:
             return
         try:
+            if path.is_symlink():
+                self.skipped[-1].add(key)
+                return
             if path.is_file():
-                if path.stat().st_size <= MAX_FILE_BYTES:
-                    self.turns[-1][str(path)] = path.read_bytes()
+                st = path.lstat()
+                if not stat.S_ISREG(st.st_mode):
+                    self.skipped[-1].add(key)
+                    return
+                if st.st_size <= MAX_FILE_BYTES:
+                    data = _read(path, max_bytes=MAX_FILE_BYTES)
+                    if data is None or data is _TOO_LARGE:
+                        self.skipped[-1].add(key)
+                    else:
+                        self.turns[-1][key] = data
                 else:
-                    self.skipped[-1].add(str(path))
+                    self.skipped[-1].add(key)
             elif not path.exists():
-                self.turns[-1][str(path)] = None
+                self.turns[-1][key] = None
         except OSError:
             pass
 
     def remember(self, path: Path, data: bytes | None) -> None:
-        if self.turns and str(path) not in self.turns[-1]:
-            self.turns[-1][str(path)] = data
+        key = _norm_key(path)
+        if not self.turns or key in self.turns[-1] or key in self.skipped[-1]:
+            return
+        if data is not None and len(data) > MAX_FILE_BYTES:
+            self.skipped[-1].add(key)
+            return
+        self.turns[-1][key] = data
 
     def current(self) -> dict[str, bytes | None]:
         return dict(self.turns[-1]) if self.turns else {}
@@ -62,12 +85,16 @@ class Checkpoints:
             self.turns.pop()
             self.skipped.pop()
         if not self.turns:
+            self._keep(lambda m: m["turn"] < self.first)
             return []
-        self.last_undo_skipped = sorted(self.skipped.pop())
+        skipped = set(self.skipped.pop())
         done = []
         for name, data in self.turns.pop().items():
             if _write(Path(name), data):
                 done.append(name)
+            else:
+                skipped.add(name)
+        self.last_undo_skipped = sorted(skipped)
         self._keep(lambda m: m["turn"] < self.first + len(self.turns))
         return done
 
@@ -76,20 +103,31 @@ class Checkpoints:
         self.ran_total += 1
 
     def ran_since(self, name: str) -> list[str]:
-        return self.ran[max(0, len(self.ran) - (self.ran_total - self.marks[name]["ran"])):]
+        return self.ran[max(0, len(self.ran) - (self.ran_total - self.marks[name]["ran"])) :]
 
     def mark(self, name: str, note: str = "", auto: bool = False) -> int:
         if not self.turns:
             self.begin()
         files = {}
         for key in self.turns[-1]:
-            data = _read(Path(key))
+            p = Path(key)
+            if p.is_symlink():
+                continue
+            data = _read(p, max_bytes=MAX_FILE_BYTES)
+            if data is _TOO_LARGE:
+                continue
             files[key] = None if data is None else self._blob(data)
         self.marks.pop(name, None)
-        self.marks[name] = {"turn": self.first + len(self.turns) - 1, "files": files, "note": note, "auto": auto, "ran": self.ran_total}
+        self.marks[name] = {
+            "turn": self.first + len(self.turns) - 1,
+            "files": files,
+            "note": note,
+            "auto": auto,
+            "ran": self.ran_total,
+        }
         for kind, cap in ((True, MAX_AUTO_MARKS), (False, MAX_MARKS)):
             names = [n for n, m in self.marks.items() if m["auto"] == kind]
-            for old in names[:max(0, len(names) - cap)]:
+            for old in names[: max(0, len(names) - cap)]:
                 del self.marks[old]
         self._keep(lambda m: True)
         return len(files)
@@ -97,7 +135,7 @@ class Checkpoints:
     def at(self, name: str) -> dict[str, bytes | None]:
         mark = self.marks[name]
         state: dict[str, bytes | None] = {}
-        for turn in self.turns[mark["turn"] - self.first:]:
+        for turn in self.turns[mark["turn"] - self.first :]:
             for key, data in turn.items():
                 if key not in state:
                     held = mark["files"][key] if key in mark["files"] else data
@@ -105,12 +143,14 @@ class Checkpoints:
         return state
 
     def restore(self, state: dict[str, bytes | None], only: str = "") -> list[str]:
+        only_norm = _norm_key(only) if only else ""
         done = []
         for name, data in state.items():
-            if only and name != only:
+            if only_norm and _norm_key(name) != only_norm:
                 continue
             path = Path(name)
-            if _read(path) == data:
+            existing = _read(path, max_bytes=MAX_FILE_BYTES)
+            if not path.is_symlink() and existing is not _TOO_LARGE and existing == data:
                 continue
             self.save(path)
             if _write(path, data):
@@ -131,15 +171,31 @@ class Checkpoints:
         self.blobs = {h: d for h, d in self.blobs.items() if h in held}
 
 
-def _read(path: Path) -> bytes | None:
+_TOO_LARGE = object()
+
+
+def _read(path: Path, *, max_bytes: int | None = None):
     try:
-        return path.read_bytes() if path.is_file() else None
+        if path.is_symlink() or not path.is_file():
+            return None
+        st = path.lstat()
+        if not stat.S_ISREG(st.st_mode):
+            return None
+        if max_bytes is not None and st.st_size > max_bytes:
+            return _TOO_LARGE
+        with path.open("rb") as handle:
+            if max_bytes is None:
+                return handle.read()
+            data = handle.read(max_bytes + 1)
+            return _TOO_LARGE if len(data) > max_bytes else data
     except OSError:
         return None
 
 
 def _write(path: Path, data: bytes | None) -> bool:
     try:
+        if path.is_symlink():
+            path.unlink()
         if data is None:
             path.unlink(missing_ok=True)
         else:

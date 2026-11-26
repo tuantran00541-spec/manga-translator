@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import random
 import re
 import threading
 import time
 import uuid
 from contextvars import ContextVar
+from datetime import timezone
 from email.utils import parsedate_to_datetime
 
 import requests
@@ -28,14 +30,15 @@ OVERFLOW_PATTERNS = [re.compile(p, re.I) for p in (
     r"prompt (?:is )?too long", r"prompt exceeds max length", r"request_too_large", r"input is too long for requested model", r"exceeds the context window",
     r"exceeds (?:the )?(?:model'?s )?maximum context length", r"input token count.*exceeds the maximum", r"maximum prompt length is \d+",
     r"reduce the length of the messages", r"maximum context length is \d+ tokens", r"exceeds (?:the )?maximum allowed input length", r"is longer than the model'?s context length",
-    r"exceeds the limit of \d+", r"exceeds the available context size", r"greater than the context length", r"context window exceeds limit", r"exceeded model token limit",
+    r"exceeds the limit of \d+\s*tokens?", r"exceeds the available context size", r"greater than the context length", r"context window exceeds limit", r"exceeded model token limit",
     r"too large for model with \d+ maximum context length", r"configured context size is", r"model_context_window_exceeded", r"prompt too long; exceeded",
-    r"range of input length should be", r"context[_ ]length[_ ]exceeded", r"too many tokens", r"token limit exceeded", r"context.{0,20}(?:length|window)", r"maximum context")]
-NOT_OVERFLOW = re.compile(r"rate limit|too many requests|throttl", re.I)
+    r"range of input length should be", r"context[_ ]length[_ ]exceeded", r"too many tokens", r"token limit exceeded",
+    r"context.{0,20}(?:length|window).{0,25}(?:exceed|limit|max|too|overflow)", r"maximum context (?:length|window|size|tokens)")]
+NOT_OVERFLOW = re.compile(r"rate limit|too many requests|throttl|quota|billing|per (?:second|minute|hour)|\b(?:rpm|tpm)\b", re.I)
 WINDOW_PATTERNS = [re.compile(p, re.I) for p in (
     r"maximum context length (?:is|of)? ?\(?([\d,]{4,})", r"maximum prompt length is ([\d,]{4,})", r"context (?:window|length|size|limit) (?:of|is) \(?([\d,]{4,})",
     r"context (?:length|size) \(([\d,]{4,})", r"maximum number of tokens allowed \(([\d,]{4,})", r"maximum allowed input length of ([\d,]{4,})",
-    r"limit of ([\d,]{4,})", r"> ([\d,]{4,}) maximum", r"configured context size is ([\d,]{4,})")]
+    r"limit of ([\d,]{4,})\s*tokens?", r"> ([\d,]{4,}) maximum", r"configured context size is ([\d,]{4,})")]
 RATE_LIMIT_RETRIES = 4
 _CLIENT_LOCK = threading.Lock()
 _MAX_CLIENT_ENTRIES = 256
@@ -73,10 +76,10 @@ class CancelledError(RuntimeError):
 
 
 ASK_ON_LIMIT: ContextVar[bool] = ContextVar("ask_on_limit", default=False)
-REQUEST_EXTRA: ContextVar[dict] = ContextVar("request_extra", default={})
+REQUEST_EXTRA: ContextVar[dict | None] = ContextVar("request_extra", default=None)
 CANCEL_EVENT: ContextVar[threading.Event | None] = ContextVar("cancel_event", default=None)
 CANCEL_HOOKS: ContextVar[list | None] = ContextVar("cancel_hooks", default=None)
-_REFUSED_EXTRA: set[tuple[str, str]] = set()
+_REFUSED_EXTRA: dict[tuple[str, str], bool] = {}
 
 
 def _is_cancelled() -> bool:
@@ -182,7 +185,8 @@ UNESCAPES = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "/": "/"}
 
 def _lenient_args(raw: str, params: list[str], required: list[str]) -> dict | None:
     start = raw.find('"arguments"')
-    body = raw[raw.find("{", start) + 1:] if start >= 0 else raw
+    brace = raw.find("{", start) if start >= 0 else -1
+    body = raw[brace + 1:] if brace >= 0 else raw
     body = re.sub(r'\s*\}\s*\}?\s*$', "", body.rstrip())
     marks = []
     for name in params:
@@ -208,8 +212,9 @@ def _lenient_args(raw: str, params: list[str], required: list[str]) -> dict | No
 def _read_call(raw: str, schemas: dict | None = None) -> tuple[str, dict] | None:
     try:
         data = json.loads(raw, strict=False)
-        args = data.get("arguments", data.get("args", {}))
-        return str(data.get("name") or ""), args if isinstance(args, dict) else {}
+        if isinstance(data, dict) and data.get("name"):
+            args = data.get("arguments", data.get("args", {}))
+            return str(data["name"]), args if isinstance(args, dict) else {}
     except (ValueError, AttributeError):
         pass
     named = re.search(r"function=(\w+)", raw)
@@ -331,13 +336,23 @@ def _retry_after(response: requests.Response) -> float:
     try:
         millis = response.headers.get("retry-after-ms")
         if millis:
-            return float(millis) / 1000
-        value = response.headers.get("Retry-After") or ""
+            val = float(millis) / 1000.0
+            return val if math.isfinite(val) and val > 0 else 0.0
+        value = (response.headers.get("Retry-After") or "").strip()
+        if not value:
+            return 0.0
         try:
-            return float(value)
+            val = float(value)
+            return val if math.isfinite(val) and val > 0 else 0.0
         except ValueError:
-            return max(0.0, parsedate_to_datetime(value).timestamp() - time.time()) if value else 0.0
-    except (TypeError, ValueError):
+            dt = parsedate_to_datetime(value)
+            if dt is None:
+                return 0.0
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            val = dt.timestamp() - time.time()
+            return val if math.isfinite(val) and val > 0 else 0.0
+    except (TypeError, ValueError, OverflowError):
         return 0.0
 
 
@@ -345,11 +360,15 @@ def _hinted_wait(text: str) -> float:
     found = IN_RE.search(text)
     if found:
         unit = found.group(2).lower()
-        return float(found.group(1)) * (0.001 if unit.startswith("ms") or unit.startswith("milli") else 60 if unit.startswith("m") else 1)
+        val = float(found.group(1)) * (0.001 if unit.startswith("ms") or unit.startswith("milli") else 60 if unit.startswith("m") else 1)
+        return val if math.isfinite(val) and val > 0 else 0.0
     found = AFTER_RE.search(text)
     if found:
+        hh, mm, ss = int(found.group(1)), int(found.group(2)), int(found.group(3) or 0)
+        if not (0 <= hh < 24 and 0 <= mm < 60 and 0 <= ss < 60):
+            return 0.0
         now = time.gmtime()
-        target = int(found.group(1)) * 3600 + int(found.group(2)) * 60 + int(found.group(3) or 0)
+        target = hh * 3600 + mm * 60 + ss
         wait = (target - (now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)) % 86400
         return float(wait) if wait <= 900 else 0.0
     return 0.0
@@ -361,7 +380,7 @@ def _pace_hint(text: str) -> float:
         return 0.0
     unit = found.group(3).lower()
     period = int(found.group(2) or 1) * (3600 if unit.startswith("h") else 60 if unit.startswith("m") else 1)
-    return period / int(found.group(1))
+    return min(60.0, period / int(found.group(1)))
 
 
 def slot(provider: AIProvider, api_key: str) -> str:
@@ -419,22 +438,26 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
     if response.status_code not in (404, 405) or provider.builtin or provider.protocol != "openai" or already_found:
         return response
     tried = {url0}
-    for url in chat_candidates(provider):
-        if url in tried:
-            continue
-        tried.add(url)
-        try:
-            other = _post_to(url, provider, api_key, payload, stream)
-        except (HTTPException, ValueError):
-            continue
-        if other.status_code not in (404, 405):
-            response.close()
-            with _CLIENT_LOCK:
-                _bound_client_map(_FOUND_PATH, base)
-                _FOUND_PATH[base] = url
-            logger.info("{} answers chat at {}", provider.label, url)
-            return other
-        other.close()
+    try:
+        for url in chat_candidates(provider):
+            if url in tried:
+                continue
+            tried.add(url)
+            try:
+                other = _post_to(url, provider, api_key, payload, stream)
+            except (HTTPException, ValueError):
+                continue
+            if other.status_code not in (404, 405):
+                response.close()
+                with _CLIENT_LOCK:
+                    _bound_client_map(_FOUND_PATH, base)
+                    _FOUND_PATH[base] = url
+                logger.info("{} answers chat at {}", provider.label, url)
+                return other
+            other.close()
+    except BaseException:
+        response.close()
+        raise
     return response
 
 
@@ -469,7 +492,8 @@ def _cancellable_post(url: str, *, headers: dict, payload: dict, timeout: tuple[
         raise CancelledError("Đã dừng.")
     if error[0] is not None:
         raise error[0]
-    assert result[0] is not None
+    if result[0] is None:
+        raise TransientError("HTTP request returned no response")
     return result[0]
 
 
@@ -524,8 +548,14 @@ def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream
 
 
 def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, bool]:
-    text, reasoning, usage, calls, stopped = "", "", {}, {}, False
+    text_parts: list[str] = []
+    reason_parts: list[str] = []
+    usage: dict = {}
+    calls: dict[int, dict] = {}
+    stopped = False
     finish, other = "", {}
+    arg_chars = 0
+    arg_tail = ""
     response.encoding = "utf-8"
     cancel_hook = lambda: _force_close_response(response)
     _register_cancel_hook(cancel_hook)
@@ -543,6 +573,8 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
                 chunk = json.loads(data)
             except ValueError:
                 continue
+            if not isinstance(chunk, dict):
+                continue
             usage = chunk.get("usage") or usage
             for choice in chunk.get("choices") or []:
                 delta = choice.get("delta") or {}
@@ -550,25 +582,52 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
                 for key, value in delta.items():
                     if key not in ("content", "reasoning_content", "reasoning", "tool_calls", "role") and isinstance(value, str) and value:
                         other[key] = other.get(key, "") + value
-                text += delta.get("content") or ""
-                reasoning += delta.get("reasoning_content") or delta.get("reasoning") or ""
+                content_piece = delta.get("content")
+                if content_piece:
+                    text_parts.append(content_piece)
+                reason_piece = delta.get("reasoning_content") or delta.get("reasoning")
+                if reason_piece:
+                    reason_parts.append(reason_piece)
                 for part in delta.get("tool_calls") or []:
-                    slot = calls.setdefault(part.get("index", len(calls)), {"id": "", "name": "", "arguments": ""})
+                    if "index" in part and isinstance(part["index"], int):
+                        call_idx = part["index"]
+                    elif not part.get("id") and calls:
+                        call_idx = max(calls)
+                    else:
+                        call_idx = len(calls)
+                    slot = calls.setdefault(call_idx, {"id": "", "name": "", "arg_parts": []})
                     slot["id"] = part.get("id") or slot["id"]
                     function = part.get("function") or {}
                     slot["name"] += function.get("name") or ""
-                    slot["arguments"] += function.get("arguments") or ""
-            arg_text = "".join(c["arguments"] for c in calls.values())
-            if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]],
-                         "args": arg_text[-4000:], "arg_chars": len(arg_text)}):
+                    arg_piece = function.get("arguments") or ""
+                    if arg_piece:
+                        slot["arg_parts"].append(arg_piece)
+                        arg_chars += len(arg_piece)
+                        arg_tail = (arg_tail + arg_piece)[-4000:]
+            if on_delta({
+                "text": "".join(text_parts),
+                "reasoning": "".join(reason_parts),
+                "tools": [c["name"] for c in calls.values() if c["name"]],
+                "args": arg_tail,
+                "arg_chars": arg_chars,
+            }):
                 stopped = True
                 break
     finally:
         _unregister_cancel_hook(cancel_hook)
+    text = "".join(text_parts)
+    reasoning = "".join(reason_parts)
     if other and not (text or reasoning or calls):
         reasoning = "".join(other.values())
-    message = {"content": text, "reasoning_content": reasoning, "_debug": {"finish": finish, "fields": sorted(other)},
-               "tool_calls": [{"id": c["id"], "function": {"name": c["name"], "arguments": c["arguments"]}} for _, c in sorted(calls.items())]}
+    message = {
+        "content": text,
+        "reasoning_content": reasoning,
+        "_debug": {"finish": finish, "fields": sorted(other)},
+        "tool_calls": [
+            {"id": c["id"], "function": {"name": c["name"], "arguments": "".join(c["arg_parts"])}}
+            for _, c in sorted(calls.items())
+        ],
+    }
     return message, usage, stopped
 
 
@@ -579,29 +638,40 @@ def split_thinking(text: str) -> tuple[str, str]:
     thought = "\n".join(part.strip() for part in THINK.findall(text))
     text = THINK.sub("", text)
     if "</think>" in text:
-        before, _, text = text.partition("</think>")
-        thought = (before.strip() + "\n" + thought).strip()
+        before, _, after = text.partition("</think>")
+        if before.count("```") % 2 == 0:
+            thought = (before.strip() + "\n" + thought).strip()
+            text = after
     return text.strip(), thought
 
 
 def loads_args(raw: str):
+    if isinstance(raw, dict):
+        return raw
     try:
         return json.loads(raw or "{}", strict=False)
     except ValueError:
         pass
-    fixed = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw)
-    fixed = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", fixed)
-    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
-    return json.loads(fixed, strict=False)
+    fixed = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(raw or ""))
+    fixed = re.sub(
+        r'\\(["\\/bfnrtu])|\\',
+        lambda m: m.group(0) if m.group(1) else r"\\\\",
+        fixed,
+    )
+    try:
+        return json.loads(fixed, strict=False)
+    except ValueError:
+        return json.loads(re.sub(r",\s*([}\]])", r"\1", fixed), strict=False)
 
 
 def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     calls = []
     for call in message.get("tool_calls") or []:
         function = call.get("function") or {}
+        raw_args = function.get("arguments")
         try:
-            args = loads_args(function.get("arguments") or "{}")
-        except ValueError:
+            args = raw_args if isinstance(raw_args, dict) else loads_args(raw_args or "{}")
+        except (ValueError, TypeError):
             args = None
         row = {"id": str(call.get("id") or uuid.uuid4().hex[:12]), "name": str(function.get("name") or ""),
                "args": args if isinstance(args, dict) else {}}
@@ -624,8 +694,9 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
                     call.pop("error", None)
                     spare.remove(match)
     reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
-    if "think>" in str(text):
-        text, thought = split_thinking(str(text))
+    text_str = str(text)
+    if "<think>" in text_str or "</think>" in text_str:
+        text, thought = split_thinking(text_str)
         reasoning = (str(reasoning) + "\n" + thought).strip()
     result = {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": usage_of(usage)}
     finish = (message.get("_debug") or {}).get("finish")
@@ -666,7 +737,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                    max_tokens: int | None = None) -> dict:
     started = time.monotonic()
     stream_active = bool(on_delta)
-    payload = {"model": model, "messages": messages, "stream": stream_active}
+    payload = {"model": model, "messages": list(messages), "stream": stream_active}
     payload.update(provider.chat_completion_extras())
     if tools:
         payload["tools"] = native_tools(tools)
@@ -678,7 +749,11 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
     refused = (provider.api_base, model)
     with _CLIENT_LOCK:
         is_refused = refused in _REFUSED_EXTRA
-    extra = {} if is_refused else {k: v for k, v in REQUEST_EXTRA.get().items() if k not in ("model", "messages", "stream", "tools")}
+    extra = (
+        {}
+        if is_refused
+        else {k: v for k, v in (REQUEST_EXTRA.get() or {}).items() if k not in ("model", "messages", "stream", "tools")}
+    )
     payload.update(extra)
 
     base_url_key = str(provider.api_base or "").rstrip("/")
@@ -703,12 +778,16 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
     for attempt in range(1, 7):
         _check_cancelled()
         response = _post(provider, api_key, payload, stream_active)
-        if extra and attempt < 6 and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
+        if (
+            extra
+            and attempt < 6
+            and response.status_code in (400, 422)
+            and any(re.search(rf"\b{re.escape(k)}\b", response.text, re.I) for k in extra)
+        ):
             logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
             with _CLIENT_LOCK:
-                if len(_REFUSED_EXTRA) >= _MAX_CLIENT_ENTRIES:
-                    _REFUSED_EXTRA.clear()
-                _REFUSED_EXTRA.add(refused)
+                _bound_client_map(_REFUSED_EXTRA, refused)
+                _REFUSED_EXTRA[refused] = True
             removed_keys = list(extra)
             for key in removed_keys:
                 payload.pop(key, None)
@@ -832,7 +911,17 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
                     continue
 
             response.close()
-            if tools and 400 <= response.status_code < 500 and "tool" in detail.lower() and not api_proxy.is_tools_limit_error(detail, len(payload.get("tools") or [])):
+            detail_lower = detail.lower()
+            is_tool_history_err = any(
+                tok in detail_lower for tok in ("tool_call_id", "tool_calls", "role 'tool'", 'role "tool"')
+            )
+            if (
+                tools
+                and response.status_code in (400, 404, 422)
+                and "tool" in detail_lower
+                and not is_tool_history_err
+                and not api_proxy.is_tools_limit_error(detail, len(payload.get("tools") or []))
+            ):
                 api_proxy.record_event(
                     caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
                     latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen, rescues_applied=rescues_applied, detail=detail,
@@ -883,6 +972,9 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         try:
             body = response.json()
             message = {**body["choices"][0]["message"], "_debug": {"finish": body["choices"][0].get("finish_reason") or "", "fields": sorted(body["choices"][0]["message"])}}
+        except requests.RequestException as exc:
+            _check_cancelled()
+            raise TransientError(f"{provider.label} response read failed: {type(exc).__name__}") from exc
         except Exception as exc:
             _check_cancelled()
             if not isinstance(exc, (ValueError, KeyError, IndexError, TypeError)):

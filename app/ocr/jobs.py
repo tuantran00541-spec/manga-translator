@@ -45,6 +45,33 @@ class ChapterOCRJobManager:
         self._tasks: set[asyncio.Task] = set()
         self._lock = threading.Lock()
 
+    def _snapshot_locked(self, job: ChapterOCRJob) -> dict:
+        return {
+            "job_id": job.job_id,
+            "chapter_id": job.chapter_id,
+            "lang": job.lang,
+            "concurrency": job.concurrency,
+            "force": job.force,
+            "status": job.status,
+            "total": len(job.items),
+            "completed": job.completed,
+            "recognized": job.recognized,
+            "empty": job.empty,
+            "cached": job.cached,
+            "stale": job.stale,
+            "failed": job.failed,
+            "fatal_error": job.fatal_error,
+            "errors": [dict(err) for err in job.errors],
+        }
+
+    def _on_task_done(self, task: asyncio.Task) -> None:
+        self._tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.opt(exception=exc).error("Unhandled exception in OCR job task")
+
     def start(
         self,
         chapter_id: str,
@@ -70,12 +97,20 @@ class ChapterOCRJobManager:
             with self._lock:
                 job.status = "completed"
                 self._active_chapters.discard(chapter_id)
-            return self.snapshot(job.job_id)
+                return self._snapshot_locked(job)
 
-        task = asyncio.create_task(self._run(job))
+        try:
+            task = asyncio.create_task(self._run(job))
+        except Exception:
+            with self._lock:
+                self._jobs.pop(job.job_id, None)
+                self._active_chapters.discard(chapter_id)
+            raise
+
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-        return self.snapshot(job.job_id)
+        task.add_done_callback(self._on_task_done)
+        with self._lock:
+            return self._snapshot_locked(job)
 
     def _register_job(
         self,
@@ -112,41 +147,23 @@ class ChapterOCRJobManager:
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(job_id)
-            return {
-                "job_id": job.job_id,
-                "chapter_id": job.chapter_id,
-                "lang": job.lang,
-                "concurrency": job.concurrency,
-                "force": job.force,
-                "status": job.status,
-                "total": len(job.items),
-                "completed": job.completed,
-                "recognized": job.recognized,
-                "empty": job.empty,
-                "cached": job.cached,
-                "stale": job.stale,
-                "failed": job.failed,
-                "fatal_error": job.fatal_error,
-                "errors": list(job.errors),
-            }
+            return self._snapshot_locked(job)
 
     def active_for_chapter(self, chapter_id: str) -> dict | None:
         with self._lock:
             for job in reversed(list(self._jobs.values())):
                 if job.chapter_id == chapter_id and job.status in _ACTIVE_STATUSES:
-                    job_id = job.job_id
-                    break
-            else:
-                return None
-        return self.snapshot(job_id)
+                    return self._snapshot_locked(job)
+            return None
 
     def cancel(self, job_id: str) -> dict:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(job_id)
-            job.cancel_event.set()
-        return self.snapshot(job_id)
+            if job.status in _ACTIVE_STATUSES:
+                job.cancel_event.set()
+            return self._snapshot_locked(job)
 
     def retry(self, job_id: str) -> dict:
         with self._lock:
@@ -171,34 +188,57 @@ class ChapterOCRJobManager:
         )
 
     async def _run(self, job: ChapterOCRJob) -> None:
-        with self._lock:
-            job.status = "running"
-
-        queue: asyncio.Queue[tuple[int, str]] = asyncio.Queue()
-        for item in job.items:
-            queue.put_nowait(item)
-
-        async def worker() -> None:
-            while not job.cancel_event.is_set():
-                try:
-                    item = queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    return
-                try:
-                    await self._process_item(job, item)
-                finally:
-                    queue.task_done()
-
+        workers: list[asyncio.Task] = []
         try:
-            workers = [asyncio.create_task(worker()) for _ in range(job.concurrency)]
+            with self._lock:
+                if job.cancel_event.is_set():
+                    return
+                job.status = "running"
+
+            queue: asyncio.Queue[tuple[int, str]] = asyncio.Queue()
+            for item in job.items:
+                queue.put_nowait(item)
+
+            async def worker() -> None:
+                while not job.cancel_event.is_set():
+                    try:
+                        item = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        return
+                    try:
+                        await self._process_item(job, item)
+                    finally:
+                        queue.task_done()
+
+            worker_count = max(1, min(job.concurrency, len(job.items)))
+            workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
             await asyncio.gather(*workers)
+        except asyncio.CancelledError:
+            job.cancel_event.set()
+            for w in workers:
+                if not w.done():
+                    w.cancel()
+            if workers:
+                await asyncio.gather(*workers, return_exceptions=True)
+            raise
+        except Exception as exc:
+            for w in workers:
+                if not w.done():
+                    w.cancel()
+            if workers:
+                await asyncio.gather(*workers, return_exceptions=True)
+            with self._lock:
+                if not job.fatal_error:
+                    job.fatal_error = str(exc)
+            raise
         finally:
             with self._lock:
                 job.status = "cancelled" if job.cancel_event.is_set() else "completed"
                 self._active_chapters.discard(job.chapter_id)
 
     async def _process_item(self, job: ChapterOCRJob, item: tuple[int, str]) -> None:
-        page_index, box_id = item
+        if job.cancel_event.is_set():
+            return
         with self._lock:
             fatal = job.fatal_error
         if fatal:
@@ -207,6 +247,7 @@ class ChapterOCRJobManager:
                 job.retry_items.append(item)
             return
         try:
+            page_index, box_id = item
             result = await asyncio.to_thread(
                 self.service.inspect_box_id,
                 job.chapter_id,
@@ -236,7 +277,8 @@ class ChapterOCRJobManager:
     def _record_failure(
         self, job: ChapterOCRJob, item: tuple[int, str], exc: Exception
     ) -> None:
-        page_index, box_id = item
+        page_index = item[0] if isinstance(item, tuple) and len(item) >= 2 else -1
+        box_id = item[1] if isinstance(item, tuple) and len(item) >= 2 else ""
         is_missing_runtime = isinstance(exc, ModuleNotFoundError)
         if is_missing_runtime:
             logger.error(

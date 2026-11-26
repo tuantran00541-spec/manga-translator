@@ -98,7 +98,10 @@ def _merge_letters_masks(old_items: list[tuple[object, object]], merged_region: 
             except (KeyError, TypeError, ValueError):
                 continue
         elif isinstance(rect_obj, (tuple, list)) and len(rect_obj) == 4:
-            x1, y1, x2, y2 = (int(v) for v in rect_obj)
+            try:
+                x1, y1, x2, y2 = (int(v) for v in rect_obj)
+            except (TypeError, ValueError):
+                continue
         else:
             continue
         letters = decode_mask_value(mask_val)
@@ -174,7 +177,8 @@ def set_letter_bounds(page: dict) -> None:
                 x1, y1, x2, y2 = (int(box[k]) for k in ("x1", "y1", "x2", "y2"))
             except (KeyError, TypeError, ValueError):
                 continue
-            mask = decode_mask_value(box.get("mask"))
+            if x2 <= x1 or y2 <= y1:
+                continue
             letters = decode_mask_value(box.get("letters_mask"))
             top = None
             bmask = box.get("bubble_mask")
@@ -197,11 +201,13 @@ def set_letter_bounds(page: dict) -> None:
             elif letters is not None and letters.shape == (y2 - y1, x2 - x1) and letters.any():
                 ys, xs = letters.nonzero()
                 rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
-            elif mask is not None and mask.shape == (y2 - y1, x2 - x1) and mask.any():
-                ys, xs = mask.nonzero()
-                rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
             else:
-                box_rects.append((x1, y1, x2, y2))
+                mask = decode_mask_value(box.get("mask"))
+                if mask is not None and mask.shape == (y2 - y1, x2 - x1) and mask.any():
+                    ys, xs = mask.nonzero()
+                    rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
+                else:
+                    box_rects.append((x1, y1, x2, y2))
         use = rects or box_rects
         if use:
             obj["letter_bounds"] = {"x1": min(r[0] for r in use), "y1": min(r[1] for r in use),
@@ -226,9 +232,13 @@ def _rect(obj: dict, offset: int) -> tuple[int, int, int, int] | None:
     if not isinstance(region, dict):
         return None
     try:
-        return int(region["x1"]), int(region["y1"]) + offset, int(region["x2"]), int(region["y2"]) + offset
+        x1, y1 = int(region["x1"]), int(region["y1"]) + offset
+        x2, y2 = int(region["x2"]), int(region["y2"]) + offset
     except (KeyError, TypeError, ValueError):
         return None
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return x1, y1, x2, y2
 
 
 def _source_words(obj: dict) -> list[str]:
@@ -268,6 +278,7 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
             continue
         best = max(((candidate, other_rect) for candidate in other.get("text_objects") or []
                     if isinstance(candidate, dict) and not candidate.get("joined_into")
+                    and not candidate.get("overlap_dropped")
                     and not (skip_mirrors and candidate.get("seam_owner"))
                     and (other_rect := _rect(candidate, other_core[0]))),
                    key=lambda item: _shared(rect, item[1]), default=None)
@@ -293,7 +304,7 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
             continue
         covered = {ref for obj in page.get("text_objects") or [] if isinstance(obj, dict)
                    for ref in source_box_ids(obj)}
-        by_owner: dict[tuple[int, str], tuple[dict, dict]] = {}
+        by_owner: dict[tuple[int, str], tuple[dict, dict, dict]] = {}
         for box in page.get("boxes") or []:
             if not isinstance(box, dict) or not box.get("overlap_context_only") or box.get("removed"):
                 continue
@@ -307,21 +318,28 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
                 continue
             if region["x2"] <= region["x1"] or region["y2"] <= region["y1"]:
                 continue
-            found = _owner(pages, page_index,
-                           {"region": region, "ocr_text": str(box.get("ocr_text") or "")},
-                           skip_mirrors=True)
+            found = _owner(
+                pages,
+                page_index,
+                {
+                    "region": region,
+                    "ocr_text": str(box.get("ocr_text") or ""),
+                    "bubble_mask": box.get("bubble_mask"),
+                },
+                skip_mirrors=True,
+            )
             if found is None:
                 continue
             owner_page, owner = found
             key = (owner_page, str(owner.get("id")))
-            if key in by_owner and _area((region["x1"], region["y1"], region["x2"], region["y2"])) <= _area(
-                    (by_owner[key][0]["x1"], by_owner[key][0]["y1"],
-                     by_owner[key][0]["x2"], by_owner[key][0]["y2"])):
-                continue
-            by_owner[key] = (box, owner)
-        for (owner_page, owner_id), (box, owner) in by_owner.items():
-            region = {"x1": int(box["x1"]), "y1": int(box["y1"]),
-                      "x2": int(box["x2"]), "y2": int(box["y2"])}
+            if key in by_owner:
+                prev_region = by_owner[key][2]
+                if _area((region["x1"], region["y1"], region["x2"], region["y2"])) <= _area(
+                    (prev_region["x1"], prev_region["y1"], prev_region["x2"], prev_region["y2"])
+                ):
+                    continue
+            by_owner[key] = (box, owner, region)
+        for (owner_page, owner_id), (box, owner, region) in by_owner.items():
             box_id = str(box.get("id"))
             ocr_text = str(box.get("ocr_text") or "")
             mirror = {
@@ -350,18 +368,23 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
 
 
 _WORD_SEPARATORS = ".,;:!?\"'“”‘’…()[]{}—–-"
+_WORD_SEP_TABLE = str.maketrans({c: " " for c in _WORD_SEPARATORS})
+_WORD_TOKEN_RE = re.compile(r"[^\s" + re.escape(_WORD_SEPARATORS) + r"]+")
+_LEADING_STRIP_CHARS = " \t\r\n" + _WORD_SEPARATORS
 
 
 def _norm_words(text: str) -> list[str]:
     lowered = " ".join(str(text or "").split()).lower()
-    return lowered.translate(str.maketrans({c: " " for c in _WORD_SEPARATORS})).split()
+    return lowered.translate(_WORD_SEP_TABLE).split()
 
 
 def _trim_leading_words(text: str, count: int) -> str:
-    matches = list(re.finditer(r"[^\s" + re.escape(_WORD_SEPARATORS) + r"]+", text))
+    if count <= 0:
+        return text
+    matches = list(_WORD_TOKEN_RE.finditer(text))
     if len(matches) <= count:
         return ""
-    rest = text[matches[count - 1].end():].lstrip(" \t\r\n,.!?;:\"'“”‘’…—–-")
+    rest = text[matches[count - 1].end():].lstrip(_LEADING_STRIP_CHARS)
     for i, ch in enumerate(rest):
         if ch.isalpha():
             return rest[:i] + ch.upper() + rest[i + 1:]
@@ -370,12 +393,12 @@ def _trim_leading_words(text: str, count: int) -> str:
 
 def _dup_stacked(upper_rect, lower_rect) -> bool:
     h = min(upper_rect[3] - upper_rect[1], lower_rect[3] - lower_rect[1])
-    if h <= 0:
+    min_w = min(upper_rect[2] - upper_rect[0], lower_rect[2] - lower_rect[0])
+    if h <= 0 or min_w <= 0:
         return False
     gap = lower_rect[1] - upper_rect[3]
     across = min(upper_rect[2], lower_rect[2]) - max(upper_rect[0], lower_rect[0])
-    return (-STACK_TUCK * h <= gap <= STACK_GAP * h
-            and across >= STACK_OVERLAP * min(upper_rect[2] - upper_rect[0], lower_rect[2] - lower_rect[0]))
+    return -STACK_TUCK * h <= gap <= STACK_GAP * h and across >= STACK_OVERLAP * min_w
 
 
 def drop_duplicated_leading_text(manifest: dict) -> list[int]:
@@ -414,12 +437,14 @@ def drop_duplicated_leading_text(manifest: dict) -> list[int]:
                 lower_words = _norm_words(trimmed)
                 if page_index not in changed:
                     changed.append(page_index)
+                if len(lower_words) < 4:
+                    break
     return changed
 
 
 def seam_mirror_ids(manifest: dict, page_index: int) -> set[str]:
     pages = manifest.get("pages") or []
-    if not 0 <= page_index < len(pages):
+    if not 0 <= page_index < len(pages) or not isinstance(pages[page_index], dict):
         return set()
     return {str(obj["id"]) for obj in pages[page_index].get("text_objects") or []
             if isinstance(obj, dict) and obj.get("id") and not obj.get("joined_into")
@@ -427,10 +452,13 @@ def seam_mirror_ids(manifest: dict, page_index: int) -> set[str]:
 
 
 def sync_seam_mirrors(manifest: dict) -> list[int]:
+    from app.detector.bubble_mask import shift_bubble_mask
+    from app.translation.vision import VisionTranslationResult, _drop_foreign_script
+
     pages = manifest.get("pages") or []
     changed: list[int] = []
     for page_index, page in enumerate(pages):
-        if page.get("skipped"):
+        if not isinstance(page, dict) or page.get("skipped"):
             continue
         core = _core(page)
         for obj in page.get("text_objects") or []:
@@ -443,8 +471,6 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             shift = _core(pages[owner_page])[0] - core[0]
             region = _shifted(owner["region"], shift)
             update = {key: copy.deepcopy(owner[key]) for key in LETTERING_KEYS if key in owner}
-            from app.translation.vision import VisionTranslationResult, _drop_foreign_script
-
             owner_id = str(owner.get("id"))
             probe = VisionTranslationResult(
                 {owner_id: str(owner.get("translation") or "")}, "", {}, None)
@@ -459,11 +485,14 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
                 if "auto_translation" in update:
                     update["auto_translation"] = gated
             if isinstance(owner.get("letter_bounds"), dict):
-                update["letter_bounds"] = _shifted(owner["letter_bounds"], shift)
+                try:
+                    update["letter_bounds"] = _shifted(owner["letter_bounds"], shift)
+                except (KeyError, TypeError, ValueError):
+                    pass
             if isinstance(owner.get("bubble_mask"), dict):
-                from app.detector.bubble_mask import shift_bubble_mask
-
-                update["bubble_mask"] = shift_bubble_mask(owner["bubble_mask"], 0, shift)
+                shifted_bmask = shift_bubble_mask(owner["bubble_mask"], 0, shift)
+                if shifted_bmask is not None:
+                    update["bubble_mask"] = shifted_bmask
             if owner.get("letters_mask"):
                 shifted_letters = _shifted_letters(owner["letters_mask"], shift)
                 if shifted_letters is not None:
@@ -555,6 +584,8 @@ def _regions_touch(a: dict | None, b: dict | None, gap_px: int = 8) -> bool:
 def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
     dropped = []
     for page_index, page in enumerate(manifest.get("pages") or []):
+        if not isinstance(page, dict) or page.get("skipped"):
+            continue
         objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
                    and str(obj.get("translation") or "").strip() and _letter_rect(obj) is not None
                    and not obj.get("seam_owner")]
@@ -581,9 +612,13 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
                         (obj.get("region"), obj.get("letters_mask")),
                     ]
                     merged_region = _union_rect(dup_of.get("region"), obj.get("region"))
-                    dup_of["region"] = merged_region
-                    dup_of["letter_bounds"] = _union_rect(dup_of.get("letter_bounds"),
-                                                           obj.get("letter_bounds"))
+                    if merged_region is not None:
+                        dup_of["region"] = merged_region
+                    merged_bounds = _union_rect(dup_of.get("letter_bounds"), obj.get("letter_bounds"))
+                    if merged_bounds is not None:
+                        dup_of["letter_bounds"] = merged_bounds
+                    else:
+                        dup_of.pop("letter_bounds", None)
                     dup_of.pop("ocr_text_region", None)
                     dup_of["overlap_merged"] = True
                     _apply_merged_masks(dup_of, [dup_of, obj], letter_items, merged_region)
@@ -593,7 +628,7 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
 
 
 def _area(rect) -> int:
-    return max(1, (rect[2] - rect[0]) * (rect[3] - rect[1]))
+    return max(1, max(0, rect[2] - rect[0]) * max(0, rect[3] - rect[1]))
 
 
 def _shared(a, b) -> float:
@@ -623,21 +658,26 @@ def _letters_continue(upper: dict, lower: dict) -> bool:
 
 def _stacked(upper, lower) -> bool:
     h = min(upper[3] - upper[1], lower[3] - lower[1])
-    if h <= 0:
+    min_w = min(upper[2] - upper[0], lower[2] - lower[0])
+    if h <= 0 or min_w <= 0:
         return False
     gap = lower[1] - upper[3]
     across = min(upper[2], lower[2]) - max(upper[0], lower[0])
     wider = max(upper[2] - upper[0], lower[2] - lower[0])
     offset = abs((upper[0] + upper[2]) - (lower[0] + lower[2])) / 2
     return (-STACK_TUCK * h <= gap <= STACK_GAP * h and offset <= STACK_CENTRE * wider
-            and across >= STACK_OVERLAP * min(upper[2] - upper[0], lower[2] - lower[0]))
+            and across >= STACK_OVERLAP * min_w)
 
 
 def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
     pages = manifest.get("pages") or []
     joined = 0
     for page_index in page_indices:
+        if not 0 <= page_index < len(pages):
+            continue
         page = pages[page_index]
+        if not isinstance(page, dict) or page.get("skipped"):
+            continue
         lines = sorted((obj for obj in page.get("text_objects") or []
                         if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
                         and not obj.get("verified_balloon")
@@ -672,7 +712,10 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
                              "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
             top["region"] = merged_region
             top["auto_geometry"] = dict(merged_region)
-            top["joined_lines"] = [str(obj["id"]) for obj in block[1:]]
+            existing_joined = [str(j_id) for j_id in (top.get("joined_lines") or []) if j_id is not None]
+            top["joined_lines"] = list(dict.fromkeys(
+                existing_joined + [str(obj["id"]) for obj in block[1:]]
+            ))
             merged_sources = list(dict.fromkeys(
                 str(ref) for obj in block for ref in (obj.get("source_boxes") or []) if ref is not None
             ))
@@ -682,8 +725,20 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
             _apply_merged_masks(top, block, letter_items, merged_region)
             bounds = [obj.get("letter_bounds") for obj in block]
             if all(isinstance(b, dict) for b in bounds):
-                top["letter_bounds"] = {"x1": min(b["x1"] for b in bounds), "y1": min(b["y1"] for b in bounds),
-                                        "x2": max(b["x2"] for b in bounds), "y2": max(b["y2"] for b in bounds)}
+                try:
+                    parsed = [
+                        (int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"]))
+                        for b in bounds
+                    ]
+                except (KeyError, TypeError, ValueError):
+                    top.pop("letter_bounds", None)
+                else:
+                    top["letter_bounds"] = {
+                        "x1": min(b[0] for b in parsed),
+                        "y1": min(b[1] for b in parsed),
+                        "x2": max(b[2] for b in parsed),
+                        "y2": max(b[3] for b in parsed),
+                    }
             else:
                 top.pop("letter_bounds", None)
             for obj in block[1:]:

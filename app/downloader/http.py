@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.cookiejar
 import os
 from pathlib import Path
 import threading
@@ -23,10 +24,9 @@ from app.security import (
 
 
 class _PinnedMixin:
-
     def _new_conn(self):
         if self.proxy is not None:
-            return super()._new_conn()
+            raise ValueError("Proxies are disabled for SSRF-pinned public connections")
         name = self._dns_host
         self._dns_host = public_address(name, self.port)
         try:
@@ -54,7 +54,18 @@ class _PinnedHTTPSPool(HTTPSConnectionPool):
 class _PublicOnlyAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
         super().init_poolmanager(*args, **kwargs)
-        self.poolmanager.pool_classes_by_scheme = {"http": _PinnedHTTPPool, "https": _PinnedHTTPSPool}
+        self.poolmanager.pool_classes_by_scheme = {
+            "http": _PinnedHTTPPool,
+            "https": _PinnedHTTPSPool,
+        }
+
+
+class _NoCookiePolicy(http.cookiejar.DefaultCookiePolicy):
+    def return_ok(self, cookie, request):
+        return False
+
+    def set_ok(self, cookie, request):
+        return False
 
 
 _ADAPTER = _PublicOnlyAdapter()
@@ -64,21 +75,31 @@ _PUBLIC_SESSION_LOCAL = threading.local()
 
 def _session() -> requests.Session:
     session = requests.Session()
+    session.trust_env = False
+    session.cookies.set_policy(_NoCookiePolicy())
     session.mount("http://", _ADAPTER)
     session.mount("https://", _ADAPTER)
     return session
 
 
-def public_request(method: str, url: str, **kwargs) -> requests.Response:
+def _thread_session() -> requests.Session:
     session = getattr(_PUBLIC_SESSION_LOCAL, "session", None)
     if session is None:
         session = _session()
-        session.trust_env = False
         _PUBLIC_SESSION_LOCAL.session = session
-    return session.request(method, url, **kwargs)
+    return session
+
+
+def public_request(method: str, url: str, **kwargs) -> requests.Response:
+    if kwargs.get("proxies"):
+        raise ValueError("Proxies are not allowed in public_request")
+    return _thread_session().request(method, url, **kwargs)
+
 
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
-_SENSITIVE_REDIRECT_HEADERS = frozenset({"authorization", "x-goog-api-key", "api-key", "x-api-key", "cookie"})
+_SENSITIVE_REDIRECT_HEADERS = frozenset(
+    {"authorization", "x-goog-api-key", "api-key", "x-api-key", "cookie"}
+)
 
 
 def safe_get(
@@ -89,19 +110,27 @@ def safe_get(
     stream: bool = True,
     max_redirects: int = MAX_REMOTE_REDIRECTS,
 ) -> requests.Response:
+    if max_redirects < 0:
+        raise ValueError("max_redirects must be >= 0")
     current = validate_url(url)
     redirects = 0
+    session = _thread_session()
+    req_headers = dict(headers) if headers else None
 
     while True:
-        response = _session().get(
+        response = session.get(
             current,
-            headers=headers,
+            headers=req_headers,
             timeout=timeout,
             stream=stream,
             allow_redirects=False,
         )
         if response.status_code not in _REDIRECT_STATUS_CODES:
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except Exception:
+                response.close()
+                raise
             return response
 
         location = response.headers.get("Location")
@@ -112,9 +141,16 @@ def safe_get(
         if redirects > max_redirects:
             raise ValueError(f"Too many redirects (>{max_redirects})")
         next_url = validate_url(urljoin(current, location))
-        if headers and urlsplit(next_url).netloc.lower() != urlsplit(current).netloc.lower():
-            headers = {
-                k: v for k, v in headers.items()
+        cur_parts = urlsplit(current)
+        next_parts = urlsplit(next_url)
+        cross_origin = (
+            next_parts.netloc.lower() != cur_parts.netloc.lower()
+            or (cur_parts.scheme.lower() == "https" and next_parts.scheme.lower() != "https")
+        )
+        if req_headers and cross_origin:
+            req_headers = {
+                k: v
+                for k, v in req_headers.items()
                 if k.lower() not in _SENSITIVE_REDIRECT_HEADERS
             }
         current = next_url
@@ -123,18 +159,23 @@ def safe_get(
 def read_response_limited(response: requests.Response, *, limit_bytes: int) -> bytes:
     if limit_bytes < 1:
         raise ValueError("limit_bytes must be >= 1")
-    _reject_oversized_content_length(response, limit_bytes)
+    try:
+        _reject_oversized_content_length(response, limit_bytes)
 
-    chunks: list[bytes] = []
-    total = 0
-    for chunk in response.iter_content(chunk_size=REMOTE_CHUNK_BYTES):
-        if not chunk:
-            continue
-        total += len(chunk)
-        if total > limit_bytes:
-            raise ValueError(f"Remote response exceeds {limit_bytes} bytes")
-        chunks.append(chunk)
-    return b"".join(chunks)
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in response.iter_content(chunk_size=REMOTE_CHUNK_BYTES):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > limit_bytes:
+                raise ValueError(f"Remote response exceeds {limit_bytes} bytes")
+            chunks.append(chunk)
+        return b"".join(chunks)
+    except BaseException:
+        if hasattr(response, "close"):
+            response.close()
+        raise
 
 
 def safe_download_file(

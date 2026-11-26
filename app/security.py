@@ -36,7 +36,9 @@ _BLOCKED_NETWORKS = [
         "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
         "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24",
         "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4",
-        "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8",
+        "::/128", "::1/128", "64:ff9b::/96", "64:ff9b:1::/48",
+        "100::/64", "2001::/23", "2001:db8::/32",
+        "fc00::/7", "fe80::/10", "fec0::/10", "ff00::/8",
     )
 ]
 
@@ -140,8 +142,23 @@ def _check_ip(ip_obj, hostname: str) -> None:
     if mapped is not None:
         _check_ip(mapped, hostname)
         return
+    sixtofour = getattr(ip_obj, "sixtofour", None)
+    if sixtofour is not None:
+        _check_ip(sixtofour, hostname)
+    teredo = getattr(ip_obj, "teredo", None)
+    if teredo is not None:
+        for embedded in teredo:
+            _check_ip(embedded, hostname)
 
-    if not ip_obj.is_global:
+    if (
+        not ip_obj.is_global
+        or ip_obj.is_private
+        or ip_obj.is_loopback
+        or ip_obj.is_link_local
+        or ip_obj.is_multicast
+        or ip_obj.is_reserved
+        or ip_obj.is_unspecified
+    ):
         raise HTTPException(
             400,
             f"Hostname '{hostname}' resolves to non-public IP {ip_obj}",
@@ -157,11 +174,14 @@ def _check_ip(ip_obj, hostname: str) -> None:
 def browser_request_allowed(url: str) -> bool:
     if not isinstance(url, str) or not url:
         return False
+    lowered = url.lower()
+    if lowered in {"about:blank", "about:srcdoc"}:
+        return True
     try:
         scheme = urlparse(url).scheme.lower()
     except ValueError:
         return False
-    if scheme in {"about", "blob", "data"}:
+    if scheme in {"blob", "data"}:
         return True
     if scheme not in {"http", "https"}:
         return False
@@ -173,6 +193,8 @@ def browser_request_allowed(url: str) -> bool:
 
 
 def validate_managed_path(path: str | Path, root: str | Path) -> Path:
+    if "\x00" in str(path) or "\x00" in str(root):
+        raise HTTPException(403, "Managed file path is invalid")
     try:
         root_path = Path(root).resolve(strict=False)
         resolved = Path(path).resolve(strict=False)
@@ -195,24 +217,31 @@ def validate_upload_image(data: bytes, filename: str) -> str:
         )
     try:
         with Image.open(io.BytesIO(data)) as img:
-            img.verify()
-        with Image.open(io.BytesIO(data)) as img:
             fmt = img.format
             w, h = img.size
-    except Exception as exc:
-        raise HTTPException(400, f"Not a valid image file: {filename}") from exc
-
-    if fmt not in ALLOWED_UPLOAD_FORMATS:
-        raise HTTPException(
-            400,
-            f"Unsupported image format '{fmt}' for {filename}. Only PNG, JPEG, WEBP, BMP are allowed.",
-        )
-    if w * h > MAX_IMAGE_PIXELS:
+            if fmt not in ALLOWED_UPLOAD_FORMATS:
+                raise HTTPException(
+                    400,
+                    f"Unsupported image format '{fmt}' for {filename}. Only PNG, JPEG, WEBP, BMP are allowed.",
+                )
+            if w <= 0 or h <= 0:
+                raise HTTPException(400, f"Invalid image dimensions for {filename}")
+            if w * h > MAX_IMAGE_PIXELS:
+                raise HTTPException(
+                    413,
+                    f"Image too large: {filename} is {w}x{h}, exceeds {MAX_IMAGE_PIXELS} pixels",
+                )
+            img.verify()
+    except HTTPException:
+        raise
+    except Image.DecompressionBombError as exc:
         raise HTTPException(
             413,
-            f"Image too large: {filename} is {w}x{h}, exceeds {MAX_IMAGE_PIXELS} pixels",
-        )
-    return fmt
+            f"Image too large: {filename} exceeds {MAX_IMAGE_PIXELS} pixels",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(400, f"Not a valid image file: {filename}") from exc
+    return str(fmt)
 
 
 def validate_image_file(path: str | Path) -> str:
@@ -222,6 +251,8 @@ def validate_image_file(path: str | Path) -> str:
             w, h = img.size
             if fmt not in ALLOWED_UPLOAD_FORMATS:
                 raise HTTPException(400, "Downloaded file is not a supported image format")
+            if w <= 0 or h <= 0:
+                raise HTTPException(400, "Invalid image dimensions")
             if w * h > MAX_IMAGE_PIXELS:
                 raise HTTPException(
                     413,
@@ -231,6 +262,11 @@ def validate_image_file(path: str | Path) -> str:
         return str(fmt)
     except HTTPException:
         raise
+    except Image.DecompressionBombError as exc:
+        raise HTTPException(
+            413,
+            f"Image too large: exceeds {MAX_IMAGE_PIXELS} pixels",
+        ) from exc
     except Exception as exc:
         raise HTTPException(400, "Invalid or unreadable image") from exc
 
@@ -239,6 +275,8 @@ def validate_image_size(path) -> None:
     try:
         with Image.open(path) as img:
             w, h = img.size
+        if w <= 0 or h <= 0:
+            raise HTTPException(400, "Invalid image dimensions")
         if w * h > MAX_IMAGE_PIXELS:
             raise HTTPException(
                 413,
@@ -246,5 +284,10 @@ def validate_image_size(path) -> None:
             )
     except HTTPException:
         raise
+    except Image.DecompressionBombError as exc:
+        raise HTTPException(
+            413,
+            f"Image too large: exceeds {MAX_IMAGE_PIXELS} pixels",
+        ) from exc
     except Exception as exc:
         raise HTTPException(400, "Invalid or unreadable image") from exc

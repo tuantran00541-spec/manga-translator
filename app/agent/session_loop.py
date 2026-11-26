@@ -90,21 +90,29 @@ class AgentLoopMixin:
     def _header(self) -> tuple[str, list[dict]]:
         system, specs = self.system_prompt(), self.specs()
         names = [s["name"] for s in specs]
-        if self._last_header is not None and (system, names) != self._last_header[:2] or (self._last_header and json.dumps(specs) != self._last_header[2]):
+        specs_json = json.dumps(specs)
+        if self._last_header is not None and (
+            (system, names) != self._last_header[:2] or specs_json != self._last_header[2]
+        ):
             old_system, old_names, _ = self._last_header
             causes = [f"+{n}" for n in names if n not in old_names] + [f"-{n}" for n in old_names if n not in names]
             if system != old_system:
                 causes.append("system prompt")
             self.cache_log["header changed: " + (", ".join(causes) or "tool details")] += 1
-        self._last_header = (system, names, json.dumps(specs))
+        self._last_header = (system, names, specs_json)
         self.cache_log["requests"] += 1
         return system, specs
 
     def _match_rule(self, live: dict) -> dict | None:
-        if live.get("arg_chars", 0) > self.profile["max_output_tokens"] * 3 and self._fired.get("long_call", 0) < 3:
+        max_out = max(int(self._max_out or 0), int(self.profile["max_output_tokens"] or 0))
+        if max_out > 0 and live.get("arg_chars", 0) > max_out * 3 and self._fired.get("long_call", 0) < 3:
             return {"name": "long_call", "message": LONG_CALL}
-        for rule in self.profile["stream_rules"]:
-            if self._fired.get(rule["name"], 0) < 1 and re.search(rule["pattern"], f"{live.get('text', '')}\n{live.get('args', '')}"):
+        rules = self.profile["stream_rules"]
+        if not rules:
+            return None
+        tail = f"{str(live.get('text', ''))[-8000:]}\n{str(live.get('args', ''))[-4000:]}"
+        for rule in rules:
+            if self._fired.get(rule["name"], 0) < 1 and re.search(rule["pattern"], tail):
                 return rule
         return None
 
@@ -121,11 +129,13 @@ class AgentLoopMixin:
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
         streams = (self._base_complete is client.complete or getattr(self._base_complete, "streams", False)) and not self._plain
         started = time.time()
-        limited = dict(client.RATE_LIMITS.get(self.provider.id) or {"count": 0, "waited_s": 0.0})
+        with client._CLIENT_LOCK:
+            limited = dict(client.RATE_LIMITS.get(self.provider.id) or {"count": 0, "waited_s": 0.0})
         try:
             return self._call_model_once(messages, tools, streams, started)
         finally:
-            now = client.RATE_LIMITS.get(self.provider.id) or {"count": 0, "waited_s": 0.0}
+            with client._CLIENT_LOCK:
+                now = dict(client.RATE_LIMITS.get(self.provider.id) or {"count": 0, "waited_s": 0.0})
             if now["count"] > limited["count"]:
                 self.rate_limited["count"] += now["count"] - limited["count"]
                 self.rate_limited["waited_s"] += now["waited_s"] - limited["waited_s"]
@@ -140,6 +150,7 @@ class AgentLoopMixin:
             if self._base_complete is client.complete:
                 extra["max_tokens"] = self._max_out
             chain = [self.profile["prewalk_model"] if self._prewalk else self.model] + self.profile["fallback_models"]
+            self._fallback_at = max(0, min(self._fallback_at, len(chain) - 1))
             while True:
                 if self._stop:
                     raise client.CancelledError("Đã dừng.")
@@ -251,7 +262,14 @@ class AgentLoopMixin:
                 j = i
                 while j < len(self.history) and self.history[j]["role"] == "tool":
                     j += 1
-                return j if j < len(self.history) else 0
+                if j < len(self.history):
+                    return j
+                # Trailing large tool result: step back to the preceding non-tool boundary
+                # so the assistant+tool group stays intact in tail while head remains non-empty.
+                k = i
+                while k > 0 and self.history[k]["role"] == "tool":
+                    k -= 1
+                return k if k > 0 else 0
         return 0
 
     def _file_lists(self, head: list[dict]) -> str:
@@ -304,6 +322,7 @@ class AgentLoopMixin:
         word = rest[0].lower().replace("_", "").replace(",", "")
         if word in ("off", "0", "tat", "tắt"):
             self.compact_at = 0
+            self.save()
             return "Đã tắt tự tóm gọn."
         match = re.fullmatch(r"(\d+(?:\.\d+)?)([km]?)", word)
         if not match:
@@ -354,12 +373,16 @@ class AgentLoopMixin:
         if not self.compact_at:
             return size
         limit = int(self.compact_at * CHARS_PER_TOKEN * 1.3)
-        for item in self.history:
+        last_tool_idx = max((idx for idx, it in enumerate(self.history) if it["role"] == "tool"), default=-1)
+        for idx, item in enumerate(self.history):
             if size <= limit:
                 break
-            if item["role"] == "tool" and len(item["content"]) > 200:
+            if idx == last_tool_idx:
+                continue
+            if item["role"] == "tool" and not item.get("masked") and len(item["content"]) > 200:
                 size -= len(item["content"]) - 40
                 item["content"] = "[older tool output removed to save room]"
+                item["masked"] = True
         return size
 
     def context_tokens(self, size: int | None = None) -> int:
@@ -399,12 +422,21 @@ class AgentLoopMixin:
     def _schedule(self, name: str, args: dict) -> str:
         if name == "schedule_list":
             now = time.time()
-            return "\n".join(f"{t['id']}: in {max(0, int((t['next_at'] - now) / 60))} min" + (f", every {t['every'] // 60} min" if t["every"] else ", once") + f" - {t['prompt'][:80]}"
-                             for t in self.schedules) or "Nothing is scheduled."
+            with self._sched_lock:
+                items = list(self.schedules)
+            return "\n".join(
+                f"{t['id']}: in {max(0, int((t['next_at'] - now) / 60))} min"
+                + (f", every {t['every'] // 60} min" if t["every"] else ", once")
+                + f" - {t['prompt'][:80]}"
+                for t in items
+            ) or "Nothing is scheduled."
         if name == "schedule_delete":
-            before = len(self.schedules)
-            self.schedules = [t for t in self.schedules if t["id"] != str(args.get("id") or "").strip()]
-            return "Cancelled." if len(self.schedules) < before else f"No schedule with id {args.get('id')!r}."
+            target_id = str(args.get("id") or "").strip()
+            with self._sched_lock:
+                before = len(self.schedules)
+                self.schedules = [t for t in self.schedules if t["id"] != target_id]
+                removed = len(self.schedules) < before
+            return "Cancelled." if removed else f"No schedule with id {args.get('id')!r}."
         if self.tainted:
             return ("Refused: this session has read untrusted content (web/MCP), so creating scheduled prompts "
                     "is disabled to keep attacker instructions out of future turns.")
@@ -417,10 +449,11 @@ class AgentLoopMixin:
             raise ToolError("prompt must be 1 to 8192 bytes")
         if first < 1 or every < 0 or 0 < every < 1:
             raise ToolError("in_minutes must be at least 1 and every_minutes at least 1 when given")
-        if len(self.schedules) >= MAX_SCHEDULES:
-            raise ToolError(f"{MAX_SCHEDULES} schedules already; cancel one with schedule_delete")
-        task = {"id": uuid.uuid4().hex[:8], "prompt": prompt, "next_at": time.time() + first * 60, "every": every * 60}
-        self.schedules.append(task)
+        with self._sched_lock:
+            if len(self.schedules) >= MAX_SCHEDULES:
+                raise ToolError(f"{MAX_SCHEDULES} schedules already; cancel one with schedule_delete")
+            task = {"id": uuid.uuid4().hex[:8], "prompt": prompt, "next_at": time.time() + first * 60, "every": every * 60}
+            self.schedules.append(task)
         self._start_scheduler()
         return f"Scheduled {task['id']}: in {first} min" + (f", then every {every} min." if every else ", once.")
 
@@ -431,18 +464,26 @@ class AgentLoopMixin:
                 self._scheduler.start()
 
     def _tick_loop(self) -> None:
-        while self.schedules and not self.closed and not self._closing:
+        while not self.closed and not self._closing:
+            with self._sched_lock:
+                has_items = bool(self.schedules)
+            if not has_items:
+                break
             self._tick()
             time.sleep(1.0)
 
     def _tick(self) -> None:
         now = time.time()
-        due = [t for t in self.schedules if t["next_at"] <= now]
+        due: list[dict] = []
+        with self._sched_lock:
+            for task in list(self.schedules):
+                if task["next_at"] <= now:
+                    due.append(task)
+                    if task["every"]:
+                        task["next_at"] = now + task["every"]
+                    elif task in self.schedules:
+                        self.schedules.remove(task)
         for task in due:
-            if task["every"]:
-                task["next_at"] = now + task["every"]
-            else:
-                self.schedules.remove(task)
             self.send(f"[Scheduled by you] {task['prompt']}", scheduled=True)
             self.save()
 
@@ -606,8 +647,14 @@ class AgentLoopMixin:
 
     @staticmethod
     def _conflict(a: tuple[frozenset, frozenset], b: tuple[frozenset, frozenset]) -> bool:
+        def norm(s: str) -> str:
+            cleaned = str(s).replace("\\", "/").strip("/")
+            return "." if not cleaned else cleaned
+
         def overlap(x: frozenset, y: frozenset) -> bool:
-            return any(i == j or i == "." or j == "." or i.startswith(j + "/") or j.startswith(i + "/") for i in x for j in y)
+            nx = [norm(i) for i in x]
+            ny = [norm(j) for j in y]
+            return any(i == j or i == "." or j == "." or i.startswith(j + "/") or j.startswith(i + "/") for i in nx for j in ny)
         return overlap(a[1], b[0] | b[1]) or overlap(b[1], a[0])
 
     def _wrap_up(self, limit: str = "token budget") -> None:
@@ -617,16 +664,20 @@ class AgentLoopMixin:
         except Exception as exc:
             logger.warning("Agent session {} could not wrap up: {}", self.id, exc)
             return
+        usage = turn.get("usage") or {}
         for key in self.usage:
-            self.usage[key] += int(turn["usage"].get(key) or 0)
-        self.history.append({"role": "assistant", "content": turn["text"], "calls": []})
-        self.emit("assistant", text=turn["text"], reasoning="", calls=[])
+            self.usage[key] += int(usage.get(key) or 0)
+        text = str(turn.get("text") or "")
+        self.history.append({"role": "assistant", "content": text, "calls": []})
+        self.emit("assistant", text=text, reasoning="", calls=[])
 
     def _show_images(self) -> None:
         images, self.workspace.new_images = self.workspace.new_images, []
         if not images:
             return
-        for item in [h for h in self.history if h.get("images")][:-MAX_IMAGES + 1]:
+        keep = max(0, MAX_IMAGES - 1)
+        items = [h for h in self.history if h.get("images")]
+        for item in items[: max(0, len(items) - keep)]:
             item["images"] = []
         self.history.append({"role": "user", "content": "Images you asked to see: " + ", ".join(name for name, _ in images),
                              "images": [url for _, url in images]})
@@ -661,9 +712,10 @@ class AgentLoopMixin:
             if self._stop:
                 self.emit("notice", text="Đã dừng.")
                 break
-            self._last_prompt = (int(turn["usage"].get("prompt_tokens") or 0), size_before)
+            usage = turn.get("usage") or {}
+            self._last_prompt = (int(usage.get("prompt_tokens") or 0), size_before)
             for key in self.usage:
-                self.usage[key] += int(turn["usage"].get(key) or 0)
+                self.usage[key] += int(usage.get(key) or 0)
             if self._interrupt is not None:
                 rule, self._interrupt = self._interrupt, None
                 self._fired[rule["name"]] = self._fired.get(rule["name"], 0) + 1
@@ -671,13 +723,15 @@ class AgentLoopMixin:
                 self.history.append({"role": "user", "content": note})
                 self.emit("notice", text=f"Luật {rule['name']}: đã hủy câu trả lời và nhắc model.")
                 continue
-            calls = turn["calls"]
-            if not turn["text"] and not calls:
+            calls = turn.get("calls") or []
+            turn_text = str(turn.get("text") or "")
+            turn_reasoning = str(turn.get("reasoning") or "")
+            if not turn_text and not calls:
                 empties += 1
-                used = turn["usage"].get("completion_tokens") or 0
+                used = usage.get("completion_tokens") or 0
                 debug = turn.get("debug") or {}
                 if debug.get("finish") == "length" and self._max_out < self._out_ceiling():
-                    self._max_out = min(self._max_out * 2, self._out_ceiling())
+                    self._max_out = min(max(1024, self._max_out * 2), self._out_ceiling())
                     self.emit("notice", text=f"Model dùng hết {used} token để suy luận, nâng giới hạn lên {self._max_out:,}.")
                     empties -= 1
                     continue
@@ -693,20 +747,20 @@ class AgentLoopMixin:
                         self.history.append({"role": "user", "content": EMPTY_NUDGE})
                 continue
             empties = 0
-            self.history.append({"role": "assistant", "content": turn["text"], "calls": calls,
-                                 **({"reasoning": turn["reasoning"] if self.echo_reasoning == "all" else turn["reasoning"][-20000:]}
-                                    if self.echo_reasoning and turn["reasoning"] else {})})
-            self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
+            self.history.append({"role": "assistant", "content": turn_text, "calls": calls,
+                                 **({"reasoning": turn_reasoning if self.echo_reasoning == "all" else turn_reasoning[-20000:]}
+                                    if self.echo_reasoning and turn_reasoning else {})})
+            self.emit("assistant", text=turn_text, reasoning=turn_reasoning[-4000:], calls=calls)
             if not calls:
                 if turn.get("finish") == "length" and cuts < EMPTY_RETRIES:
                     cuts += 1
-                    self._max_out = min(self._max_out * 2, self._out_ceiling())
+                    self._max_out = min(max(1024, self._max_out * 2), self._out_ceiling())
                     self.history.append({"role": "user", "content": CUT_NUDGE})
                     self.emit("notice", text=f"Câu trả lời bị cắt, nhắc model viết tiếp ({self._max_out:,} token).")
                     continue
                 if self._more_work():
                     continue
-                if self._handed_off(turn["text"]):
+                if self._handed_off(turn_text):
                     self._handoff_nudged = True
                     self.history.append({"role": "user", "content": HANDOFF_NUDGE})
                     self.emit("notice", text="Model để lại việc cho người đọc, nhắc tự làm.")
@@ -775,19 +829,22 @@ class AgentLoopMixin:
             self.emit("error", text=str(exc)[:1000])
             self._handoff(start)
         finally:
+            try:
+                self.save()
+            except Exception as exc:
+                logger.warning("Agent session {} could not save state: {}", self.id, exc)
             with self._lock:
                 again = bool(self.queue) and not self._stop
+                nxt = self.queue[0] if again else ""
+                if not again:
+                    self.status = "idle"
+                    self._lock.notify_all()
             if not again:
                 self.emit("done")
-                self.save()
-                with self._lock:
-                    again = bool(self.queue) and not self._stop
-                    if not again:
-                        self.status = "idle"
-                    self._lock.notify_all()
-            if again:
-                with self._lock:
-                    nxt = self.queue[0] if self.queue else ""
+            else:
                 self._new_request(nxt)
                 threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
-                self.save()
+                try:
+                    self.save()
+                except Exception as exc:
+                    logger.warning("Agent session {} could not save queued state: {}", self.id, exc)

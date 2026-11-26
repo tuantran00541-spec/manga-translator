@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -106,7 +107,11 @@ class Line:
 def collect_lines(pages: list[dict], indices: list[int]) -> list[Line]:
     ordered = []
     for page_index in indices:
+        if not 0 <= page_index < len(pages):
+            continue
         page = pages[page_index]
+        if not isinstance(page, dict) or page.get("skipped"):
+            continue
         for obj in page.get("text_objects") or []:
             text = str(obj.get("translation") or "").strip() if isinstance(obj, dict) else ""
             if not text or obj.get("joined_into") or obj.get("overlap_dropped") or obj.get("source_missing"):
@@ -114,13 +119,22 @@ def collect_lines(pages: list[dict], indices: list[int]) -> list[Line]:
             ordered.append((page_index, obj, text))
     lines = []
     for n, (page_index, obj, text) in enumerate(ordered):
+        obj_id = obj.get("id")
         source = str(obj.get("source_read") or "").strip()
-        if (obj.get("typography_role") or "dialogue") not in JUDGED_ROLES or not source or len(text.split()) < MIN_WORDS:
+        if (
+            obj_id is None
+            or not str(obj_id).strip()
+            or (obj.get("typography_role") or "dialogue") not in JUDGED_ROLES
+            or not source
+            or len(text.split()) < MIN_WORDS
+        ):
             continue
+        mc = obj.get("max_chars")
+        valid_mc = mc if isinstance(mc, int) and not isinstance(mc, bool) and mc > 0 else None
         lines.append(Line(
-            page_index, str(obj["id"]), source, text,
+            page_index, str(obj_id), source, text,
             before=ordered[n - 1][2] if n else "", after=ordered[n + 1][2] if n + 1 < len(ordered) else "",
-            max_chars=obj.get("max_chars") if isinstance(obj.get("max_chars"), int) else None,
+            max_chars=valid_mc,
             speaker=str(obj.get("speaker") or "").strip(),
         ))
     return lines
@@ -132,26 +146,61 @@ def _flat(text: str) -> str:
 
 _FIRST_PERSON = re.compile(r"\b(i|i'm|i've|i'll|i'd|me|my|mine|myself|we|we're|we've|we'll|us|our|ours|ourselves)\b")
 _SECOND_PERSON = re.compile(r"\b(you|you're|you've|you'll|you'd|your|yours|yourself|yourselves|ya)\b")
+_TYPOGRAPHIC_TO_ASCII = str.maketrans({
+    "\u2018": "'",
+    "\u2019": "'",
+    "\u201c": '"',
+    "\u201d": '"',
+    "\u2026": "...",
+    "\u2014": "-",
+    "\u2013": "-",
+})
+
+
+def _term_in_source(term: str, source_lower: str) -> bool:
+    needle = term.lower()
+    if not needle:
+        return False
+    if needle.isascii() and needle[0].isalnum() and needle[-1].isalnum():
+        return re.search(rf"(?<![A-Za-z0-9_]){re.escape(needle)}(?![A-Za-z0-9_])", source_lower) is not None
+    return needle in source_lower
 
 
 def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
-    memory = memory or {}
-    glossary = memory.get("glossary") or {}
-    pairs = {}
+    memory = memory if isinstance(memory, dict) else {}
+    raw_glossary = memory.get("glossary")
+    glossary = raw_glossary if isinstance(raw_glossary, dict) else {}
+    pairs: dict[str, tuple[str, dict]] = {}
     for entry in [*(glossary.get("address") or []), *(memory.get("address") or [])]:
         if isinstance(entry, dict) and line.speaker and _flat(entry.get("from")).lower() == line.speaker.lower():
-            pairs[_flat(entry.get("to"))] = entry
-    source = _flat(line.source).lower()
+            to_name = _flat(entry.get("to"))
+            if to_name:
+                pairs[to_name.lower()] = (to_name, entry)
+    source = _flat(line.source).translate(_TYPOGRAPHIC_TO_ASCII).lower()
     english = source.isascii()
-    selves = {_flat(entry.get("self")) for entry in pairs.values() if _flat(entry.get("self"))}
+    selves = {_flat(entry.get("self")) for _, entry in pairs.values() if _flat(entry.get("self"))}
     address = [f"self \"{selves.pop()}\""] if len(selves) == 1 and (not english or _FIRST_PERSON.search(source)) else []
-    if (len(pairs) == 1 and (other := _flat(next(iter(pairs.values())).get("other")))
-            and (not english or _SECOND_PERSON.search(source) or next(iter(pairs)).lower() in source)):
-        address.append(f"to {next(iter(pairs))}: \"{other}\"")
-    terms = [f"{_flat(entry.get('source'))} = {_flat(entry.get('target'))}"
-             for entry in [*(glossary.get("names") or []), *(glossary.get("terms") or [])]
-             if isinstance(entry, dict) and _flat(entry.get("source")) and _flat(entry.get("source")).lower() in source
-             and _flat(entry.get("target"))][:MAX_SETTLED]
+    if len(pairs) == 1:
+        to_name, pair_entry = next(iter(pairs.values()))
+        other = _flat(pair_entry.get("other"))
+        if other and (not english or _SECOND_PERSON.search(source) or _term_in_source(to_name, source)):
+            address.append(f"to {to_name}: \"{other}\"")
+    terms: list[str] = []
+    seen_terms: set[str] = set()
+    for entry in [*(glossary.get("names") or []), *(glossary.get("terms") or [])]:
+        if not isinstance(entry, dict):
+            continue
+        src = _flat(entry.get("source"))
+        tgt = _flat(entry.get("target"))
+        if not src or not tgt or not _term_in_source(src, source):
+            continue
+        formatted = f"{src} = {tgt}"
+        key = formatted.lower()
+        if key not in seen_terms:
+            seen_terms.add(key)
+            terms.append(formatted)
+            if len(terms) >= MAX_SETTLED:
+                break
     return address, terms
 
 
@@ -189,10 +238,12 @@ def judge(provider, api_key: str, state: str, asked: dict, model: str, add_cost=
     reply = request_vision_json(provider, model, api_key, prompt, [], stage="polish", max_tokens=512)
     if add_cost is not None:
         add_cost(reply.estimated_cost_usd)
+    if not isinstance(reply.data, dict):
+        raise ValueError("Invalid polish response: expected JSON object")
     scores = {}
     for name, rubric in asked.items():
         score = reply.data.get(name)
-        if type(score) not in (float, int) or not 0 <= score <= len(rubric["criteria"]) - 1:
+        if type(score) not in (float, int) or not math.isfinite(score) or not 0 <= score <= len(rubric["criteria"]) - 1:
             raise ValueError(f"Invalid polish score for {name}")
         scores[name] = float(score)
     return scores
@@ -226,12 +277,21 @@ def _cloud_judge(provider, api_key: str, state: str, asked: dict) -> dict[str, f
         body = response.json()
         if not isinstance(body, dict):
             raise RuntimeError("Judge returned non-object JSON")
-        answers = body.get("answers") or {}
+        answers = body.get("answers")
+        if not isinstance(answers, dict):
+            raise RuntimeError("Judge returned invalid answers payload")
         scores = {}
-        for key in asked:
-            answer = answers.get(key) if isinstance(answers, dict) else None
-            if isinstance(answer, dict) and isinstance(answer.get("score"), (int, float)):
-                scores[key] = float(answer["score"])
+        for key, rubric in asked.items():
+            answer = answers.get(key)
+            raw_score = answer.get("score") if isinstance(answer, dict) else None
+            max_score = len(rubric["criteria"]) - 1
+            if (
+                type(raw_score) not in (int, float)
+                or not math.isfinite(raw_score)
+                or not 0 <= raw_score <= max_score
+            ):
+                raise RuntimeError(f"Judge returned invalid score for {key}")
+            scores[key] = float(raw_score)
         return scores
     finally:
         if response is not None and hasattr(response, "close"):
@@ -251,11 +311,14 @@ def better(new: dict[str, float], old: dict[str, float]) -> bool:
 def quality(scores: dict[str, float], keys: set[str] | frozenset[str] | None = None) -> float:
     include = keys if keys is not None else (set(QUESTIONS) | ({"settled"} if "settled" in scores else set()))
     asked = {k: v for k, v in {**QUESTIONS, "settled": SETTLED}.items() if k in include}
+    if not asked:
+        return 0.0
     return sum(scores.get(key, 0.0) / (len(q["criteria"]) - 1) for key, q in asked.items()) / len(asked)
 
 
-def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict,
+def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict | None,
             language: str = "Vietnamese") -> tuple[dict[str, str], float | None]:
+    memory = memory if isinstance(memory, dict) else {}
     items = [{"id": line.id, **({"speaker": line.speaker} if line.speaker else {}), "source": line.source, "translation": line.text, "before": line.before,
               "after": line.after, "problem": in_language("; ".join(problems(line.scores)), language),
               **({"max_chars": line.max_chars} if line.max_chars else {})} for line in lines]
@@ -270,7 +333,8 @@ def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict,
 
     wanted = {line.id for line in lines}
     out = {}
-    for entry in result.data.get("rewrites") or []:
+    raw_rewrites = result.data.get("rewrites") if isinstance(result.data, dict) else None
+    for entry in raw_rewrites or []:
         if isinstance(entry, dict) and str(entry.get("id")) in wanted and isinstance(entry.get("text"), str):
             text = entry["text"].strip().replace("…", "...")
             if text and not contains_secret_token(text, (api_key,)):
