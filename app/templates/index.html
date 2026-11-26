@@ -21,6 +21,7 @@
       <button aria-label="Nhập nội dung" class="sidebar-link" type="button" data-route="import"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6m-3-3h6"/></svg><span>Nhập nội dung</span></button>
       <button aria-label="Chaos" class="sidebar-link" type="button" data-route="agent"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg><span>Chaos</span></button>
       <button aria-label="Tải video" class="sidebar-link" type="button" data-route="media"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="m10 8.5 5 2.5-5 2.5v-5Z"/><path d="M12 17v4m0 0-3-2.5m3 2.5 3-2.5"/></svg><span>Tải video</span></button>
+      <button aria-label="Xưởng Video AI" class="sidebar-link" type="button" data-route="studio"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="M7 4.5v15M17 4.5v15M2.5 9.5h4.5M17 9.5h4.5M2.5 14.5h4.5M17 14.5h4.5"/><path d="m10.5 9.5 4 2.5-4 2.5v-5Z"/></svg><span>Xưởng Video AI</span></button>
       <button aria-label="Xem cắt lát" class="sidebar-link" type="button" data-stage="preview" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 15 3-3 2 2 3-4 3 5"/></svg><span>Xem cắt lát</span></button>
       <button aria-label="Xử lý &amp; Biên tập" class="sidebar-link" type="button" data-stage="review" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg><span>Xử lý &amp; Biên tập</span></button>
     </nav>
@@ -450,6 +451,339 @@
           <ul id="media-history-list" class="media-history-list"></ul>
         </section>
       </div>
+
+      <div id="studio-view" class="landing-page studio-view" hidden>
+        <div class="page-intro">
+          <span class="ui-eyebrow">Xưởng sản xuất đa phương tiện</span>
+          <h1>Xưởng Video AI — Dịch &amp; Lồng tiếng</h1>
+          <p>Hỗ trợ clip ngắn lẫn phim dài tới 3 giờ. Tự động lưu Checkpoint theo từng phân đoạn, biên tập phụ đề trực tiếp trên video, nghe thử giọng (~50ms) và chạy hàng đợi nhiều tập.</p>
+        </div>
+
+        <section class="studio-intake-grid" aria-label="Tạo dự án Video AI mới">
+          <div class="media-card studio-intake-card">
+            <div class="media-card-head">
+              <div>
+                <h2>Nạp video từ máy (tới 4 GB)</h2>
+                <p class="media-card-sub">MP4, MKV, MOV, WEBM, AVI, M4V, TS — hỗ trợ kéo thả nhiều tệp cùng lúc.</p>
+              </div>
+            </div>
+            <button id="studio-dropzone" class="studio-dropzone" type="button" aria-controls="studio-video-input">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v4h16v-4"/></svg>
+              <strong>Kéo thả 1 hoặc nhiều tệp video vào đây</strong>
+              <span>hoặc bấm để chọn từ máy tính</span>
+            </button>
+            <input id="studio-video-input" type="file" accept=".mp4,.mkv,.mov,.webm,.avi,.m4v,.ts,video/*" multiple hidden>
+            <div class="studio-intake-foot">
+              <label class="ui-btn ui-btn-compact studio-sub-picker">
+                <span>Kèm phụ đề .srt/.vtt/.ass (tùy chọn)</span>
+                <input id="studio-init-sub-input" type="file" accept=".srt,.vtt,.ass,.json3" hidden>
+              </label>
+              <span id="studio-init-sub-name" class="studio-muted-text"></span>
+              <span id="studio-upload-status" class="studio-upload-status" aria-live="polite"></span>
+            </div>
+          </div>
+
+          <div class="media-card studio-intake-card">
+            <div class="media-card-head">
+              <div>
+                <h2>Thêm từ liên kết (Hàng đợi nhiều tập)</h2>
+                <p class="media-card-sub">Dán 1 hoặc nhiều URL công khai (mỗi dòng 1 liên kết: YouTube, TikTok, Facebook, Bilibili, MP4…).</p>
+              </div>
+            </div>
+            <label class="ui-field" for="studio-urls-input">
+              <span class="sr-only">Danh sách liên kết video</span>
+              <textarea id="studio-urls-input" class="ui-textarea studio-urls-input" rows="3" spellcheck="false" placeholder="https://www.youtube.com/watch?v=...&#10;https://www.tiktok.com/@.../video/..."></textarea>
+            </label>
+            <div class="studio-url-controls">
+              <select id="studio-url-preset" class="ui-select" aria-label="Độ phân giải tải">
+                <option value="video_720" selected>720p — Nhanh gọn</option>
+                <option value="video_1080">1080p — Sắc nét</option>
+              </select>
+              <select id="studio-default-run-mode" class="ui-select" aria-label="Chế độ chạy mặc định">
+                <option value="studio" selected>Biên tập Studio (2 pha)</option>
+                <option value="auto">Tự động 1 chạm</option>
+              </select>
+              <button id="studio-add-urls-btn" class="ui-btn ui-btn-primary" type="button">Thêm vào Xưởng</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="media-card studio-projects-card" aria-label="Danh sách dự án và hàng đợi">
+          <div class="studio-projects-head">
+            <div class="studio-projects-title-wrap">
+              <h2>Dự án trong Xưởng <span id="studio-project-count" class="ui-badge">0</span></h2>
+              <span id="studio-queue-badge" class="studio-queue-badge" hidden></span>
+            </div>
+            <div class="studio-projects-actions">
+              <button id="studio-queue-start-btn" class="ui-btn ui-btn-compact" type="button">Chạy hàng đợi tất cả</button>
+              <button id="studio-queue-cancel-btn" class="ui-btn ui-btn-compact" type="button" hidden>Dừng hàng đợi</button>
+              <button id="studio-refresh-btn" class="ui-btn ui-btn-ghost ui-btn-compact" type="button">Làm mới</button>
+            </div>
+          </div>
+          <div id="studio-projects-empty" class="studio-projects-empty">
+            Chưa có dự án nào. Hãy kéo thả video từ máy hoặc dán liên kết ở trên để mở Xưởng làm việc.
+          </div>
+          <div id="studio-project-list" class="studio-project-list" role="list"></div>
+        </section>
+
+        <section id="studio-workbench" class="studio-workbench" aria-label="Bàn biên tập Video Studio" hidden>
+          <div class="media-card studio-wb-header">
+            <div class="studio-wb-title-row">
+              <div class="studio-wb-title-wrap">
+                <input id="studio-proj-title" class="ui-input studio-proj-title-input" type="text" maxlength="240" aria-label="Tên dự án">
+                <div class="studio-wb-meta-row">
+                  <span id="studio-proj-status-badge" class="studio-status-pill">Sẵn sàng</span>
+                  <span id="studio-proj-meta" class="studio-muted-text"></span>
+                </div>
+              </div>
+              <div class="studio-wb-actions">
+                <button id="studio-prepare-btn" class="ui-btn ui-btn-primary" type="button">Bắt đầu / Tiếp tục</button>
+                <button id="studio-retranslate-btn" class="ui-btn ui-btn-compact" type="button">Dịch lại</button>
+                <button id="studio-cancel-btn" class="ui-btn ui-btn-compact" type="button" hidden>Tạm dừng</button>
+                <button id="studio-render-btn" class="ui-btn ui-btn-primary" type="button">Xuất bản (Render)</button>
+                <button id="studio-delete-btn" class="ui-btn ui-btn-ghost ui-btn-compact" type="button">Xóa dự án</button>
+              </div>
+            </div>
+
+            <div class="studio-checkpoint-bar" aria-label="Tiến trình Checkpoint">
+              <div id="studio-step-video" class="studio-step"><span>1. Video</span><small>Chờ</small></div>
+              <div id="studio-step-asr" class="studio-step"><span>2. Bóc băng ASR</span><small>Chờ</small></div>
+              <div id="studio-step-bible" class="studio-step"><span>3. Story Bible</span><small>Chờ</small></div>
+              <div id="studio-step-translate" class="studio-step"><span>4. Dịch &amp; Chuốt</span><small>Chờ</small></div>
+              <div id="studio-step-render" class="studio-step"><span>5. Xuất bản</span><small>Chờ</small></div>
+            </div>
+
+            <div class="studio-progress-row">
+              <div class="media-progress-track studio-progress-track">
+                <div id="studio-progress-fill" class="media-progress-fill"></div>
+              </div>
+              <span id="studio-progress-pct" class="media-progress-pct">0%</span>
+            </div>
+            <div id="studio-progress-detail" class="studio-progress-detail" aria-live="polite"></div>
+            <div id="studio-error-banner" class="studio-error-banner" role="alert" hidden></div>
+
+            <div id="studio-exports-bar" class="studio-exports-bar" hidden>
+              <strong class="studio-exports-label">Tệp thành phẩm:</strong>
+              <a id="studio-dl-video" class="ui-btn ui-btn-primary ui-btn-compact" href="#" download hidden>Tải Video MP4</a>
+              <a id="studio-dl-audio" class="ui-btn ui-btn-compact" href="#" download hidden>Tải Giọng đọc (.mp3)</a>
+              <a id="studio-dl-srt" class="ui-btn ui-btn-compact" href="#" download hidden>Tải Phụ đề (.srt)</a>
+              <a id="studio-dl-ass" class="ui-btn ui-btn-compact" href="#" download hidden>Tải Phụ đề (.ass)</a>
+            </div>
+          </div>
+
+          <div class="studio-wb-grid">
+            <div class="studio-left-col">
+              <div class="media-card studio-player-card">
+                <div class="studio-video-wrap">
+                  <video id="studio-video-player" class="studio-video-player" controls preload="metadata" playsinline></video>
+                  <div id="studio-video-placeholder" class="studio-video-placeholder" hidden>
+                    Video từ liên kết sẽ hiện ngay sau khi bấm <strong>Bắt đầu / Tiếp tục</strong>.
+                  </div>
+                  <div id="studio-live-sub" class="studio-live-sub style-box" aria-live="off" hidden></div>
+                </div>
+                <div class="studio-player-bar">
+                  <span id="studio-player-time" class="studio-player-time">00:00.0 / 00:00.0</span>
+                  <label class="media-ai-check" for="studio-toggle-overlay">
+                    <input id="studio-toggle-overlay" type="checkbox" checked>
+                    <span>Hiện phụ đề xem trước</span>
+                  </label>
+                  <button id="studio-jump-active-btn" class="ui-btn ui-btn-ghost ui-btn-compact" type="button">Tới câu đang phát</button>
+                </div>
+              </div>
+
+              <details id="studio-settings-details" class="media-card studio-panel-details" open>
+                <summary class="studio-details-summary">
+                  <span>Cấu hình ASR, Dịch thuật &amp; Xuất bản</span>
+                  <button id="studio-open-settings-btn" class="ui-btn ui-btn-ghost ui-btn-compact" type="button">Cài đặt nhà cung cấp</button>
+                </summary>
+                <div class="studio-settings-grid">
+                  <label class="ui-field" for="studio-set-run-mode">
+                    <span>Quy trình chạy</span>
+                    <select id="studio-set-run-mode" class="ui-select">
+                      <option value="studio">Studio 2 pha (Dừng để biên tập)</option>
+                      <option value="auto">Tự động 1 chạm (Dịch + Xuất luôn)</option>
+                    </select>
+                  </label>
+                  <label class="ui-field" for="studio-set-output-mode">
+                    <span>Định dạng xuất bản</span>
+                    <select id="studio-set-output-mode" class="ui-select">
+                      <option value="dub_hardsub">Lồng tiếng + Phụ đề cứng (MP4)</option>
+                      <option value="dub_only">Chỉ lồng tiếng (-c:v copy siêu tốc)</option>
+                      <option value="hardsub_only">Chỉ gắn phụ đề cứng (Hardsub)</option>
+                      <option value="assets_only">Chỉ xuất .SRT / .ASS / .MP3 (CapCut)</option>
+                    </select>
+                  </label>
+                  <label class="ui-field" for="studio-set-asr">
+                    <span>Bóc tách lời (ASR CPU 0 quota)</span>
+                    <select id="studio-set-asr" class="ui-select">
+                      <option value="auto:small">Tự động (Sub nguồn / Whisper Small)</option>
+                      <option value="local_whisper:large-v3-turbo">Whisper Large-v3-Turbo (99 ngôn ngữ, Siêu chuẩn)</option>
+                      <option value="local_whisper:distil-large-v3.5">Whisper Distil-Large-v3.5 (Chuyên Tiếng Anh)</option>
+                      <option value="local_whisper:small">Whisper Small (Nhanh &amp; Cân bằng)</option>
+                      <option value="local_whisper:base">Whisper Base (Siêu nhanh cho phim dài)</option>
+                      <option value="local_whisper:medium">Whisper Medium</option>
+                      <option value="cloud:small">Cloud API (Gemini)</option>
+                    </select>
+                  </label>
+                  <label class="ui-field" for="studio-set-lang">
+                    <span>Ngôn ngữ đích</span>
+                    <select id="studio-set-lang" class="ui-select">
+                      <option value="vi" selected>Tiếng Việt</option>
+                      <option value="en">English</option>
+                      <option value="ja">Tiếng Nhật (Japanese)</option>
+                      <option value="ko">Tiếng Hàn (Korean)</option>
+                      <option value="zh">Tiếng Trung (Chinese)</option>
+                      <option value="fr">Français</option>
+                      <option value="es">Español</option>
+                    </select>
+                  </label>
+                  <label class="ui-field" for="studio-set-provider">
+                    <span>Nhà cung cấp AI dịch</span>
+                    <select id="studio-set-provider" class="ui-select"></select>
+                  </label>
+                  <label class="ui-field" for="studio-set-model">
+                    <span>Model dịch thuật (LLM)</span>
+                    <select id="studio-set-model" class="ui-select"></select>
+                  </label>
+                  <label class="ui-field studio-span-2" id="studio-set-model-custom-wrap" for="studio-set-model-custom" hidden>
+                    <span>ID model dịch tùy chỉnh</span>
+                    <input id="studio-set-model-custom" class="ui-input" type="text" placeholder="Nhập ID model…" autocomplete="off" spellcheck="false">
+                  </label>
+                  <label class="ui-field" for="studio-set-tts-provider">
+                    <span>Engine lồng tiếng (TTS)</span>
+                    <select id="studio-set-tts-provider" class="ui-select"></select>
+                  </label>
+                  <label class="ui-field" id="studio-set-tts-model-wrap" for="studio-set-tts-model" hidden>
+                    <span>Model TTS</span>
+                    <select id="studio-set-tts-model" class="ui-select"></select>
+                  </label>
+                  <label class="ui-field studio-span-2" id="studio-set-tts-custom-wrap" for="studio-set-tts-custom" hidden>
+                    <span>ID model TTS tùy chỉnh</span>
+                    <input id="studio-set-tts-custom" class="ui-input" type="text" placeholder="Nhập ID model TTS…" autocomplete="off" spellcheck="false">
+                  </label>
+                  <label class="ui-field" for="studio-set-voice">
+                    <span>Giọng mặc định</span>
+                    <select id="studio-set-voice" class="ui-select">
+                      <option value="Puck" selected>Quang Huy / Puck — Nam Bắc, Review Phim</option>
+                      <option value="Kore">Ngọc Lan / Kore — Nữ Bắc, Review Phim</option>
+                      <option value="Aoede">Thu Hà / Aoede — Nữ Bắc, nhẹ nhàng</option>
+                      <option value="Sulafat">Yến Nhi / Sulafat — Nữ Nam, trẻ trung</option>
+                      <option value="Leda">Minh Anh / Leda — Nữ Bắc, tin tức</option>
+                      <option value="Charon">Trầm Vang / Charon — Nam trầm kể chuyện</option>
+                      <option value="Fenrir">Điềm Đạm / Fenrir — Nam thuyết minh</option>
+                      <option value="auto">Tự động theo giới tính nhân vật</option>
+                    </select>
+                  </label>
+                  <label class="ui-field" for="studio-set-sub-style">
+                    <span>Kiểu phụ đề</span>
+                    <select id="studio-set-sub-style" class="ui-select">
+                      <option value="box">Hộp nền mờ (Dễ đọc nhất)</option>
+                      <option value="classic">Cổ điển (Trắng viền đen)</option>
+                      <option value="cinema">Vàng điện ảnh (Cinema Yellow)</option>
+                    </select>
+                  </label>
+                  <label class="ui-field" for="studio-set-sub-anim">
+                    <span>Hiệu ứng chạy chữ</span>
+                    <select id="studio-set-sub-anim" class="ui-select">
+                      <option value="reveal">Hiện dần từng từ (Word-by-word)</option>
+                      <option value="karaoke">Karaoke quét màu</option>
+                      <option value="static">Hiện cả câu (Truyền thống)</option>
+                    </select>
+                  </label>
+                  <label class="ui-field studio-span-2" for="studio-set-context">
+                    <span>Ghi chú bối cảnh / xưng hô (tùy chọn)</span>
+                    <input id="studio-set-context" class="ui-input" type="text" maxlength="500" placeholder="VD: Review phim hành động giọng hào hứng, nhân vật A xưng anh - gọi B là em…" autocomplete="off">
+                  </label>
+                  <div class="studio-span-2 studio-checks-row">
+                    <label class="media-ai-check" for="studio-set-keep-bg">
+                      <input id="studio-set-keep-bg" type="checkbox" checked>
+                      <span>Giữ nhạc nền gốc (Auto-Ducking)</span>
+                    </label>
+                    <label class="studio-vol-inline" for="studio-set-orig-vol">
+                      <span>Nhạc nền: <strong id="studio-set-orig-vol-val">16%</strong></span>
+                      <input id="studio-set-orig-vol" type="range" min="0" max="50" step="2" value="16">
+                    </label>
+                    <label class="media-ai-check" for="studio-set-bilingual">
+                      <input id="studio-set-bilingual" type="checkbox">
+                      <span>Phụ đề song ngữ</span>
+                    </label>
+                  </div>
+                </div>
+              </details>
+
+              <details id="studio-bible-details" class="media-card studio-panel-details">
+                <summary class="studio-details-summary">
+                  <span>Giọng theo nhân vật &amp; Story Bible</span>
+                </summary>
+                <div class="studio-bible-body">
+                  <div class="studio-sub-section">
+                    <h3>Gán giọng đọc cho từng nhân vật</h3>
+                    <div id="studio-speaker-voices-list" class="studio-speaker-voices-list"></div>
+                  </div>
+                  <div class="studio-sub-section">
+                    <h3>Story Bible (Thống nhất toàn phim)</h3>
+                    <label class="ui-field" for="studio-bible-synopsis">
+                      <span>Tóm tắt nội dung</span>
+                      <textarea id="studio-bible-synopsis" class="ui-textarea" rows="2" placeholder="AI tự tạo cho phim nhiều lô hoặc bạn tự nhập…"></textarea>
+                    </label>
+                    <label class="ui-field" for="studio-bible-glossary">
+                      <span>Thuật ngữ &amp; tên riêng (mỗi dòng 1 mục: Tên gốc = Tên dịch)</span>
+                      <textarea id="studio-bible-glossary" class="ui-textarea" rows="3" spellcheck="false" placeholder="Terranova = Terranova"></textarea>
+                    </label>
+                    <label class="ui-field" for="studio-bible-pronouns">
+                      <span>Quy tắc xưng hô (mỗi dòng 1 mục)</span>
+                      <textarea id="studio-bible-pronouns" class="ui-textarea" rows="2" placeholder="Nam chính gọi nữ chính là em, xưng anh"></textarea>
+                    </label>
+                    <label class="ui-field" for="studio-bible-style">
+                      <span>Ghi chú văn phong</span>
+                      <input id="studio-bible-style" class="ui-input" type="text" placeholder="Tự nhiên, ngắn gọn khớp nhịp đọc…">
+                    </label>
+                  </div>
+                  <button id="studio-save-meta-btn" class="ui-btn ui-btn-compact" type="button">Lưu cấu hình &amp; Story Bible</button>
+                </div>
+              </details>
+            </div>
+
+            <div class="studio-right-col">
+              <div class="media-card studio-editor-card">
+                <div class="studio-editor-toolbar">
+                  <div class="studio-editor-filters">
+                    <input id="studio-seg-search" class="ui-input studio-seg-search" type="search" placeholder="Tìm câu gốc hoặc bản dịch…" aria-label="Tìm phụ đề">
+                    <select id="studio-seg-speaker-filter" class="ui-select studio-seg-speaker-filter" aria-label="Lọc theo nhân vật">
+                      <option value="">Tất cả nhân vật</option>
+                    </select>
+                  </div>
+                  <div class="studio-editor-actions">
+                    <label class="ui-btn ui-btn-compact studio-sub-picker">
+                      <span>Nạp .srt/.vtt/.ass</span>
+                      <input id="studio-attach-sub-input" type="file" accept=".srt,.vtt,.ass,.json3" hidden>
+                    </label>
+                    <button id="studio-add-seg-btn" class="ui-btn ui-btn-compact" type="button">+ Thêm câu</button>
+                    <button id="studio-save-segs-btn" class="ui-btn ui-btn-primary ui-btn-compact" type="button">
+                      <span>Lưu thay đổi</span>
+                      <span id="studio-dirty-badge" class="studio-dirty-dot" hidden title="Có thay đổi chưa lưu"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="studio-pagination-bar">
+                  <span id="studio-seg-count-info" class="studio-muted-text">Chưa có câu phụ đề nào.</span>
+                  <div class="studio-pagination-controls">
+                    <button id="studio-page-prev" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" disabled>‹ Trước</button>
+                    <span id="studio-page-label" class="studio-page-label">Trang 1/1</span>
+                    <button id="studio-page-next" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" disabled>Sau ›</button>
+                  </div>
+                </div>
+
+                <div id="studio-segments-empty" class="studio-segments-empty">
+                  Chưa có câu thoại nào. Bấm <strong>Bắt đầu / Tiếp tục</strong> để Whisper bóc băng &amp; AI dịch, hoặc bấm <strong>Nạp .srt/.vtt/.ass</strong> nếu bạn đã có sẵn phụ đề.
+                </div>
+                <div id="studio-segments-list" class="studio-segments-list"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </section>
     <main id="page-view" class="app-workspace" hidden></main>
   </div>
@@ -475,6 +809,6 @@
   <form method="dialog"><button class="ui-btn" type="submit">Đóng</button></form>
 </dialog>
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
-<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script><script src="/static/js/proxy-monitor.js"></script><script src="/static/js/extension-guide.js"></script><script src="/static/js/agent-render.js"></script><script src="/static/js/agent-panels.js"></script><script src="/static/js/agent.js"></script><script src="/static/js/media-downloader.js"></script>
+<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script><script src="/static/js/proxy-monitor.js"></script><script src="/static/js/extension-guide.js"></script><script src="/static/js/agent-render.js"></script><script src="/static/js/agent-panels.js"></script><script src="/static/js/agent.js"></script><script src="/static/js/media-downloader.js"></script><script src="/static/js/video-studio.js"></script>
 </body>
 </html>

@@ -68,19 +68,22 @@
   }
 
   function setLandingMode(mode = "home") {
-    const resolved = ["import", "agent", "media"].includes(mode) ? mode : "home";
+    const resolved = ["import", "agent", "media", "studio"].includes(mode) ? mode : "home";
     document.body.dataset.landingMode = resolved;
     const home = document.getElementById("home-view");
     const importView = document.getElementById("import-view");
     const agentView = document.getElementById("agent-view");
     const mediaView = document.getElementById("media-view");
+    const studioView = document.getElementById("studio-view");
     if (home) home.hidden = resolved !== "home";
     if (importView) importView.hidden = resolved !== "import";
     if (agentView) agentView.hidden = resolved !== "agent";
     if (mediaView) mediaView.hidden = resolved !== "media";
-    setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Chaos", media: "Tải video" }[resolved]);
+    if (studioView) studioView.hidden = resolved !== "studio";
+    setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Chaos", media: "Tải video", studio: "Xưởng Video AI" }[resolved]);
     if (resolved === "agent") window.openAgentView?.();
     if (resolved === "media") window.openMediaView?.();
+    if (resolved === "studio") window.openStudioView?.();
 
     if (resolved === "home") window.loadRecentChapters?.();
     const start = document.getElementById("start-action");

@@ -33,8 +33,10 @@ from app.parameters import (
     STALE_TEMP_MAX_AGE_SECONDS,
     USE_DYNAMIC_LAMA,
 )
-from app.routers import account, agent, ai_mode, api_proxy, automation, chapters, editor, export, extension, image, media, ocr, render, render_commit, translation, visual_qc
+from app.routers import account, agent, ai_mode, api_proxy, automation, chapters, editor, export, extension, image, media, ocr, render, render_commit, studio, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
+
+MAX_STUDIO_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB max for long-form local movie uploads
 
 
 def _cleanup_extra_stale_artifacts(
@@ -128,11 +130,12 @@ class RequestSizeLimitMiddleware:
             return
 
         path = str(scope.get("path") or "")
-        limit = (
-            MAX_UPLOAD_TOTAL_BYTES
-            if path == "/api/chapter/upload"
-            else MAX_REQUEST_BYTES
-        )
+        if path == "/api/studio/projects/upload":
+            limit = MAX_STUDIO_UPLOAD_BYTES
+        elif path == "/api/chapter/upload":
+            limit = MAX_UPLOAD_TOTAL_BYTES
+        else:
+            limit = MAX_REQUEST_BYTES
         headers = {
             key.lower(): value
             for key, value in scope.get("headers", [])
@@ -301,6 +304,7 @@ app.include_router(agent.router)
 app.include_router(api_proxy.router)
 app.include_router(extension.router)
 app.include_router(media.router)
+app.include_router(studio.router)
 
 
 def _current_rss_bytes() -> int | None:

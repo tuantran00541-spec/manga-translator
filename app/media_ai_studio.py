@@ -921,16 +921,58 @@ def _extract_json_object(raw_text: str) -> dict[str, Any]:
     return parsed
 
 
+def _run_cancellable(
+    fn,
+    cancel_event: threading.Event | None = None,
+    on_cancel=None,
+):
+    """Run a blocking network/LLM call while aborting promptly (<=100ms) if cancel_event is set."""
+    if cancel_event is None:
+        return fn()
+    if cancel_event.is_set():
+        raise AICanceledError("Đã tạm dừng.")
+
+    result_box: dict[str, Any] = {}
+    done_ev = threading.Event()
+
+    def _runner() -> None:
+        try:
+            result_box["value"] = fn()
+        except BaseException as exc:  # noqa: BLE001
+            result_box["error"] = exc
+        finally:
+            done_ev.set()
+
+    worker = threading.Thread(target=_runner, name="media-ai-cancellable", daemon=True)
+    worker.start()
+    while not done_ev.wait(timeout=0.08):
+        if cancel_event.is_set():
+            if callable(on_cancel):
+                try:
+                    on_cancel()
+                except Exception:
+                    pass
+            raise AICanceledError("Đã tạm dừng ngay lập tức.")
+    if cancel_event.is_set():
+        raise AICanceledError("Đã tạm dừng ngay lập tức.")
+    if "error" in result_box:
+        raise result_box["error"]
+    return result_box.get("value")
+
+
 def _openai_chat_json(
     provider: AIProvider,
     api_key: str,
     model_id: str,
     messages: list[dict[str, Any]],
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     chat_url = provider.chat_url
     if not chat_url:
         raise RuntimeError(f"Nhà cung cấp {provider.label} không có endpoint /chat/completions.")
     validate_url(chat_url)
+    if cancel_event is not None and cancel_event.is_set():
+        raise AICanceledError("Đã tạm dừng.")
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -943,19 +985,23 @@ def _openai_chat_json(
         "response_format": {"type": "json_object"},
         **provider.chat_completion_extras(model_id),
     }
-    resp = public_request("POST", chat_url, headers=headers, json=body, timeout=(15, 180))
-    try:
-        if resp.status_code >= 400:
-            detail = (resp.text or "")[:240]
-            raise requests.HTTPError(f"HTTP {resp.status_code}: {detail}", response=resp)
-        data = resp.json()
-    finally:
-        resp.close()
-    choices = data.get("choices") or []
-    content = choices[0].get("message", {}).get("content", "") if choices else ""
-    if isinstance(content, list):
-        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-    return _extract_json_object(str(content))
+
+    def _do_req() -> dict[str, Any]:
+        resp = public_request("POST", chat_url, headers=headers, json=body, timeout=(15, 180))
+        try:
+            if resp.status_code >= 400:
+                detail = (resp.text or "")[:240]
+                raise requests.HTTPError(f"HTTP {resp.status_code}: {detail}", response=resp)
+            data = resp.json()
+        finally:
+            resp.close()
+        choices = data.get("choices") or []
+        content = choices[0].get("message", {}).get("content", "") if choices else ""
+        if isinstance(content, list):
+            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        return _extract_json_object(str(content))
+
+    return _run_cancellable(_do_req, cancel_event=cancel_event)
 
 
 def _parse_vtt_ts(h: str | None, m: str, s: str, ms: str) -> float:
@@ -1543,8 +1589,11 @@ def _call_structured_llm(
     model_id: str,
     prompt: str,
     schema_cls: type[BaseModel],
+    cancel_event: threading.Event | None = None,
 ) -> Any:
     """Invoke Gemini Interactions API (with thinking_level=low + 429/503 backoff & fallback) or OpenAI JSON chat."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise AICanceledError("Đã tạm dừng.")
     if provider.protocol == "gemini":
         from google import genai  # type: ignore
 
@@ -1554,9 +1603,16 @@ def _call_structured_llm(
             if fallback_m not in candidate_models:
                 candidate_models.append(fallback_m)
 
+        def _close_client() -> None:
+            close_fn = getattr(client, "close", None)
+            if callable(close_fn):
+                close_fn()
+
         interaction = None
         last_exc: Exception | None = None
         for idx_m, cand in enumerate(candidate_models):
+            if cancel_event is not None and cancel_event.is_set():
+                raise AICanceledError("Đã tạm dừng.")
             create_kwargs: dict[str, Any] = {
                 "model": cand,
                 "input": prompt,
@@ -1569,15 +1625,27 @@ def _call_structured_llm(
             if cand.lower().startswith(("gemini-4-", "gemini-3.")):
                 create_kwargs["generation_config"] = {"thinking_level": "low"}
             try:
-                interaction = client.interactions.create(**create_kwargs)
+                interaction = _run_cancellable(
+                    lambda kw=create_kwargs: client.interactions.create(**kw),
+                    cancel_event=cancel_event,
+                    on_cancel=_close_client,
+                )
                 break
+            except AICanceledError:
+                raise
             except Exception as exc:
                 msg_low = str(exc).lower()
                 if "thinking_level" in create_kwargs.get("generation_config", {}) and "thinking" in msg_low:
                     create_kwargs.pop("generation_config", None)
                     try:
-                        interaction = client.interactions.create(**create_kwargs)
+                        interaction = _run_cancellable(
+                            lambda kw=create_kwargs: client.interactions.create(**kw),
+                            cancel_event=cancel_event,
+                            on_cancel=_close_client,
+                        )
                         break
+                    except AICanceledError:
+                        raise
                     except Exception as retry_exc:
                         exc = retry_exc
                         msg_low = str(exc).lower()
@@ -1596,7 +1664,11 @@ def _call_structured_llm(
                         wait_sec,
                         candidate_models[idx_m + 1],
                     )
-                    time.sleep(wait_sec)
+                    if cancel_event is not None:
+                        if cancel_event.wait(wait_sec):
+                            raise AICanceledError("Đã tạm dừng.")
+                    else:
+                        time.sleep(wait_sec)
                     continue
                 raise
         if interaction is None:
@@ -1606,7 +1678,13 @@ def _call_structured_llm(
             raise RuntimeError(f"Model {model_id} không trả về dữ liệu JSON.")
         return schema_cls.model_validate_json(raw_text)
 
-    parsed = _openai_chat_json(provider, api_key, model_id, [{"role": "user", "content": prompt}])
+    parsed = _openai_chat_json(
+        provider,
+        api_key,
+        model_id,
+        [{"role": "user", "content": prompt}],
+        cancel_event=cancel_event,
+    )
     return schema_cls.model_validate(parsed)
 
 
@@ -1618,10 +1696,13 @@ def _build_story_bible(
     model_id: str,
     target_lang: str,
     context_hint: str = "",
+    cancel_event: threading.Event | None = None,
 ) -> StoryBibleSchema:
     """Pass 0 (VideoLingo / llm-subtrans pattern): analyze whole transcript for genre, glossary & pronoun rules."""
     if len(cues) < 3:
         return StoryBibleSchema()
+    if cancel_event is not None and cancel_event.is_set():
+        raise AICanceledError("Đã tạm dừng.")
     lang_name = TARGET_LANGUAGES.get(target_lang, "Vietnamese")
     sample_lines = [
         f"{c['id']} [{c.get('speaker', 'S1')}]: {c['original_text']}"
@@ -1648,14 +1729,19 @@ def _build_story_bible(
         "Transcript:\n" + "\n".join(sample_lines)
     )
     try:
-        bible = _call_structured_llm(
-            provider=provider,
-            api_key=api_key,
-            model_id=model_id,
-            prompt=prompt,
-            schema_cls=StoryBibleSchema,
-        )
+        call_kwargs: dict[str, Any] = {
+            "provider": provider,
+            "api_key": api_key,
+            "model_id": model_id,
+            "prompt": prompt,
+            "schema_cls": StoryBibleSchema,
+        }
+        if cancel_event is not None:
+            call_kwargs["cancel_event"] = cancel_event
+        bible = _call_structured_llm(**call_kwargs)
         return bible
+    except AICanceledError:
+        raise
     except Exception as exc:
         logger.warning("Story bible Pass 0 skipped due to error: {}", str(exc)[:160])
         return StoryBibleSchema()
@@ -1673,6 +1759,7 @@ def _translate_cue_batch(
     model_id: str,
     target_lang: str,
     for_dubbing: bool,
+    cancel_event: threading.Event | None = None,
 ) -> TranslatedCueBatchSchema:
     lang_name = TARGET_LANGUAGES.get(target_lang, "Vietnamese")
     compact_input = [
@@ -1738,13 +1825,16 @@ def _translate_cue_batch(
         '"draft_translation": string, "translated_text": string, "gender": "female"|"male", "tone": string}]}\n'
         f"Cues to translate:\n{json.dumps(compact_input, ensure_ascii=False)}"
     )
-    return _call_structured_llm(
-        provider=provider,
-        api_key=api_key,
-        model_id=model_id,
-        prompt=prompt,
-        schema_cls=TranslatedCueBatchSchema,
-    )
+    call_kwargs: dict[str, Any] = {
+        "provider": provider,
+        "api_key": api_key,
+        "model_id": model_id,
+        "prompt": prompt,
+        "schema_cls": TranslatedCueBatchSchema,
+    }
+    if cancel_event is not None:
+        call_kwargs["cancel_event"] = cancel_event
+    return _call_structured_llm(**call_kwargs)
 
 
 def _translate_cues_with_model(
