@@ -114,7 +114,7 @@ def safe_get(
         raise ValueError("max_redirects must be >= 0")
     current = validate_url(url)
     redirects = 0
-    session = _thread_session()
+    session = _session()
     req_headers = dict(headers) if headers else None
 
     while True:
