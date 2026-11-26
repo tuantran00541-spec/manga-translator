@@ -222,25 +222,28 @@
         <div class="page-intro">
           <span class="ui-eyebrow">Tiện ích đa phương tiện</span>
           <h1>Tải video &amp; âm thanh</h1>
-          <p>Dán liên kết TikTok, YouTube hoặc Facebook. Ứng dụng sẽ kiểm tra độ an toàn của liên kết trước khi hiển thị tùy chọn tải 1080p, 720p hoặc chỉ xuất tệp âm thanh.</p>
+          <p>Hỗ trợ hầu như mọi liên kết video công khai (YouTube, TikTok, Facebook, Instagram, X, Bilibili, Vimeo, Reddit, link MP4 trực tiếp…). Ứng dụng luôn kiểm tra an toàn liên kết trước khi cho phép tải, gắn phụ đề cứng hoặc lồng tiếng AI.</p>
         </div>
 
         <section class="media-card media-input-card" aria-labelledby="media-url-heading">
           <div class="media-card-head">
             <div>
-              <h2 id="media-url-heading">Dán liên kết video</h2>
-              <p class="media-card-sub">Kiểm tra giao thức HTTPS, tên miền chính chủ, chống SSRF và chuỗi chuyển hướng trước khi tải.</p>
+              <h2 id="media-url-heading">Dán liên kết video bất kỳ</h2>
+              <p class="media-card-sub">Kiểm tra HTTPS, chống giả mạo tên miền, chống SSRF và chuỗi chuyển hướng trước khi trích xuất.</p>
             </div>
             <div class="media-platform-pills" aria-label="Nền tảng hỗ trợ">
-              <span class="media-platform-pill">TikTok</span>
               <span class="media-platform-pill">YouTube</span>
+              <span class="media-platform-pill">TikTok</span>
               <span class="media-platform-pill">Facebook</span>
+              <span class="media-platform-pill">Instagram</span>
+              <span class="media-platform-pill">X</span>
+              <span class="media-platform-pill">+1000 nguồn</span>
             </div>
           </div>
           <form id="media-inspect-form" class="media-url-form">
             <label class="ui-field media-url-field" for="media-url">
-              <span class="sr-only">Liên kết TikTok, YouTube hoặc Facebook</span>
-              <input id="media-url" type="url" placeholder="https://www.youtube.com/watch?v=... hoặc link TikTok / Facebook" autocomplete="off" spellcheck="false" required>
+              <span class="sr-only">Liên kết video công khai</span>
+              <input id="media-url" type="url" placeholder="https://... (YouTube, TikTok, Facebook, Instagram, X, Bilibili, Vimeo, MP4…)" autocomplete="off" spellcheck="false" required>
             </label>
             <button id="media-paste-btn" class="ui-btn" type="button">Dán</button>
             <button id="media-inspect-btn" class="ui-btn ui-btn-primary" type="submit">Kiểm tra liên kết</button>
@@ -282,6 +285,130 @@
             <div id="media-options-grid" class="media-options-grid" role="radiogroup" aria-label="Tùy chọn chất lượng video và âm thanh"></div>
           </div>
 
+          <div id="media-ai-section" class="media-ai-section">
+            <div class="media-options-head">
+              <h3>Xử lý AI (Phụ đề cứng &amp; Lồng tiếng)</h3>
+              <div class="media-ai-head-actions">
+                <span id="media-ai-note" class="media-ffmpeg-note"></span>
+                <button id="media-ai-open-settings" class="ui-btn ui-btn-ghost ui-btn-compact" type="button">Cài đặt nhà cung cấp</button>
+              </div>
+            </div>
+
+            <div id="media-ai-modes" class="media-ai-modes" role="radiogroup" aria-label="Chế độ xử lý AI">
+              <button type="button" class="media-ai-mode-btn is-selected" data-ai-mode="none" role="radio" aria-checked="true">
+                <strong>Tải nguyên bản</strong>
+                <span>Giữ nguyên video gốc, tải nhanh nhất.</span>
+              </button>
+              <button type="button" class="media-ai-mode-btn" data-ai-mode="hardsub" role="radio" aria-checked="false">
+                <strong>Dịch &amp; Phụ đề cứng (Hardsub)</strong>
+                <span>Dùng nhà cung cấp &amp; model trong Cài đặt để nghe hiểu, dịch và gắn phụ đề vào video.</span>
+              </button>
+              <button type="button" class="media-ai-mode-btn" data-ai-mode="dub" role="radio" aria-checked="false">
+                <strong>Lồng tiếng AI (Auto-Dubbing)</strong>
+                <span>Lồng giọng khớp nhịp bằng model TTS bạn chọn + tự hạ nhạc nền (Auto-Ducking).</span>
+              </button>
+            </div>
+
+            <div id="media-ai-config" class="media-ai-config" hidden>
+              <div class="media-ai-config-grid">
+                <label class="ui-field" for="media-ai-asr">
+                  <span>Nguồn bóc tách lời (ASR)</span>
+                  <select id="media-ai-asr" class="ui-select">
+                    <option value="auto:small" selected>Tự động (Sub gốc / Whisper Small — Nhanh &amp; Chuẩn, 0 quota)</option>
+                    <option value="local_whisper:large-v3-turbo">Whisper Large-v3-Turbo (CPU — 99 ngôn ngữ, Siêu chuẩn)</option>
+                    <option value="local_whisper:distil-large-v3.5">Whisper Distil-Large-v3.5 (CPU — Chuyên Tiếng Anh, chống nghe nhầm)</option>
+                    <option value="local_whisper:small">Local Whisper Small (CPU — Chuẩn, cân bằng)</option>
+                    <option value="local_whisper:base">Local Whisper Base (CPU — Nhanh, nhẹ)</option>
+                    <option value="local_whisper:medium">Local Whisper Medium (CPU — Nặng hơn)</option>
+                    <option value="cloud:small">Cloud API (Gemini / OpenAI Whisper)</option>
+                  </select>
+                </label>
+                <label class="ui-field" for="media-ai-provider">
+                  <span>Nhà cung cấp dịch AI (từ Cài đặt)</span>
+                  <select id="media-ai-provider" class="ui-select"></select>
+                </label>
+                <label class="ui-field" for="media-ai-transcribe-model">
+                  <span>Model dịch thuật (LLM)</span>
+                  <select id="media-ai-transcribe-model" class="ui-select"></select>
+                </label>
+                <label class="ui-field" id="media-ai-transcribe-custom-wrap" for="media-ai-transcribe-custom" hidden>
+                  <span>ID model nghe &amp; dịch tùy chỉnh</span>
+                  <input id="media-ai-transcribe-custom" class="ui-input" type="text" placeholder="Nhập ID model bất kỳ…" autocomplete="off" spellcheck="false">
+                </label>
+                <label class="ui-field" id="media-ai-tts-provider-field" for="media-ai-tts-provider" hidden>
+                  <span>Nhà cung cấp lồng tiếng (TTS)</span>
+                  <select id="media-ai-tts-provider" class="ui-select"></select>
+                </label>
+                <label class="ui-field" id="media-ai-tts-model-field" for="media-ai-tts-model" hidden>
+                  <span>Model lồng tiếng (TTS)</span>
+                  <select id="media-ai-tts-model" class="ui-select"></select>
+                </label>
+                <label class="ui-field" id="media-ai-tts-custom-wrap" for="media-ai-tts-custom" hidden>
+                  <span>ID model TTS tùy chỉnh</span>
+                  <input id="media-ai-tts-custom" class="ui-input" type="text" placeholder="Nhập ID model TTS bất kỳ…" autocomplete="off" spellcheck="false">
+                </label>
+                <label class="ui-field" for="media-ai-lang">
+                  <span>Dịch sang ngôn ngữ</span>
+                  <select id="media-ai-lang" class="ui-select">
+                    <option value="vi" selected>Tiếng Việt</option>
+                    <option value="en">English</option>
+                    <option value="ja">Tiếng Nhật (Japanese)</option>
+                    <option value="ko">Tiếng Hàn (Korean)</option>
+                    <option value="zh">Tiếng Trung (Chinese)</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                  </select>
+                </label>
+                <label class="ui-field" id="media-ai-voice-field" for="media-ai-voice" hidden>
+                  <span>Giọng đọc TTS</span>
+                  <select id="media-ai-voice" class="ui-select">
+                    <option value="Puck" selected>Quang Huy / Puck — Nam Bắc, Review Phim &amp; năng động</option>
+                    <option value="Kore">Ngọc Lan / Kore — Nữ Bắc, rõ ràng &amp; Review Phim</option>
+                    <option value="Aoede">Thu Hà / Aoede — Nữ Bắc, nhẹ nhàng &amp; tự nhiên</option>
+                    <option value="Sulafat">Yến Nhi / Sulafat — Nữ Nam, ấm áp &amp; trẻ trung</option>
+                    <option value="Charon">Trầm Vang / Charon — Nam Bắc, trầm ấm &amp; kể chuyện</option>
+                    <option value="Fenrir">Điềm Đạm / Fenrir — Nam Bắc, thuyết minh &amp; mạnh mẽ</option>
+                    <option value="auto">Tự động theo giới tính &amp; người nói</option>
+                  </select>
+                </label>
+                <label class="ui-field" id="media-ai-style-field" for="media-ai-sub-style">
+                  <span>Kiểu hiển thị phụ đề</span>
+                  <select id="media-ai-sub-style" class="ui-select">
+                    <option value="classic" selected>Cổ điển (Chữ trắng viền đen)</option>
+                    <option value="box">Hộp nền mờ (Dễ đọc trên nền sáng)</option>
+                    <option value="cinema">Vàng điện ảnh (Cinema Yellow)</option>
+                  </select>
+                </label>
+                <label class="ui-field" id="media-ai-anim-field" for="media-ai-sub-anim">
+                  <span>Hiệu ứng chạy chữ</span>
+                  <select id="media-ai-sub-anim" class="ui-select">
+                    <option value="reveal" selected>Hiện dần từng từ theo giọng (Word-by-word)</option>
+                    <option value="karaoke">Karaoke quét màu từng từ</option>
+                    <option value="static">Hiện cả câu (Truyền thống)</option>
+                  </select>
+                </label>
+                <label class="ui-field media-ai-context-field" id="media-ai-context-field" for="media-ai-context">
+                  <span>Ghi chú bối cảnh / xưng hô (tùy chọn — AI tự phân tích nếu để trống)</span>
+                  <input id="media-ai-context" class="ui-input" type="text" maxlength="500" placeholder="VD: Phim cổ trang (ta - cô nương), MV nhạc buồn, hoặc tên nhân vật cố định…" autocomplete="off">
+                </label>
+              </div>
+              <div class="media-ai-checks">
+                <label class="media-ai-check" id="media-ai-burn-wrap" for="media-ai-burn-sub" hidden>
+                  <input id="media-ai-burn-sub" type="checkbox" checked>
+                  <span>Gắn kèm phụ đề cứng vào video lồng tiếng (Dub + Hardsub)</span>
+                </label>
+                <label class="media-ai-check" id="media-ai-bilingual-wrap" for="media-ai-bilingual">
+                  <input id="media-ai-bilingual" type="checkbox">
+                  <span>Phụ đề song ngữ (hiện cả câu gốc và bản dịch)</span>
+                </label>
+                <label class="media-ai-check" id="media-ai-bg-wrap" for="media-ai-keep-bg" hidden>
+                  <input id="media-ai-keep-bg" type="checkbox" checked>
+                  <span>Giữ nhạc nền gốc &amp; tự động hạ âm khi giọng lồng tiếng đọc (Auto-Ducking)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div class="media-action-row">
             <button id="media-download-btn" class="ui-btn ui-btn-primary" type="button">Tải xuống ngay</button>
             <button id="media-reset-btn" class="ui-btn ui-btn-ghost" type="button">Kiểm tra link khác</button>
@@ -302,10 +429,15 @@
           <div class="media-progress-foot">
             <span id="media-progress-stats" class="media-progress-stats"></span>
             <div class="media-progress-actions">
+              <a id="media-srt-link" class="ui-btn ui-btn-compact" href="#" download hidden>Tải phụ đề (.srt)</a>
               <a id="media-save-link" class="ui-btn ui-btn-primary ui-btn-compact" href="#" download hidden>Lưu về máy</a>
               <button id="media-cancel-btn" class="ui-btn ui-btn-compact" type="button" hidden>Hủy tải</button>
             </div>
           </div>
+          <details id="media-transcript-box" class="media-transcript-box" hidden>
+            <summary id="media-transcript-summary">Xem lời thoại &amp; bản dịch</summary>
+            <ol id="media-transcript-list" class="media-transcript-list"></ol>
+          </details>
         </section>
 
         <section id="media-history-card" class="media-card media-history-card" hidden>

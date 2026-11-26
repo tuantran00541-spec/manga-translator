@@ -18,6 +18,29 @@ import requests
 from app.config import MEDIA_DIR
 from app.downloader.http import public_request
 from app.logging_config import logger
+from app.media_ai_studio import (
+    AICanceledError,
+    AIProcessOptions,
+    EDGE_TTS_PROVIDER_ID,
+    PIPER_TTS_PROVIDER_ID,
+    TARGET_LANGUAGES,
+    VALID_AI_MODES,
+    VALID_ASR_ENGINES,
+    VALID_SUBTITLE_ANIMATIONS,
+    VALID_SUBTITLE_STYLES,
+    VALID_VOICE_IDS,
+    VALID_WHISPER_MODELS,
+    VOICE_CATALOG,
+    any_ai_provider_configured,
+    default_transcribe_model_for,
+    default_tts_model_for,
+    is_edge_tts_available,
+    is_piper_tts_available,
+    list_configured_ai_providers,
+    normalize_model_id,
+    process_video_with_ai,
+    resolve_configured_ai_provider,
+)
 from app.security import validate_managed_path, validate_url
 
 JOB_ID_RE = re.compile(r"^[a-f0-9]{12}$")
@@ -38,6 +61,22 @@ _USER_AGENT = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
+_BLOCKED_TLDS = frozenset(
+    {"localhost", "local", "internal", "lan", "home", "corp", "arpa", "onion", "intranet", "private"}
+)
+_SPOOFED_BRAND_SUFFIXES = (
+    "youtube.com",
+    "youtu.be",
+    "tiktok.com",
+    "facebook.com",
+    "instagram.com",
+    "twitter.com",
+    "x.com",
+    "google.com",
+    "paypal.com",
+    "apple.com",
+)
+
 _WINDOWS_RESERVED_NAMES = frozenset(
     {
         "CON", "PRN", "AUX", "NUL",
@@ -51,72 +90,31 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 class PlatformSpec:
     key: str
     label: str
-    domains: frozenset[str]
-    short_domains: frozenset[str]
-    allowed_extractors: tuple[str, ...]
+    suffixes: tuple[str, ...]
 
 
-PLATFORMS: tuple[PlatformSpec, ...] = (
-    PlatformSpec(
-        key="youtube",
-        label="YouTube",
-        domains=frozenset(
-            {
-                "youtube.com",
-                "www.youtube.com",
-                "m.youtube.com",
-                "music.youtube.com",
-                "youtu.be",
-                "www.youtu.be",
-                "youtube-nocookie.com",
-                "www.youtube-nocookie.com",
-            }
-        ),
-        short_domains=frozenset({"youtu.be", "www.youtu.be"}),
-        allowed_extractors=(r"(?i)^youtube(?::.*)?$", r"(?i)^YoutubeYtBe$"),
-    ),
-    PlatformSpec(
-        key="tiktok",
-        label="TikTok",
-        domains=frozenset(
-            {
-                "tiktok.com",
-                "www.tiktok.com",
-                "m.tiktok.com",
-                "vm.tiktok.com",
-                "vt.tiktok.com",
-            }
-        ),
-        short_domains=frozenset({"vm.tiktok.com", "vt.tiktok.com"}),
-        allowed_extractors=(r"(?i)^tiktok(?::.*)?$", r"(?i)^vm\.tiktok$"),
-    ),
-    PlatformSpec(
-        key="facebook",
-        label="Facebook",
-        domains=frozenset(
-            {
-                "facebook.com",
-                "www.facebook.com",
-                "m.facebook.com",
-                "web.facebook.com",
-                "mbasic.facebook.com",
-                "fb.watch",
-                "www.fb.watch",
-            }
-        ),
-        short_domains=frozenset({"fb.watch", "www.fb.watch"}),
-        allowed_extractors=(
-            r"(?i)^facebook(?::.*)?$",
-            r"(?i)^FacebookPluginsVideo$",
-            r"(?i)^FacebookRedirectURL$",
-        ),
-    ),
+KNOWN_PLATFORMS: tuple[PlatformSpec, ...] = (
+    PlatformSpec("youtube", "YouTube", ("youtube.com", "youtu.be", "youtube-nocookie.com")),
+    PlatformSpec("tiktok", "TikTok", ("tiktok.com",)),
+    PlatformSpec("facebook", "Facebook", ("facebook.com", "fb.watch")),
+    PlatformSpec("instagram", "Instagram", ("instagram.com", "instagr.am")),
+    PlatformSpec("twitter", "X / Twitter", ("x.com", "twitter.com")),
+    PlatformSpec("bilibili", "Bilibili", ("bilibili.com", "b23.tv")),
+    PlatformSpec("douyin", "Douyin", ("douyin.com",)),
+    PlatformSpec("vimeo", "Vimeo", ("vimeo.com",)),
+    PlatformSpec("dailymotion", "Dailymotion", ("dailymotion.com", "dai.ly")),
+    PlatformSpec("reddit", "Reddit", ("reddit.com", "redd.it", "v.redd.it")),
+    PlatformSpec("twitch", "Twitch", ("twitch.tv",)),
+    PlatformSpec("threads", "Threads", ("threads.net", "threads.com")),
+    PlatformSpec("pinterest", "Pinterest", ("pinterest.com", "pin.it")),
+    PlatformSpec("soundcloud", "SoundCloud", ("soundcloud.com",)),
+    PlatformSpec("loom", "Loom", ("loom.com",)),
+    PlatformSpec("streamable", "Streamable", ("streamable.com",)),
+    PlatformSpec("kick", "Kick", ("kick.com",)),
+    PlatformSpec("rumble", "Rumble", ("rumble.com",)),
+    PlatformSpec("vk", "VK Video", ("vk.com", "vkvideo.ru")),
+    PlatformSpec("ted", "TED", ("ted.com",)),
 )
-
-_PLATFORM_BY_KEY: dict[str, PlatformSpec] = {p.key: p for p in PLATFORMS}
-_HOST_TO_PLATFORM: dict[str, PlatformSpec] = {
-    host: spec for spec in PLATFORMS for host in spec.domains
-}
 
 
 class _DownloadCanceled(Exception):
@@ -162,31 +160,46 @@ def _has_homograph_risk(host: str) -> bool:
     return any(label.startswith("xn--") for label in host.split("."))
 
 
-def _match_platform(host: str) -> PlatformSpec | None:
-    return _HOST_TO_PLATFORM.get(host.lower().rstrip("."))
+def _match_known_platform(host: str) -> PlatformSpec | None:
+    norm = host.lower().rstrip(".")
+    for spec in KNOWN_PLATFORMS:
+        for suffix in spec.suffixes:
+            if norm == suffix or norm.endswith(f".{suffix}"):
+                return spec
+    return None
 
 
-def _looks_like_video_path(parsed, platform: PlatformSpec) -> bool:
-    path = (parsed.path or "").strip("/")
-    query = (parsed.query or "").strip()
-    if platform.key == "youtube":
-        if parsed.hostname and parsed.hostname.lower().rstrip(".") in platform.short_domains:
-            return bool(path)
-        return bool(path) or bool(query)
-    if platform.key == "tiktok":
-        return bool(path)
-    if platform.key == "facebook":
-        return bool(path) or bool(query)
-    return bool(path)
+def _has_brand_spoof(host: str) -> str | None:
+    """Detect lookalike phishing subdomains like youtube.com.evil.example."""
+    norm = host.lower().rstrip(".")
+    for brand in _SPOOFED_BRAND_SUFFIXES:
+        if f"{brand}." in norm and not (norm == brand or norm.endswith(f".{brand}")):
+            return brand
+    return None
 
 
-def _check_redirect_chain(
-    start_url: str,
-    platform: PlatformSpec,
-) -> tuple[bool, str, str]:
-    """Follow up to MAX_REDIRECT_HOPS redirects without leaving the platform allowlist."""
+def _validate_public_hostname(host: str) -> tuple[bool, str]:
+    norm = host.lower().rstrip(".")
+    if not norm or "." not in norm:
+        return False, f"Tên miền '{norm or '(trống)'}' không phải tên miền công khai hợp lệ."
+    if _is_raw_ip(norm):
+        return False, f"Chặn địa chỉ IP trực tiếp ({norm})."
+    if _has_homograph_risk(norm):
+        return False, f"Phát hiện tên miền quốc tế hóa / Punycode đáng ngờ ({norm})."
+    tld = norm.rsplit(".", 1)[-1]
+    if tld in _BLOCKED_TLDS:
+        return False, f"Chặn tên miền nội bộ / ẩn danh (.{tld})."
+    spoof = _has_brand_spoof(norm)
+    if spoof:
+        return False, f"Phát hiện dấu hiệu giả mạo thương hiệu '{spoof}' trong tên miền '{norm}'."
+    return True, ""
+
+
+def _check_redirect_chain(start_url: str) -> tuple[bool, str, str, PlatformSpec | None]:
+    """Follow up to MAX_REDIRECT_HOPS redirects ensuring every hop is HTTPS, non-phishing, and public IP."""
     current = start_url
     hops = 0
+    final_platform = _match_known_platform((urlsplit(start_url).hostname or ""))
 
     for _ in range(MAX_REDIRECT_HOPS + 1):
         resp = None
@@ -205,14 +218,14 @@ def _check_redirect_chain(
             status = resp.status_code
             location = resp.headers.get("location")
         except requests.RequestException:
-            # Some social CDNs throttle or reset direct requests even when yt-dlp succeeds.
             if hops == 0:
                 return (
                     True,
                     current,
                     "Không phát hiện chuyển hướng nguy hiểm (máy chủ đích hạn chế kiểm tra trực tiếp).",
+                    final_platform,
                 )
-            return True, current, f"Đã xác minh {hops} bước chuyển hướng an toàn trong {platform.label}."
+            return True, current, f"Đã xác minh {hops} bước chuyển hướng HTTPS công khai an toàn.", final_platform
         finally:
             if resp is not None:
                 try:
@@ -222,47 +235,49 @@ def _check_redirect_chain(
 
         if status not in _REDIRECT_STATUSES or not location:
             if hops == 0:
-                return True, current, f"Liên kết trỏ thẳng đến {platform.label}, không có chuyển hướng bất thường."
-            return True, current, f"Đã xác minh {hops} bước chuyển hướng đều nằm trên tên miền {platform.label}."
+                return True, current, "Liên kết trỏ thẳng đến nguồn đích, không có chuyển hướng bất thường.", final_platform
+            return True, current, f"Đã xác minh {hops} bước chuyển hướng HTTPS đều an toàn.", final_platform
 
         hops += 1
         if hops > MAX_REDIRECT_HOPS:
-            return False, current, "Chuỗi chuyển hướng vượt quá 5 bước cho phép."
+            return False, current, "Chuỗi chuyển hướng vượt quá 5 bước cho phép.", final_platform
 
         next_url = urljoin(current, location.strip())
         if _has_control_chars(next_url) or len(next_url) > MAX_MEDIA_URL_LENGTH:
-            return False, current, "Đích chuyển hướng chứa ký tự không hợp lệ hoặc quá dài."
+            return False, current, "Đích chuyển hướng chứa ký tự không hợp lệ hoặc quá dài.", final_platform
 
         try:
             next_parsed = urlsplit(next_url)
         except ValueError:
-            return False, current, "Đích chuyển hướng không đúng định dạng URL."
+            return False, current, "Đích chuyển hướng không đúng định dạng URL.", final_platform
 
         if next_parsed.scheme.lower() != "https":
-            return False, next_url, f"Chuyển hướng hạ cấp xuống giao thức không an toàn ({next_parsed.scheme or 'trống'})."
+            return False, next_url, f"Chuyển hướng hạ cấp xuống giao thức không an toàn ({next_parsed.scheme or 'trống'}).", final_platform
         if next_parsed.username is not None or next_parsed.password is not None:
-            return False, next_url, "Đích chuyển hướng chứa thông tin đăng nhập nhúng."
+            return False, next_url, "Đích chuyển hướng chứa thông tin đăng nhập nhúng.", final_platform
+        try:
+            next_port = next_parsed.port
+        except ValueError:
+            return False, next_url, "Đích chuyển hướng có cổng mạng không hợp lệ.", final_platform
+        if next_port not in (None, 443):
+            return False, next_url, f"Đích chuyển hướng dùng cổng :{next_port} bất thường.", final_platform
 
         next_host = (next_parsed.hostname or "").lower().rstrip(".")
-        if not next_host or _has_homograph_risk(next_host) or _is_raw_ip(next_host):
-            return False, next_url, f"Tên miền chuyển hướng đáng ngờ: {next_host or '(trống)'}."
-
-        next_platform = _match_platform(next_host)
-        if next_platform is None or next_platform.key != platform.key:
-            return (
-                False,
-                next_url,
-                f"Liên kết chuyển hướng ra ngoài {platform.label} tới tên miền không tin cậy: {next_host}.",
-            )
+        host_ok, host_err = _validate_public_hostname(next_host)
+        if not host_ok:
+            return False, next_url, f"Chuyển hướng tới tên miền bị chặn: {host_err}", final_platform
 
         try:
             validate_url(next_url)
         except HTTPException as exc:
-            return False, next_url, f"Đích chuyển hướng vi phạm kiểm tra mạng an toàn: {exc.detail}"
+            return False, next_url, f"Đích chuyển hướng vi phạm kiểm tra mạng an toàn: {exc.detail}", final_platform
 
+        matched = _match_known_platform(next_host)
+        if matched is not None:
+            final_platform = matched
         current = next_url
 
-    return False, current, "Chuỗi chuyển hướng vượt quá giới hạn an toàn."
+    return False, current, "Chuỗi chuyển hướng vượt quá giới hạn an toàn.", final_platform
 
 
 def inspect_link_safety(
@@ -270,7 +285,7 @@ def inspect_link_safety(
     *,
     resolve_redirects: bool = True,
 ) -> dict[str, Any]:
-    """Run multi-layer link safety verification for TikTok, YouTube, and Facebook URLs."""
+    """Run multi-layer link safety verification for any public HTTPS video URL."""
     url = str(raw_url or "").strip()
     checks: list[dict[str, Any]] = []
 
@@ -286,8 +301,8 @@ def inspect_link_safety(
             "safe": safe,
             "status": "safe" if safe else "unsafe",
             "risk_level": "low" if safe else "high",
-            "platform": platform.key if platform else None,
-            "platform_label": platform.label if platform else None,
+            "platform": platform.key if platform else ("web" if safe else None),
+            "platform_label": platform.label if platform else (hostname or "Web Video" if safe else None),
             "normalized_url": url,
             "resolved_url": resolved_url or url,
             "hostname": hostname,
@@ -392,79 +407,45 @@ def inspect_link_safety(
         }
     )
 
-    # 2. Official platform domain & anti-phishing check
+    # 2. Domain reputation & anti-phishing check (supports 1,000+ public video websites)
     hostname = (parsed.hostname or "").lower().rstrip(".")
-    if not hostname:
+    host_ok, host_err = _validate_public_hostname(hostname)
+    if not host_ok:
         checks.append(
             {
                 "id": "official_domain",
-                "label": "Tên miền chính chủ (TikTok / YouTube / Facebook)",
+                "label": "Kiểm tra tên miền & chống giả mạo",
                 "passed": False,
-                "detail": "Liên kết không có tên miền.",
+                "detail": host_err,
             }
         )
-        return _result(safe=False, summary="Liên kết thiếu tên miền.")
+        return _result(safe=False, hostname=hostname, summary=host_err)
 
-    if _is_raw_ip(hostname):
+    platform = _match_known_platform(hostname)
+    has_path_or_query = bool((parsed.path or "").strip("/") or (parsed.query or "").strip())
+    if not has_path_or_query:
+        detail = f"Đây là trang chủ ({hostname}), chưa phải đường dẫn tới một video cụ thể."
         checks.append(
             {
                 "id": "official_domain",
-                "label": "Tên miền chính chủ (TikTok / YouTube / Facebook)",
+                "label": "Kiểm tra tên miền & chống giả mạo",
                 "passed": False,
-                "detail": f"Chặn địa chỉ IP trực tiếp ({hostname}).",
+                "detail": detail,
             }
         )
-        return _result(safe=False, hostname=hostname, summary="Không cho phép tải từ địa chỉ IP trực tiếp.")
+        return _result(safe=False, platform=platform, hostname=hostname, summary=detail)
 
-    if _has_homograph_risk(hostname):
-        checks.append(
-            {
-                "id": "official_domain",
-                "label": "Tên miền chính chủ (TikTok / YouTube / Facebook)",
-                "passed": False,
-                "detail": f"Phát hiện tên miền quốc tế hóa / Punycode đáng ngờ ({hostname}).",
-            }
-        )
-        return _result(safe=False, hostname=hostname, summary="Tên miền có dấu hiệu giả mạo (IDN/Punycode).")
-
-    platform = _match_platform(hostname)
-    if platform is None:
-        checks.append(
-            {
-                "id": "official_domain",
-                "label": "Tên miền chính chủ (TikTok / YouTube / Facebook)",
-                "passed": False,
-                "detail": f"Tên miền '{hostname}' không nằm trong danh sách chính chủ của TikTok, YouTube hoặc Facebook.",
-            }
-        )
-        return _result(
-            safe=False,
-            hostname=hostname,
-            summary=f"Tên miền '{hostname}' không được hỗ trợ hoặc không phải trang chính chủ.",
-        )
-
-    if not _looks_like_video_path(parsed, platform):
-        checks.append(
-            {
-                "id": "official_domain",
-                "label": "Tên miền chính chủ (TikTok / YouTube / Facebook)",
-                "passed": False,
-                "detail": f"Đây là trang chủ {platform.label}, chưa phải đường dẫn tới một video cụ thể.",
-            }
-        )
-        return _result(
-            safe=False,
-            platform=platform,
-            hostname=hostname,
-            summary=f"Hãy dán đường dẫn trực tiếp của video {platform.label} thay vì trang chủ.",
-        )
-
+    domain_detail = (
+        f"Xác nhận nền tảng phổ biến {platform.label} ({hostname})."
+        if platform
+        else f"Tên miền công khai hợp lệ ({hostname}) — hỗ trợ trích xuất video mở rộng."
+    )
     checks.append(
         {
             "id": "official_domain",
-            "label": "Tên miền chính chủ (TikTok / YouTube / Facebook)",
+            "label": "Kiểm tra tên miền & chống giả mạo",
             "passed": True,
-            "detail": f"Xác nhận tên miền chính chủ {platform.label} ({hostname}).",
+            "detail": domain_detail,
         }
     )
 
@@ -496,10 +477,12 @@ def inspect_link_safety(
         }
     )
 
-    # 4. Redirect chain safety verification (especially important for short links)
+    # 4. Redirect chain safety verification
     resolved_url = url
     if resolve_redirects:
-        ok_redirect, resolved_url, redirect_detail = _check_redirect_chain(url, platform)
+        ok_redirect, resolved_url, redirect_detail, redir_platform = _check_redirect_chain(url)
+        if redir_platform is not None:
+            platform = redir_platform
         checks.append(
             {
                 "id": "redirect_chain",
@@ -526,12 +509,13 @@ def inspect_link_safety(
             }
         )
 
+    label_name = platform.label if platform else hostname
     return _result(
         safe=True,
         platform=platform,
         hostname=hostname,
         resolved_url=resolved_url,
-        summary=f"Liên kết {platform.label} an toàn và hợp lệ.",
+        summary=f"Liên kết {label_name} an toàn và hợp lệ.",
     )
 
 
@@ -648,7 +632,10 @@ def build_quality_options(
     has_ffmpeg: bool,
 ) -> tuple[list[dict[str, Any]], str, bool]:
     """Build selectable 1080p, 720p, and audio-only options from yt-dlp metadata."""
-    formats = [f for f in (info.get("formats") or []) if isinstance(f, dict)]
+    raw_formats = info.get("formats")
+    formats = [f for f in (raw_formats or []) if isinstance(f, dict)]
+    if not formats and info.get("url"):
+        formats = [info]
     duration = info.get("duration")
     if not isinstance(duration, (int, float)) or duration <= 0:
         duration = None
@@ -656,7 +643,7 @@ def build_quality_options(
     all_videos = [
         f
         for f in formats
-        if f.get("vcodec") not in (None, "none") and not f.get("has_drm") and _short_side(f) > 0
+        if f.get("vcodec") not in ("none",) and not f.get("has_drm") and (_short_side(f) > 0 or f.get("ext") in ("mp4", "webm", "mkv", "mov"))
     ]
     is_vertical = any(
         (f.get("height") or 0) > (f.get("width") or 0)
@@ -668,7 +655,6 @@ def build_quality_options(
     best_audio = _pick_best_audio(formats)
     audio_bytes = _estimate_bytes(best_audio, duration)
 
-    # 1080p option
     best_1080 = _pick_best_video(formats, 1120)
     side_1080 = _short_side(best_1080) if best_1080 else 0
     has_1080 = side_1080 >= 900
@@ -682,11 +668,9 @@ def build_quality_options(
     )
     fps_1080 = int(round(float(best_1080["fps"]))) if best_1080 and best_1080.get("fps") else None
 
-    # 720p option (also acts as fallback SD video option if source max < 720p)
     best_720 = _pick_best_video(formats, 760)
     if best_720 is None and all_videos:
-        # Some sources only report a single progressive stream > 760p; still allow 720p selector fallback
-        best_720 = min(all_videos, key=_short_side)
+        best_720 = min(all_videos, key=lambda f: _short_side(f) or 99999)
     side_720 = _short_side(best_720) if best_720 else 0
     has_video_fallback = bool(best_720 or all_videos or formats)
     v720_bytes = _estimate_bytes(best_720, duration)
@@ -695,7 +679,7 @@ def build_quality_options(
     res_720 = (
         f"{int(best_720['width'])}×{int(best_720['height'])}"
         if best_720 and best_720.get("width") and best_720.get("height")
-        else (f"{side_720}p" if side_720 else "720p")
+        else (f"{side_720}p" if side_720 else "Chất lượng gốc")
     )
     fps_720 = int(round(float(best_720["fps"]))) if best_720 and best_720.get("fps") else None
 
@@ -707,11 +691,7 @@ def build_quality_options(
 
     audio_ext = "MP3" if has_ffmpeg else "M4A"
     audio_abr = int(round(float(best_audio["abr"]))) if best_audio and best_audio.get("abr") else (192 if has_ffmpeg else 128)
-    audio_est = (
-        int(192 * 1000 / 8 * duration)
-        if has_ffmpeg and duration
-        else audio_bytes
-    )
+    audio_est = int(192 * 1000 / 8 * duration) if has_ffmpeg and duration else audio_bytes
 
     options: list[dict[str, Any]] = [
         {
@@ -719,14 +699,14 @@ def build_quality_options(
             "kind": "video",
             "label": "1080p Full HD",
             "container": "MP4",
-            "resolution": res_1080 if has_1080 else (f"Nguồn tối đa {max_source_side}p" if max_source_side else "Không có bản 1080p"),
+            "resolution": res_1080 if has_1080 else (f"Nguồn tối đa {max_source_side}p" if max_source_side else "Không rõ luồng 1080p"),
             "fps": fps_1080 if has_1080 else None,
             "estimated_size": _format_size(v1080_bytes) if has_1080 else None,
             "available": has_1080,
             "description": (
                 "Sắc nét nhất, tự động ghép hình ảnh + âm thanh MP4."
                 if has_1080
-                else "Video gốc không có luồng 1080p — hãy chọn 720p hoặc Chỉ Audio."
+                else "Video nguồn không có luồng 1080p — hãy chọn 720p/Gốc hoặc Chỉ Audio."
             ),
         },
         {
@@ -778,7 +758,20 @@ def _safe_thumbnail_url(raw_thumb: Any) -> str | None:
     return thumb
 
 
-def _extract_info(target_url: str, platform: PlatformSpec) -> dict[str, Any]:
+def _has_unsafe_stream_protocol(info: dict[str, Any]) -> bool:
+    for item in [info, *(info.get("formats") or [])]:
+        if not isinstance(item, dict):
+            continue
+        proto = str(item.get("protocol") or "").lower()
+        if proto and proto in ("file", "ftp", "ftps", "sftp", "smb"):
+            return True
+        stream_url = str(item.get("url") or "").strip().lower()
+        if stream_url and stream_url.startswith(("file:", "ftp:", "javascript:", "data:")):
+            return True
+    return False
+
+
+def _extract_info(target_url: str, platform_label: str) -> dict[str, Any]:
     try:
         import yt_dlp  # type: ignore
     except ImportError as exc:
@@ -796,7 +789,7 @@ def _extract_info(target_url: str, platform: PlatformSpec) -> dict[str, Any]:
         "retries": 2,
         "extractor_retries": 2,
         "skip_download": True,
-        "allowed_extractors": list(platform.allowed_extractors),
+        "enable_file_urls": False,
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -806,21 +799,26 @@ def _extract_info(target_url: str, platform: PlatformSpec) -> dict[str, Any]:
         lowered = msg.lower()
         if "drm" in lowered:
             raise HTTPException(400, "Nội dung có bảo vệ DRM nên không hỗ trợ tải xuống.") from exc
+        if "unsupported url" in lowered or "no video formats" in lowered:
+            raise HTTPException(
+                404,
+                f"Liên kết an toàn nhưng không tìm thấy luồng video/âm thanh nào có thể tải trên {platform_label}.",
+            ) from exc
         if "private" in lowered or "login" in lowered or "sign in" in lowered or "cookies" in lowered:
             raise HTTPException(
                 400,
-                f"Video {platform.label} này ở chế độ riêng tư hoặc yêu cầu đăng nhập.",
+                f"Video trên {platform_label} đang ở chế độ riêng tư hoặc yêu cầu đăng nhập.",
             ) from exc
         if "unavailable" in lowered or "not exist" in lowered or "removed" in lowered:
-            raise HTTPException(404, f"Không tìm thấy video hoặc video trên {platform.label} đã bị gỡ.") from exc
-        logger.warning("Media inspect failed for {}: {}", platform.key, msg)
+            raise HTTPException(404, f"Không tìm thấy video hoặc video trên {platform_label} đã bị gỡ.") from exc
+        logger.warning("Media inspect failed for {}: {}", platform_label, msg)
         raise HTTPException(
             502,
-            f"Không lấy được thông tin video từ {platform.label}: {msg[:240] or 'Lỗi kết nối'}",
+            f"Không lấy được thông tin video từ {platform_label}: {msg[:240] or 'Lỗi kết nối'}",
         ) from exc
 
     if not isinstance(info, dict):
-        raise HTTPException(502, f"Không đọc được dữ liệu video từ {platform.label}.")
+        raise HTTPException(502, f"Không đọc được dữ liệu video từ {platform_label}.")
     if "entries" in info and isinstance(info["entries"], list):
         first = next((item for item in info["entries"] if isinstance(item, dict)), None)
         if first is None:
@@ -830,8 +828,11 @@ def _extract_info(target_url: str, platform: PlatformSpec) -> dict[str, Any]:
 
 
 def inspect_media_url(raw_url: str) -> dict[str, Any]:
-    """Verify link safety first; if safe, fetch video metadata and quality presets."""
+    """Verify link safety first; if safe, fetch video metadata, quality presets, and Settings providers."""
     safety = inspect_link_safety(raw_url, resolve_redirects=True)
+    providers_summary = list_configured_ai_providers()
+    ai_ready = any(p["configured"] for p in providers_summary)
+
     if not safety["safe"]:
         return {
             "safe": False,
@@ -840,13 +841,39 @@ def inspect_media_url(raw_url: str) -> dict[str, Any]:
             "options": [],
             "default_preset": None,
             "ffmpeg_available": bool(find_ffmpeg_binary()),
+            "ai_available": ai_ready,
+            "ai_providers": providers_summary,
         }
 
-    platform = _PLATFORM_BY_KEY[safety["platform"]]
+    platform_label = str(safety.get("platform_label") or safety.get("hostname") or "Web Video")
     target_url = safety["resolved_url"] or safety["normalized_url"]
-    info = _extract_info(target_url, platform)
+    info = _extract_info(target_url, platform_label)
 
-    # 5. Content & policy check (reject DRM, active livestreams, overly long streams)
+    # 5. Content & policy check (reject local protocols, DRM, livestreams, >4h streams)
+    if _has_unsafe_stream_protocol(info):
+        safety["checks"].append(
+            {
+                "id": "content_policy",
+                "label": "Kiểm tra nội dung & chính sách tải",
+                "passed": False,
+                "detail": "Luồng media sử dụng giao thức không được phép (không phải HTTP/HTTPS).",
+            }
+        )
+        safety["safe"] = False
+        safety["status"] = "unsafe"
+        safety["risk_level"] = "high"
+        safety["summary"] = "Luồng media không an toàn — đã chặn."
+        return {
+            "safe": False,
+            "safety": safety,
+            "media": None,
+            "options": [],
+            "default_preset": None,
+            "ffmpeg_available": bool(find_ffmpeg_binary()),
+            "ai_available": ai_ready,
+            "ai_providers": providers_summary,
+        }
+
     formats = [f for f in (info.get("formats") or []) if isinstance(f, dict)]
     has_drm = bool(info.get("_has_drm")) or (
         bool(formats) and all(bool(f.get("has_drm")) for f in formats)
@@ -871,6 +898,8 @@ def inspect_media_url(raw_url: str) -> dict[str, Any]:
             "options": [],
             "default_preset": None,
             "ffmpeg_available": bool(find_ffmpeg_binary()),
+            "ai_available": ai_ready,
+            "ai_providers": providers_summary,
         }
 
     if info.get("is_live"):
@@ -892,6 +921,8 @@ def inspect_media_url(raw_url: str) -> dict[str, Any]:
             "options": [],
             "default_preset": None,
             "ffmpeg_available": bool(find_ffmpeg_binary()),
+            "ai_available": ai_ready,
+            "ai_providers": providers_summary,
         }
 
     duration = info.get("duration")
@@ -914,7 +945,13 @@ def inspect_media_url(raw_url: str) -> dict[str, Any]:
             "options": [],
             "default_preset": None,
             "ffmpeg_available": bool(find_ffmpeg_binary()),
+            "ai_available": ai_ready,
+            "ai_providers": providers_summary,
         }
+
+    extractor_label = str(info.get("extractor_key") or info.get("extractor") or "").strip()
+    if safety.get("platform") == "web" and extractor_label and extractor_label.lower() != "generic":
+        platform_label = extractor_label
 
     safety["checks"].append(
         {
@@ -928,7 +965,7 @@ def inspect_media_url(raw_url: str) -> dict[str, Any]:
     has_ffmpeg = bool(find_ffmpeg_binary())
     options, default_preset, is_vertical = build_quality_options(info, has_ffmpeg=has_ffmpeg)
 
-    title = str(info.get("title") or info.get("fulltitle") or f"Video {platform.label}").strip()
+    title = str(info.get("title") or info.get("fulltitle") or f"Video {platform_label}").strip()
     uploader = str(info.get("uploader") or info.get("channel") or info.get("creator") or "").strip()
 
     return {
@@ -941,13 +978,19 @@ def inspect_media_url(raw_url: str) -> dict[str, Any]:
             "duration_text": _format_duration(duration),
             "thumbnail": _safe_thumbnail_url(info.get("thumbnail")),
             "webpage_url": target_url,
-            "platform": platform.key,
-            "platform_label": platform.label,
+            "platform": safety.get("platform") or "web",
+            "platform_label": platform_label,
             "is_vertical": is_vertical,
         },
         "options": options,
         "default_preset": default_preset,
         "ffmpeg_available": has_ffmpeg,
+        "ai_available": ai_ready,
+        "ai_providers": providers_summary,
+        "ai_voices": list(VOICE_CATALOG),
+        "ai_languages": [
+            {"code": code, "label": label} for code, label in TARGET_LANGUAGES.items()
+        ],
     }
 
 
@@ -982,7 +1025,6 @@ def _format_selector_for_preset(preset: str, *, is_vertical: bool, has_ffmpeg: b
                 "best[height<=1080][ext=mp4]/best[height<=1080]/best"
             )
         return "best[height<=1080][ext=mp4]/best[height<=1080]/best"
-    # video_720
     if is_vertical:
         if has_ffmpeg:
             return (
@@ -1010,7 +1052,12 @@ def _snapshot_job(job: dict[str, Any]) -> dict[str, Any]:
         "job_id": job["job_id"],
         "status": job["status"],
         "stage": job["stage"],
+        "stage_detail": job.get("stage_detail") or "",
         "preset": job["preset"],
+        "ai_mode": job.get("ai_mode") or "none",
+        "target_lang": job.get("target_lang") or "vi",
+        "transcribe_model": job.get("transcribe_model"),
+        "tts_model": job.get("tts_model"),
         "platform": job["platform"],
         "platform_label": job["platform_label"],
         "title": job["title"],
@@ -1023,6 +1070,11 @@ def _snapshot_job(job: dict[str, Any]) -> dict[str, Any]:
         "file_size": job["file_size"],
         "file_size_text": _format_size(job["file_size"]),
         "download_url": f"/api/media/files/{job['job_id']}" if job["status"] == "completed" and job["file_path"] else None,
+        "subtitle_url": f"/api/media/subtitles/{job['job_id']}" if job["status"] == "completed" and job.get("subtitle_path") else None,
+        "subtitle_filename": job.get("subtitle_filename"),
+        "source_language": job.get("source_language"),
+        "segment_count": job.get("segment_count") or 0,
+        "segments": job.get("segments") or [],
         "error": job["error"],
         "created_at": job["created_at"],
     }
@@ -1071,7 +1123,6 @@ def cleanup_expired_media_jobs(max_age_seconds: float = JOB_TTL_SECONDS) -> int:
         _cleanup_job_dir(d)
         removed += 1
 
-    # Sweep orphaned directories on disk left over from previous app runs
     if MEDIA_DIR.exists():
         with _JOBS_LOCK:
             live_ids = set(_JOBS.keys())
@@ -1085,6 +1136,66 @@ def cleanup_expired_media_jobs(max_age_seconds: float = JOB_TTL_SECONDS) -> int:
             except OSError:
                 continue
     return removed
+
+
+def _fetch_platform_subtitles(target_url: str, job_dir: Path, info: Any) -> Path | None:
+    """Best-effort 0-quota fetch of official/auto platform captions (preferring word-timed json3)."""
+    if not isinstance(info, dict):
+        return None
+    subs = info.get("subtitles") or {}
+    auto_subs = info.get("automatic_captions") or {}
+    if not subs and not auto_subs:
+        return None
+
+    # Prefer original video language, then English / common languages
+    orig_lang = str(info.get("language") or "").strip()
+    preferred = [c for c in (orig_lang, "en", "en-US", "en-orig", "ja", "ko", "zh", "vi") if c]
+    chosen_lang = ""
+    use_auto = False
+    for lang in preferred:
+        if lang in subs:
+            chosen_lang = lang
+            use_auto = False
+            break
+    if not chosen_lang and subs:
+        chosen_lang = next((k for k in subs.keys() if k != "live_chat"), "")
+    if not chosen_lang:
+        for lang in preferred:
+            if lang in auto_subs:
+                chosen_lang = lang
+                use_auto = True
+                break
+    if not chosen_lang:
+        return None
+
+    sub_dir = job_dir / "platform_subs"
+    sub_dir.mkdir(exist_ok=True)
+    try:
+        import yt_dlp  # type: ignore
+
+        sub_opts: dict[str, Any] = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "noplaylist": True,
+            "socket_timeout": 12,
+            "writesubtitles": not use_auto,
+            "writeautomaticsub": use_auto,
+            "subtitleslangs": [chosen_lang],
+            "subtitlesformat": "json3/vtt/srt",
+            "outtmpl": str(sub_dir / "cap.%(ext)s"),
+        }
+        with yt_dlp.YoutubeDL(sub_opts) as ydl:
+            ydl.download([target_url])
+    except Exception as exc:
+        logger.debug("Optional platform subtitle fetch skipped: {}", str(exc)[:140])
+        return None
+
+    for ext in (".json3", ".vtt", ".srt"):
+        matches = sorted(sub_dir.glob(f"*{ext}"))
+        if matches and matches[0].is_file() and matches[0].stat().st_size > 32:
+            return matches[0]
+    return None
 
 
 def _find_downloaded_file(job_dir: Path) -> Path | None:
@@ -1104,14 +1215,16 @@ def _find_downloaded_file(job_dir: Path) -> Path | None:
 def _run_download_worker(
     job_id: str,
     target_url: str,
-    platform: PlatformSpec,
+    platform_label: str,
     preset: str,
     is_vertical: bool,
+    ai_options: AIProcessOptions | None = None,
 ) -> None:
     job_dir = validate_managed_path(MEDIA_DIR / job_id, MEDIA_DIR)
     job_dir.mkdir(parents=True, exist_ok=True)
     ffmpeg_bin = find_ffmpeg_binary()
     has_ffmpeg = bool(ffmpeg_bin)
+    ai_enabled = bool(ai_options and ai_options.mode != "none" and preset != "audio_only")
 
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
@@ -1126,6 +1239,7 @@ def _run_download_worker(
             return
         job["status"] = "running"
         job["stage"] = "downloading"
+        job["stage_detail"] = "Đang tải video gốc trước khi xử lý AI…" if ai_enabled else ""
 
     def progress_hook(data: dict[str, Any]) -> None:
         if cancel_event.is_set():
@@ -1138,7 +1252,8 @@ def _run_download_worker(
             if status == "downloading":
                 downloaded = int(data.get("downloaded_bytes") or 0)
                 total = int(data.get("total_bytes") or data.get("total_bytes_estimate") or 0)
-                pct = round(min(99.0, (downloaded / total) * 100.0), 1) if total > 0 else entry["percent"]
+                raw_pct = min(99.0, (downloaded / total) * 100.0) if total > 0 else 0.0
+                pct = round(raw_pct * 0.35, 1) if ai_enabled else (round(raw_pct, 1) if total > 0 else entry["percent"])
                 entry["stage"] = "downloading"
                 entry["downloaded_bytes"] = downloaded
                 entry["total_bytes"] = total or None
@@ -1149,7 +1264,7 @@ def _run_download_worker(
                 entry["eta"] = int(eta) if isinstance(eta, (int, float)) and eta >= 0 else None
             elif status == "finished":
                 entry["stage"] = "merging"
-                entry["percent"] = 99.0
+                entry["percent"] = 35.0 if ai_enabled else 99.0
                 entry["speed"] = None
                 entry["eta"] = 0
 
@@ -1160,7 +1275,17 @@ def _run_download_worker(
             entry = _JOBS.get(job_id)
             if entry:
                 entry["stage"] = "merging"
-                entry["percent"] = 99.5
+                entry["percent"] = 36.0 if ai_enabled else 99.5
+
+    def ai_progress(stage: str, pct: float, detail: str) -> None:
+        with _JOBS_LOCK:
+            entry = _JOBS.get(job_id)
+            if entry:
+                entry["stage"] = stage
+                entry["percent"] = round(min(99.5, max(0.0, float(pct))), 1)
+                entry["stage_detail"] = detail
+                entry["speed"] = None
+                entry["eta"] = None
 
     try:
         import yt_dlp  # type: ignore
@@ -1189,9 +1314,9 @@ def _run_download_worker(
         "fragment_retries": 3,
         "restrictfilenames": True,
         "max_filesize": MAX_MEDIA_FILE_BYTES,
+        "enable_file_urls": False,
         "format": fmt_selector,
         "outtmpl": str(job_dir / "media.%(ext)s"),
-        "allowed_extractors": list(platform.allowed_extractors),
         "progress_hooks": [progress_hook],
         "postprocessor_hooks": [postprocessor_hook],
     }
@@ -1220,6 +1345,34 @@ def _run_download_worker(
         if output_path is None:
             raise RuntimeError("Không tìm thấy tệp sau khi tải hoàn tất.")
         safe_path = validate_managed_path(output_path, job_dir)
+
+        ai_result: dict[str, Any] | None = None
+        if ai_enabled and ai_options is not None:
+            if not ffmpeg_bin:
+                raise RuntimeError("Thiếu FFmpeg nên không thể gắn phụ đề cứng hoặc lồng tiếng.")
+            platform_sub_path: Path | None = None
+            if ai_options.asr_engine == "auto":
+                platform_sub_path = _fetch_platform_subtitles(target_url, job_dir, info)
+            ai_result = process_video_with_ai(
+                ffmpeg_bin,
+                safe_path,
+                job_dir,
+                ai_options,
+                source_subtitle_path=platform_sub_path,
+                cancel_event=cancel_event,
+                on_progress=ai_progress,
+            )
+            sub_tmp_dir = job_dir / "platform_subs"
+            if sub_tmp_dir.is_dir():
+                shutil.rmtree(sub_tmp_dir, ignore_errors=True)
+            processed_path = validate_managed_path(ai_result["output_path"], job_dir)
+            if safe_path != processed_path and safe_path.is_file():
+                try:
+                    safe_path.unlink()
+                except OSError:
+                    pass
+            safe_path = processed_path
+
         file_size = safe_path.stat().st_size
 
         title = ""
@@ -1230,29 +1383,58 @@ def _run_download_worker(
             "video_720": "720p",
             "audio_only": "audio",
         }
+        base_suffix = suffix_map.get(preset, "media")
+        if ai_enabled and ai_options is not None:
+            lang_tag = ai_options.target_lang.upper()
+            if ai_options.mode == "hardsub":
+                base_suffix = f"{base_suffix} Sub-{lang_tag}"
+            elif ai_options.burn_subtitles:
+                base_suffix = f"{base_suffix} Dub+Sub-{lang_tag}"
+            else:
+                base_suffix = f"{base_suffix} Dub-{lang_tag}"
+
+        srt_safe_path: Path | None = None
+        if ai_result and ai_result.get("srt_path"):
+            srt_candidate = validate_managed_path(ai_result["srt_path"], job_dir)
+            if srt_candidate.is_file() and not srt_candidate.is_symlink():
+                srt_safe_path = srt_candidate
+
         with _JOBS_LOCK:
             entry = _JOBS.get(job_id)
             if entry:
-                final_title = title or entry["title"] or f"Video {platform.label}"
+                final_title = title or entry["title"] or f"Video {platform_label}"
                 entry["title"] = final_title
                 entry["file_path"] = str(safe_path)
                 entry["filename"] = sanitize_download_filename(
                     final_title,
-                    suffix_map.get(preset, "media"),
+                    base_suffix,
                     safe_path.suffix.lstrip("."),
                 )
                 entry["file_size"] = int(file_size)
+                if srt_safe_path is not None:
+                    entry["subtitle_path"] = str(srt_safe_path)
+                    entry["subtitle_filename"] = sanitize_download_filename(
+                        final_title,
+                        f"Sub-{ai_options.target_lang.upper() if ai_options else 'VI'}",
+                        "srt",
+                    )
+                if ai_result:
+                    entry["source_language"] = ai_result.get("source_language")
+                    entry["segment_count"] = int(ai_result.get("segment_count") or 0)
+                    entry["segments"] = ai_result.get("segments") or []
                 entry["percent"] = 100.0
                 entry["speed"] = None
                 entry["eta"] = 0
                 entry["stage"] = "completed"
+                entry["stage_detail"] = "Hoàn tất!"
                 entry["status"] = "completed"
-    except _DownloadCanceled:
+    except (_DownloadCanceled, AICanceledError):
         with _JOBS_LOCK:
             entry = _JOBS.get(job_id)
             if entry:
                 entry["status"] = "canceled"
                 entry["stage"] = "canceled"
+                entry["stage_detail"] = "Đã hủy tác vụ."
                 entry["error"] = "Đã hủy tải xuống."
         _cleanup_job_dir(job_dir)
     except Exception as exc:
@@ -1262,6 +1444,7 @@ def _run_download_worker(
             if entry:
                 entry["status"] = "failed"
                 entry["stage"] = "failed"
+                entry["stage_detail"] = ""
                 entry["error"] = str(exc).strip()[:280] or "Tải xuống thất bại."
         _cleanup_job_dir(job_dir)
 
@@ -1272,20 +1455,86 @@ def start_media_download(
     *,
     title: str = "",
     is_vertical: bool = False,
+    ai_options: AIProcessOptions | None = None,
 ) -> dict[str, Any]:
-    """Re-verify URL safety and launch a background media download job."""
+    """Re-verify URL safety and launch a background media download (and optional AI studio) job."""
     if preset not in VALID_PRESETS:
         raise HTTPException(
             400,
             f"Chất lượng '{preset}' không hợp lệ. Chỉ hỗ trợ: video_1080, video_720, audio_only.",
         )
 
+    opts = ai_options or AIProcessOptions()
+    if opts.mode not in VALID_AI_MODES:
+        raise HTTPException(400, f"Chế độ AI '{opts.mode}' không hợp lệ.")
+    if opts.mode != "none":
+        if preset == "audio_only":
+            raise HTTPException(400, "Chế độ Hardsub / Lồng tiếng AI chỉ áp dụng cho video (1080p hoặc 720p).")
+        if opts.target_lang not in TARGET_LANGUAGES:
+            raise HTTPException(400, f"Ngôn ngữ đích '{opts.target_lang}' chưa được hỗ trợ.")
+        if opts.voice not in VALID_VOICE_IDS:
+            raise HTTPException(400, f"Giọng đọc '{opts.voice}' không hợp lệ.")
+        if opts.subtitle_style not in VALID_SUBTITLE_STYLES:
+            raise HTTPException(400, f"Kiểu phụ đề '{opts.subtitle_style}' không hợp lệ.")
+        if opts.subtitle_animation not in VALID_SUBTITLE_ANIMATIONS:
+            raise HTTPException(400, f"Hiệu ứng phụ đề '{opts.subtitle_animation}' không hợp lệ.")
+        if opts.asr_engine not in VALID_ASR_ENGINES:
+            raise HTTPException(400, f"Nguồn ASR '{opts.asr_engine}' không hợp lệ.")
+        if opts.whisper_model not in VALID_WHISPER_MODELS:
+            raise HTTPException(400, f"Model Whisper '{opts.whisper_model}' không hợp lệ.")
+        try:
+            provider, _ = resolve_configured_ai_provider(opts.provider_id)
+            tr_model = normalize_model_id(
+                opts.transcribe_model, default_transcribe_model_for(provider)
+            )
+            tts_provider_id = opts.tts_provider_id.strip() or provider.id
+            tts_model = ""
+            if opts.mode == "dub":
+                if tts_provider_id == PIPER_TTS_PROVIDER_ID:
+                    if not is_piper_tts_available():
+                        raise RuntimeError("Thiếu thư viện piper-tts trên máy chủ.")
+                    tts_model = "piper-onnx"
+                elif tts_provider_id == EDGE_TTS_PROVIDER_ID:
+                    if not is_edge_tts_available():
+                        raise RuntimeError("Thiếu thư viện edge-tts trên máy chủ.")
+                    tts_model = "edge-neural"
+                else:
+                    tts_provider, _ = resolve_configured_ai_provider(tts_provider_id)
+                    tts_provider_id = tts_provider.id
+                    tts_model = normalize_model_id(
+                        opts.tts_model, default_tts_model_for(tts_provider)
+                    )
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        opts = AIProcessOptions(
+            mode=opts.mode,
+            provider_id=provider.id,
+            tts_provider_id=tts_provider_id,
+            target_lang=opts.target_lang,
+            voice=opts.voice,
+            burn_subtitles=opts.burn_subtitles,
+            bilingual=opts.bilingual,
+            subtitle_style=opts.subtitle_style,
+            subtitle_animation=opts.subtitle_animation,
+            keep_original_audio=opts.keep_original_audio,
+            original_volume=opts.original_volume,
+            transcribe_model=tr_model,
+            tts_model=tts_model,
+            context_hint=str(opts.context_hint or "").strip()[:500],
+            asr_engine=opts.asr_engine,
+            whisper_model=opts.whisper_model,
+            video_title=str(opts.video_title or title or "").strip()[:240],
+        )
+        if not find_ffmpeg_binary():
+            raise HTTPException(503, "Thiếu FFmpeg trên máy chủ để xử lý phụ đề cứng và lồng tiếng.")
+
     safety = inspect_link_safety(raw_url, resolve_redirects=True)
     if not safety["safe"]:
         raise HTTPException(400, safety["summary"])
 
     cleanup_expired_media_jobs()
-    platform = _PLATFORM_BY_KEY[safety["platform"]]
+    platform_key = str(safety.get("platform") or "web")
+    platform_label = str(safety.get("platform_label") or safety.get("hostname") or "Web Video")
     target_url = safety["resolved_url"] or safety["normalized_url"]
     job_id = uuid.uuid4().hex[:12]
     job_dir = validate_managed_path(MEDIA_DIR / job_id, MEDIA_DIR)
@@ -1303,10 +1552,17 @@ def start_media_download(
             "job_id": job_id,
             "status": "pending",
             "stage": "preparing",
+            "stage_detail": "",
             "preset": preset,
-            "platform": platform.key,
-            "platform_label": platform.label,
-            "title": str(title or "").strip() or f"Video {platform.label}",
+            "ai_mode": opts.mode,
+            "target_lang": opts.target_lang,
+            "provider_id": opts.provider_id if opts.mode != "none" else None,
+            "tts_provider_id": opts.tts_provider_id if opts.mode == "dub" else None,
+            "transcribe_model": opts.transcribe_model if opts.mode != "none" else None,
+            "tts_model": opts.tts_model if opts.mode == "dub" else None,
+            "platform": platform_key,
+            "platform_label": platform_label,
+            "title": str(title or "").strip() or f"Video {platform_label}",
             "percent": 0.0,
             "downloaded_bytes": 0,
             "total_bytes": None,
@@ -1315,6 +1571,11 @@ def start_media_download(
             "filename": None,
             "file_path": None,
             "file_size": None,
+            "subtitle_path": None,
+            "subtitle_filename": None,
+            "source_language": None,
+            "segment_count": 0,
+            "segments": [],
             "job_dir": str(job_dir),
             "error": None,
             "created_at": time.time(),
@@ -1325,7 +1586,7 @@ def start_media_download(
 
     worker = threading.Thread(
         target=_run_download_worker,
-        args=(job_id, target_url, platform, preset, bool(is_vertical)),
+        args=(job_id, target_url, platform_label, preset, bool(is_vertical), opts),
         name=f"media-dl-{job_id}",
         daemon=True,
     )
@@ -1395,3 +1656,20 @@ def resolve_media_job_file(job_id: str) -> tuple[Path, str, str]:
         raise HTTPException(404, "Tệp đã bị xóa hoặc không còn tồn tại.")
     media_type, _ = mimetypes.guess_type(filename)
     return safe_path, filename, media_type or "application/octet-stream"
+
+
+def resolve_media_job_subtitle(job_id: str) -> tuple[Path, str]:
+    validate_job_id(job_id)
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            raise HTTPException(404, "Không tìm thấy tác vụ tải video.")
+        if job["status"] != "completed" or not job.get("subtitle_path"):
+            raise HTTPException(404, "Tác vụ này không có tệp phụ đề SRT.")
+        raw_path = Path(job["subtitle_path"])
+        filename = str(job.get("subtitle_filename") or "subtitles.srt")
+
+    safe_path = validate_managed_path(raw_path, MEDIA_DIR)
+    if safe_path.is_symlink() or not safe_path.is_file():
+        raise HTTPException(404, "Tệp phụ đề đã bị xóa hoặc không còn tồn tại.")
+    return safe_path, filename
