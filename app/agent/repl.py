@@ -137,7 +137,7 @@ class _Out:
     def text(self) -> str:
         data, total = self.data, self.total
         cut = f"\n[output cut: {total - len(data)} bytes more]" if total > len(data) else ""
-        return data.decode("utf-8", errors="replace") + cut
+        return sandbox.decode_output(data) + cut
 
 
 class Run:
@@ -180,9 +180,9 @@ class Run:
         return None
 
     def read(self) -> str:
-        data = self.out.read_from(self.cursor)
-        self.cursor += len(data)
-        return data.decode("utf-8", errors="replace")
+        chunk = self.out.read_from(self.cursor)
+        self.cursor += len(chunk)
+        return sandbox.decode_output(chunk)
 
     def write(self, text: str) -> None:
         raise OSError("a created tool does not read input")

@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import difflib
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
@@ -39,10 +39,6 @@ from app.region_policy import text_object_in_preserve_region
 from app.translation.cost import preflight_cost_usd
 from app.translation.vision import VisionPageTranslator, collapse_repeated_lines, drawn_in_art
 from app.translation.context import ChapterMemory
-
-
-router = APIRouter(prefix="/api/translate", tags=["translation"])
-MAX_CHAPTER_TRANSLATION_OBJECTS = 300
 
 
 def validate_lang_code(value: str) -> str:

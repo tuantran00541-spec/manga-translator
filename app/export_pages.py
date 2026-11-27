@@ -9,14 +9,12 @@ import numpy as np
 from PIL import Image
 
 from app.downloader.slicer import _find_low_content_cut, _get_row_scores
-from app.security import MAX_IMAGE_PIXELS
 
 FORMATS = {"png": ("PNG", "png"), "jpg": ("JPEG", "jpg"), "webp": ("WEBP", "webp")}
 MIN_WIDTH, MAX_WIDTH = 320, 4000
 MIN_SPLIT, MAX_SPLIT = 1000, 30000
 SPLIT_SEARCH_SHARE = 0.25
 WEBP_MAX_DIM = 16000
-WEBP_MAX_HEIGHT = WEBP_MAX_DIM
 JPEG_MAX_DIM = 65500
 
 
@@ -152,10 +150,6 @@ def finish_page(image: Image.Image, options: ExportOptions) -> list[bytes]:
     try:
         if options.width and working.width != options.width:
             new_height = max(1, round(working.height * options.width / working.width))
-            if options.width * new_height > MAX_IMAGE_PIXELS:
-                raise ValueError(
-                    f"Resized image {options.width}x{new_height} exceeds maximum pixel limit"
-                )
             resized = working.resize((options.width, new_height), Image.LANCZOS)
             if owns_working:
                 working.close()

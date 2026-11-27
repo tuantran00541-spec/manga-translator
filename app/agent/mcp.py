@@ -306,6 +306,7 @@ class _StdioTransport:
                                      text=True, encoding="utf-8", errors="replace", bufsize=1)
         self.waiting: dict[int, dict] = {}
         self.on_notify = None
+        self.closed = False
         self.lock = threading.Condition()
         self.errors: collections.deque[str] = collections.deque(maxlen=20)
         threading.Thread(target=self._read, daemon=True, name="mcp-stdio").start()
@@ -321,27 +322,30 @@ class _StdioTransport:
         return f": {tail}" if tail else ""
 
     def _read(self) -> None:
-        for line in self.proc.stdout:
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            if "method" in message and "id" in message:
-                result = {} if message["method"] == "ping" else {"roots": []} if message["method"] == "roots/list" else None
-                reply = {"jsonrpc": "2.0", "id": message["id"]}
-                reply.update({"result": result} if result is not None else {"error": {"code": -32601, "message": "not supported"}})
-                self.send(reply)
-                continue
-            if "method" in message:
-                if self.on_notify is not None:
-                    self.on_notify(str(message["method"]))
-                continue
+        try:
+            for line in self.proc.stdout:
+                try:
+                    message = json.loads(line)
+                except ValueError:
+                    continue
+                if "method" in message and "id" in message:
+                    result = {} if message["method"] == "ping" else {"roots": []} if message["method"] == "roots/list" else None
+                    reply = {"jsonrpc": "2.0", "id": message["id"]}
+                    reply.update({"result": result} if result is not None else {"error": {"code": -32601, "message": "not supported"}})
+                    self.send(reply)
+                    continue
+                if "method" in message:
+                    if self.on_notify is not None:
+                        self.on_notify(str(message["method"]))
+                    continue
+                with self.lock:
+                    if message.get("id") in self.waiting:
+                        self.waiting[message["id"]] = message
+                        self.lock.notify_all()
+        finally:
             with self.lock:
-                if message.get("id") in self.waiting:
-                    self.waiting[message["id"]] = message
-                    self.lock.notify_all()
-        with self.lock:
-            self.lock.notify_all()
+                self.closed = True
+                self.lock.notify_all()
 
     def send(self, message: dict) -> None:
         try:
@@ -355,16 +359,20 @@ class _StdioTransport:
             self.waiting[message["id"]] = {}
         self.send(message)
         with self.lock:
-            if not self.lock.wait_for(lambda: self.waiting[message["id"]] or self.proc.poll() is not None, timeout):
+            if not self.lock.wait_for(lambda: self.waiting[message["id"]] or self.closed or self.proc.poll() is not None, timeout):
                 self.waiting.pop(message["id"], None)
                 raise MCPError("server did not answer in time" + self.why())
             reply = self.waiting.pop(message["id"])
         if not reply:
-            raise MCPError(f"server exited (code {self.proc.poll()}){self.why()}")
+            try:
+                code = self.proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                code = self.proc.poll()
+            raise MCPError(f"server exited (code {code}){self.why()}")
         return reply
 
     def alive(self) -> bool:
-        return self.proc.poll() is None
+        return not self.closed and self.proc.poll() is None
 
     def close(self) -> None:
         try:

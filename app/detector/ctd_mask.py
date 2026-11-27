@@ -144,7 +144,7 @@ def chromatic_stroke_mask(crop: np.ndarray) -> tuple[np.ndarray, np.ndarray] | N
     visible = np.bincount(labels[ridges], minlength=count)
     keep = (
         (area >= 30) & (area <= 0.30 * strong.size) & (w >= 4) & (h >= 4)
-        & (area <= 0.58 * w * h)
+        & (area <= 0.64 * w * h)
         & (peaks >= np.maximum(10, 0.2 * area)) & (visible >= 0.1 * area)
     )
     keep[0] = False

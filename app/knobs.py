@@ -20,7 +20,6 @@ _ALL = (
     Knob("detect.confidence", 0.25, 0.10, 0.60, "detector score a text box needs"),
     Knob("detect.nms_iou", 0.7, 0.4, 0.9, "overlap above which two detections are one (Ultralytics' default)"),
     Knob("detect.box_pad", 16, 0, 48, "pixels added round a box, as Kiuyha can stop short of a wide line's last letter"),
-    Knob("detect.edge_touch", 3, 0, 12, "a box this close to an inner band edge was cut by it"),
     Knob("detect.union_share", 0.3, 0.1, 0.9, "boxes sharing this much of the smaller one are one text"),
     Knob("detect.same_line", 0.7, 0.4, 0.95, "overlapping boxes sharing this much of the shorter height are one line"),
     Knob("detect.same_line_x", 0.1, 0.02, 0.5, "and sharing this much of the narrower width, so an edge sliver is a neighbour, not a fragment"),

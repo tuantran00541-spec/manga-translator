@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-import os
-
 import requests
-
-DEFAULT_DEEPSEEK_MODEL = os.getenv(
-    "DEEPSEEK_VISUAL_QC_MODEL",
-    "deepseek-v4-flash-vision-exp",
-)
 
 
 def _redact_secret(text: object, secret: str) -> str:

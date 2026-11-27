@@ -30,7 +30,14 @@ def test_snapshot_rejects_omitted_large_files_and_symlinks(tmp_path):
     large.write_bytes(b'x' * (isolate.MAX_FILE_BYTES + 1))
     assert isolate.snapshot(root, tmp_path / 'copy') is None
     large.unlink()
-    (root / 'link').symlink_to('missing')
+    link = root / 'link'
+    try:
+        link.symlink_to('missing')
+    except OSError:
+        outside = tmp_path / 'outside'
+        outside.mkdir()
+        proc = subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(outside)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr or proc.stdout
     assert isolate.snapshot(root, tmp_path / 'copy2') is None
 
 

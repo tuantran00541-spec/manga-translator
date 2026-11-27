@@ -193,20 +193,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
 (() => {
   "use strict";
 
-  const baseRenderTranslations = window.renderTranslations;
-  if (typeof baseRenderTranslations === "function") {
-    window.renderTranslations = async function renderTranslationsWithReviewUrl(pageIndex) {
-      const result = await baseRenderTranslations(pageIndex);
-      const page = window.currentManifest?.pages?.[Number(pageIndex)];
-      if (page?.rendered && window.currentChapterId) {
-        const url = `/api/download/${encodeURIComponent(window.currentChapterId)}/${Number(pageIndex)}`;
-        page.rendered = url;
-        page._reviewRenderedUrl = url;
-      }
-      return result;
-    };
-  }
-
   function restoreReviewWorkspaceState(workspace) {
     const state = workspace?._reviewRestoreState;
     if (!state) return;
@@ -239,7 +225,7 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
     );
     let editor = null;
     if (draft.surface === "inline") {
-      editor = overlay?.querySelector(".review-inline-translation") || null;
+      editor = overlay?.querySelector(".review-inline-editor, .review-inline-translation") || null;
     } else {
       const className = draft.field === "ocr_text" ? "ocr-textarea" : "translation-textarea";
       editor = [...workspace.querySelectorAll(`.translation-panel-host textarea.${className}`)].find((node) =>

@@ -44,7 +44,13 @@ def geometry_signature(box: dict) -> tuple[int, int, int, int]:
 def ocr_crop_signature(box: dict) -> str:
     mask_value = box.get("mask")
     mask_revision = None
-    if isinstance(mask_value, str) and not mask_value.startswith("data:"):
+    if (
+        isinstance(mask_value, str)
+        and mask_value
+        and not mask_value.startswith(("data:", "@mask:"))
+        and len(mask_value) < 512
+        and "\n" not in mask_value
+    ):
         try:
             mask_revision = file_revision(Path(mask_value))
         except OSError:

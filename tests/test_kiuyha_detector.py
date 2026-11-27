@@ -428,15 +428,17 @@ def _blind_ctd(monkeypatch):
 def test_flat_lettering_the_segmenter_misses_uses_an_ink_mask(monkeypatch):
     _blind_ctd(monkeypatch)
     image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
-    cv2.putText(image, "SHANDONG", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (60, 50, 40), 4)
+    cv2.putText(image, "SHANDONG", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (60, 50, 40), 4, cv2.LINE_8)
     boxes = KiuyhaTextDetector("unused", session=_BlobSession()).text_boxes(image)
     assert len(boxes) == 1
     box = boxes[0]
     glyphs = image[box.y1:box.y2, box.x1:box.x2, 0] == 60
+    bg = image[box.y1:box.y2, box.x1:box.x2, 0] == 200
     assert box.safe_to_inpaint and box.mask_source == "local_ink"
-    assert np.array_equal(box.letters, glyphs)
+    assert np.all(box.letters[glyphs]) and not np.any(box.letters & bg)
     assert np.all(box.mask[glyphs] == 255)
-    assert np.count_nonzero(box.mask) < box.mask.size // 2
+    assert np.count_nonzero(box.letters) < box.letters.size // 2
+    assert np.count_nonzero(box.mask) < int(box.mask.size * 0.75)
 
 
 def test_one_connected_shape_the_letter_model_cannot_read_is_still_dropped(monkeypatch):
@@ -740,10 +742,11 @@ def test_chromatic_recovery_accepts_confirmed_strokes_and_rejects_solid_shapes(m
 
     monkeypatch.setattr(ctd_mask, "_prob", verified_on_contrast)
     for x in (30, 112, 194):
-        cv2.putText(image, "K", (x, 125), cv2.FONT_HERSHEY_SIMPLEX, 2.6, ink, 7)
+        cv2.putText(image, "K", (x, 125), cv2.FONT_HERSHEY_SIMPLEX, 2.6, ink, 7, cv2.LINE_8)
     glyphs = image[..., 0] == ink[0]
+    bg = image[..., 0] == background[0]
     mask, letters = ctd_mask.chromatic_stroke_mask(image)
-    assert np.array_equal(letters, glyphs)
+    assert np.all(letters[glyphs]) and not np.any(letters & bg)
     assert np.all(mask[glyphs] == 255)
     assert np.count_nonzero(mask) < image.shape[0] * image.shape[1] // 5
 

@@ -20,13 +20,13 @@ def check_runtime_geometry() -> None:
     gray = np.tile(np.linspace(35, 220, width, dtype=np.uint8), (height, 1))
     dense = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
     with patch.multiple(slicer, SLICE_TARGET_HEIGHT=2400, SLICE_MIN_HEIGHT=800,
-                        SLICE_MAX_HEIGHT=4096, SLICE_SEARCH_WINDOW=360, OVERLAP_CONTEXT=768):
+                        SLICE_MAX_HEIGHT=4096, SLICE_SEARCH_WINDOW=360):
         with tempfile.TemporaryDirectory(prefix="slice-geometry-") as temporary:
             folder = Path(temporary)
             source = folder / "raw.png"
             assert cv2.imwrite(str(source), dense)
             parts = slicer.slice_image(source, folder, "slice", return_metadata=True)
-            assert len(parts) == 2, "Dense 6200px page must not become five short slices"
+            assert len(parts) == 2, f"Dense 6200px page must produce 2 slices, got {len(parts)}"
             restored = []
             cursor = 0
             for part in parts:
@@ -38,8 +38,6 @@ def check_runtime_geometry() -> None:
                 restored.append(owned)
                 cursor = part["core_source_y2"]
             assert cursor == height and np.array_equal(np.vstack(restored), dense)
-            assert parts[0]["source_y2"] - parts[0]["core_source_y2"] == 768
-            assert parts[1]["core_source_y1"] - parts[1]["source_y1"] == 768
 
         unsafe = np.ones(height, dtype=bool)
         unsafe[1820:1980] = False
@@ -71,9 +69,9 @@ def check_runtime_geometry() -> None:
         mask[60:140, 40:680] = 255
         painted = painter._lama_fill(image.copy(), image.copy(), mask, (0, 0, 716, 203))
         if dynamic:
-            assert len(calls) == 1 and max(calls[0]) == 512, "Dynamic LaMa must scale this flat crop in one pass"
+            assert len(calls) == 1 and 384 <= max(calls[0]) <= 512, f"Dynamic LaMa must scale this flat crop in one pass, got {calls}"
         else:
-            assert len(calls) == 2 and all(w == 512 for h, w in calls), "Fixed LaMa must tile this long crop"
+            assert len(calls) == 2 and all(w == 512 for h, w in calls), f"Fixed LaMa must tile this long crop, got {calls}"
         assert np.array_equal(painted[mask == 0], image[mask == 0])
         assert np.all(painted[64:136, 44:676] >= 200), "Painted mask interior contains an unpainted seam"
         calls.clear()

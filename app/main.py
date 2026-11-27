@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import mimetypes
 import os
 from pathlib import Path
+import threading
 import time
 from urllib.parse import urlsplit
 
@@ -32,7 +33,7 @@ from app.parameters import (
     STALE_TEMP_MAX_AGE_SECONDS,
     USE_DYNAMIC_LAMA,
 )
-from app.routers import account, agent, ai_mode, api_proxy, automation, chapters, editor, export, extension, image, ocr, render, render_commit, translation, visual_qc
+from app.routers import account, agent, ai_mode, api_proxy, automation, chapters, editor, export, extension, image, ocr, render, render_commit, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
 
@@ -97,13 +98,20 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ONNX models OK")
         if INPAINT_PRELOAD_ENABLED:
-            try:
-                pipeline.inpainter.preload()
-            except Exception:
-                logger.exception(
-                    "Startup inpaint model preparation failed; "
-                    "page processing will report the same model error"
-                )
+            def _preload_inpaint() -> None:
+                try:
+                    pipeline.inpainter.preload()
+                except Exception:
+                    logger.exception(
+                        "Startup inpaint model preparation failed; "
+                        "page processing will report the same model error"
+                    )
+
+            threading.Thread(
+                target=_preload_inpaint,
+                name="lama-preload",
+                daemon=True,
+            ).start()
     yield
 
 
@@ -285,7 +293,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(chapters.router)
 app.include_router(automation.router)
-app.include_router(translation.router)
 app.include_router(ocr.router)
 app.include_router(editor.router)
 app.include_router(render_commit.router)

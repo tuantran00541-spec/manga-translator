@@ -191,6 +191,7 @@ def test_custom_provider_private_remote_is_rejected_before_use():
 
 
 def test_keys_go_to_a_private_file_when_the_machine_has_no_secret_store(monkeypatch, tmp_path):
+    import os
     import stat
 
     import keyring
@@ -203,7 +204,9 @@ def test_keys_go_to_a_private_file_when_the_machine_has_no_secret_store(monkeypa
     monkeypatch.setattr(keyring, "get_keyring", lambda: fail.Keyring())
     secret_store.set_provider_api_key("custom-lab", "top-secret", provider_label="Custom Lab")
     path = tmp_path / "manga-translator" / "secrets.json"
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert path.is_file()
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert secret_store.get_provider_api_key("custom-lab", provider_label="Custom Lab") == "top-secret"
     assert secret_store.provider_key_status("custom-lab", provider_label="Custom Lab")["source"] == "local_file"
     secret_store.delete_provider_api_key("custom-lab", provider_label="Custom Lab")

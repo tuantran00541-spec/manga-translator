@@ -93,7 +93,8 @@ class GenericJsAdapter(BaseAdapter):
                     page.wait_for_function(
                         "([selector, minWidth]) => {"
                         "  for (const img of document.querySelectorAll(selector)) {"
-                        "    if ((img.naturalWidth || 0) >= minWidth) return true;"
+                        "    const w = img.naturalWidth || 0;"
+                        "    if (img.complete && w > 0 && w >= minWidth) return true;"
                         "  }"
                         "  return false;"
                         "}",

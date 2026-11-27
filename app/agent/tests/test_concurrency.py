@@ -216,9 +216,10 @@ def test_m5_concurrent_start_no_orphan(mgr, ws):
 
     RacyDict.__setitem__ = recording_setitem
     try:
+        sleep_cmd = f'"{sys.executable}" -c "import time; time.sleep(60)"'
         s.jobs = RacyDict()
         ts = [threading.Thread(
-            target=lambda: s._start_job({"command": "sleep 60", "background": True}),
+            target=lambda: s._start_job({"command": sleep_cmd, "background": True}),
             daemon=True) for _ in range(2)]
         for t in ts:
             t.start()
@@ -415,7 +416,7 @@ def test_m7_stop_catches_concurrent_register(tmp_path):
 
 def test_m7_stop_stops_background_jobs(mgr, ws):
     s = _make_session(mgr, ws, "0802020304050607")
-    s._start_job({"command": "sleep 60", "background": True})
+    s._start_job({"command": f'"{sys.executable}" -c "import time; time.sleep(60)"', "background": True})
     assert len(s.jobs) == 1
     job = s.jobs["job1"]
     s.stop()
@@ -516,15 +517,16 @@ def test_m10_ensure_mcp_idempotent(mgr, ws, tmp_path):
 def test_m11_jobstop_frees_slots(mgr, ws):
     from app.agent.tools import ToolError
 
+    sleep_cmd = f'"{sys.executable}" -c "import time; time.sleep(60)"'
     s = _make_session(mgr, ws, "1501020304050607")
     for _ in range(8):
-        s._start_job({"command": "sleep 60", "background": True})
+        s._start_job({"command": sleep_cmd, "background": True})
     assert len(s.jobs) == 8
     for i in range(8):
         s._session_tool({"name": "job_stop", "args": {"id": f"job{i + 1}"}, "id": f"s-{i}"})
     assert len(s.jobs) == 0, f"stopped jobs still occupy slots: {sorted(s.jobs)}"
     try:
-        msg = s._start_job({"command": "sleep 60", "background": True})
+        msg = s._start_job({"command": sleep_cmd, "background": True})
     except ToolError as exc:
         pytest.fail(f"9th job refused although every job is stopped: {exc}")
     assert "job1" in msg

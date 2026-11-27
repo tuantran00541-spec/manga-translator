@@ -353,7 +353,7 @@ class AgentLoopMixin:
             return
         for i in old:
             item = self.history[i]
-            saved = re.search(r"full output saved to (\S+?):", item["content"])
+            saved = re.search(r"full output saved to (.+?): ", item["content"])
             item["content"] = f"[older {item['name']} output removed to save room" + (f"; the full text is in {saved.group(1)}" if saved else "; run it again if needed") + "]"
             item["masked"] = True
         self.cache_log["older outputs masked"] += 1

@@ -14,7 +14,6 @@ ALLOWED_TEXT_OBJECT_SHAPES = ("rectangle", "ellipse")
 ALLOWED_HORIZONTAL_ALIGNS = ("left", "center", "right")
 ALLOWED_VERTICAL_ALIGNS = ("top", "middle", "bottom")
 ALLOWED_OCR_LANGS = {"ja", "japan", "ch", "zh", "en", "korean", "ko"}
-TEXT_OBJECT_MIN_SIZE = 10
 MAX_PAGE_SELECTION = 512
 MAX_DRAFT_ENTRIES = 5000
 MAX_TEXT_OBJECT_ID_LEN = 128

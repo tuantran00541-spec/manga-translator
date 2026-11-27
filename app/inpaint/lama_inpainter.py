@@ -28,7 +28,6 @@ from app.inpaint.screentone import try_screentone_fill
 from app.inpaint.smart_fill import (
     blend_painted,
     match_boundary_tone,
-    quadratic_design,
     restore_ambient_grain,
     restore_inpaint_sharpness,
     ring_fill_color,
@@ -748,15 +747,6 @@ class Inpainter:
     def _ring_fill_color(crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray | None:
         return ring_fill_color(crop, local_mask)
 
-    @staticmethod
-    def _quadratic_design(
-        xs: np.ndarray,
-        ys: np.ndarray,
-        width: int,
-        height: int,
-    ) -> np.ndarray:
-        return quadratic_design(xs, ys, width, height)
-
     @classmethod
     def _smart_fill_surface(
         cls,
@@ -804,8 +794,7 @@ class Inpainter:
 
         # Repair only tiny notches where giant display letters protruded into panel art or midtones.
         if crop.ndim == 3 and crop.shape[2] == 3:
-            hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-            art = clean_context & (gray < 218) & ((hsv[..., 1] >= 40) | (gray < 218))
+            art = clean_context & (gray < 218)
             near_art = cv2.dilate(
                 art.astype(np.uint8),
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (41, 41)),

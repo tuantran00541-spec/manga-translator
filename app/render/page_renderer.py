@@ -485,7 +485,6 @@ def _plan_balloon_lettering(image, req, objects, style_maps, source_image_loader
 
 LETTER_MARGIN = 0.15
 FIT_INSET = 0.04
-SOURCE_SIZE_SHARE = 0.85
 
 
 def letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, int, int] | None:
@@ -1345,7 +1344,6 @@ def render_text_objects(
                             verdicts.extend({"id": other_id, "guard": "joined_in_bubble", "with": oid}
                                             for other_id in joined_ids)
                 continue
-            rendered_count += 1
         except Exception as e:
             logger.opt(exception=True).error(
                 "Chapter {} page {} object {} operation 'render_text_in_box' failed: {}",

@@ -88,10 +88,15 @@ def _regions_to_repaint_mask(image_shape: tuple[int, ...], regions) -> np.ndarra
     return mask
 
 
-def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:
+def _reconcile_translation_after_ocr_edit(
+    req: UpdateTextObjectRequest,
+    *,
+    chapter_id: str | None = None,
+) -> dict:
+    cid = chapter_id or req.chapter_id
     expected_source = str(req.ocr_text or "")
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
+    with get_manifest_lock(cid):
+        manifest = load_manifest_raw(cid)
         pages = manifest.get("pages", [])
         if req.page_index < 0 or req.page_index >= len(pages):
             return manifest
@@ -108,8 +113,8 @@ def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:
             return manifest
         if invalidate_stale_machine_translation(obj, expected_source):
             invalidate_page_render(manifest, req.page_index)
-            save_manifest_raw(req.chapter_id, manifest)
-            pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+            save_manifest_raw(cid, manifest)
+            pipeline._sync_output_dir(cid, manifest, [req.page_index])
         return manifest
 
 
@@ -509,7 +514,7 @@ def update_text_objects_bulk(req: BulkUpdateTextObjectsRequest) -> dict:
                 changes["ocr_color_profile"] = item.ocr_color_profile
             manifest = pipeline.update_text_object(req.chapter_id, item.page_index, item.id, changes)
             if item.ocr_text is not None and item.translation is None:
-                manifest = _reconcile_translation_after_ocr_edit(item)
+                manifest = _reconcile_translation_after_ocr_edit(item, chapter_id=req.chapter_id)
         return urlify_manifest(manifest)
     except ValueError as exc:
         logger.opt(exception=True).error(

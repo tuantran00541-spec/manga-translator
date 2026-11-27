@@ -388,7 +388,6 @@ function getWorkersSetting() {
 }
 window.getWorkersSetting = getWorkersSetting;
 
-const PROCESS_BATCH_SIZE = 16;
 let _activePageProcessing = null;
 let _activePageProcessingChapter = null;
 
@@ -402,7 +401,7 @@ function processSelectedPages() {
   }
 
   const chapterId = currentChapterId;
-  const run = _processSelectedPagesOnce();
+  const run = window._processSelectedPagesOnce();
   _activePageProcessingChapter = chapterId;
   _activePageProcessing = run.finally(() => {
     if (_activePageProcessing === wrappedRun) {
@@ -412,201 +411,6 @@ function processSelectedPages() {
   });
   const wrappedRun = _activePageProcessing;
   return wrappedRun;
-}
-
-async function _processSelectedPagesOnce() {
-  const pages = currentManifest?.pages || [];
-  const indices = pages
-    .map((page, index) => (page?.skipped ? null : index))
-    .filter((index) => index !== null);
-
-  if (indices.length === 0) {
-    showToast("Không có trang nào để xử lý.", "error");
-    return;
-  }
-
-  const chapterId = currentChapterId;
-  const total = indices.length;
-  const btn = document.querySelector("#preview-toolbar .preview-primary-action")
-    || document.querySelector("#preview-toolbar button");
-  if (btn) btn.disabled = true;
-
-  try {
-    if (btn) btn.textContent = "Đang lưu vùng giữ nguyên…";
-    if (typeof window.flushPreserveRegionSaves === "function") {
-      await window.flushPreserveRegionSaves(chapterId);
-    }
-  } catch (err) {
-    showToast(
-      "Không thể bắt đầu xử lý vì vùng giữ nguyên chưa được lưu: " + err.message,
-      "error",
-    );
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Bắt đầu xử lý";
-    }
-    return;
-  }
-  if (chapterId !== currentChapterId) return;
-
-  let completed = 0;
-  try {
-    for (let start = 0; start < total; start += PROCESS_BATCH_SIZE) {
-      const batch = indices.slice(start, start + PROCESS_BATCH_SIZE);
-      if (btn) btn.textContent = `Đang xử lý ${completed}/${total}…`;
-
-      const resp = await fetch("/api/process_pages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chapter_id: chapterId,
-          page_indices: batch,
-          workers: getWorkersSetting(),
-        }),
-      });
-      const data = await parseApiResponse(resp);
-      if (!resp.ok) {
-        throw new Error(getErrorMessage(resp.status, data));
-      }
-      if (chapterId !== currentChapterId) return;
-
-      currentManifest = data;
-      completed += batch.length;
-      if (btn) btn.textContent = `Đã xử lý ${completed}/${total}…`;
-    }
-
-    renderReview();
-  } catch (err) {
-    let resynced = false;
-    if (chapterId === currentChapterId) {
-      try {
-        await refreshChapterManifest(chapterId);
-        resynced = true;
-      } catch (syncErr) {
-        console.error("Could not resync chapter after partial process failure:", syncErr);
-      }
-    }
-
-    const prefix = completed > 0
-      ? `Đã xử lý ít nhất ${completed}/${total} trang. Phần tiếp theo thất bại: `
-      : "Xử lý trang thất bại: ";
-    showToast(prefix + err.message, "error");
-
-    if (resynced) {
-      window.previewActivePageIndex = Math.min(
-        Number(window.previewActivePageIndex) || 0,
-        Math.max(0, (currentManifest?.pages?.length || 1) - 1),
-      );
-      renderPreview();
-      return;
-    }
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Tiếp tục xử lý";
-    }
-  }
-}
-
-async function renderTranslations(pageIndex) {
-  const chapterId = currentChapterId;
-  if (!chapterId) return;
-  try {
-    if (typeof window.flushAllPendingPersists === "function") {
-      await window.flushAllPendingPersists(pageIndex);
-    } else if (typeof window.flushTextObjectPersist === "function") {
-      await window.flushTextObjectPersist(pageIndex);
-    }
-  } catch (err) {
-    showToast("Không thể chèn chữ vì lưu dữ liệu không thành công.", "error");
-    return;
-  }
-  if (chapterId !== currentChapterId) return;
-  const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
-  if (!page) return;
-
-  const translations = {};
-  const colors = {};
-  const fonts = {};
-  const font_sizes = {};
-  const bolds = {};
-  const stroke_widths = {};
-  const stroke_colors = {};
-  const bg_colors = {};
-  const corner_radii = {};
-  const horizontal_aligns = {};
-  const vertical_aligns = {};
-  (page.text_objects || []).forEach((obj) => {
-    if (!obj || !obj.translation || !obj.translation.trim()) return;
-    translations[obj.id] = obj.translation.trim();
-    const s = obj.style || {};
-    colors[obj.id] = s.color || "auto";
-    if (obj.font_selection_mode === "auto") {
-      fonts[obj.id] = "auto";
-    } else if (obj.font_selection_mode === "user") {
-      fonts[obj.id] = s.font || "default";
-    } else if (!obj.font_ai_id && s.font && s.font !== "default") {
-      fonts[obj.id] = s.font;
-    }
-    font_sizes[obj.id] = s.fontSize || "auto";
-    bolds[obj.id] = s.bold === true;
-    stroke_widths[obj.id] = s.strokeWidth || "auto";
-    stroke_colors[obj.id] = s.strokeColor || "auto";
-    bg_colors[obj.id] = s.bgColor || "transparent";
-    corner_radii[obj.id] = parseInt(s.cornerRadius || "0", 10);
-    horizontal_aligns[obj.id] = ["left", "center", "right"].includes(s.horizontalAlign)
-      ? s.horizontalAlign
-      : "center";
-    vertical_aligns[obj.id] = ["top", "middle", "bottom"].includes(s.verticalAlign)
-      ? s.verticalAlign
-      : "middle";
-  });
-
-  try {
-    const resp = await fetch("/api/render", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chapter_id: chapterId,
-        page_index: pageIndex,
-        translations,
-        colors,
-        fonts,
-        font_sizes,
-        bolds,
-        stroke_widths,
-        stroke_colors,
-        bg_colors,
-        corner_radii,
-        horizontal_aligns,
-        vertical_aligns,
-      }),
-    });
-
-    const data = await parseApiResponse(resp);
-    if (chapterId !== currentChapterId) return;
-    if (!resp.ok) {
-      showToast("Kết xuất ảnh thất bại: " + getErrorMessage(resp.status, data), "error");
-      return;
-    }
-
-    if (currentManifest && currentManifest.pages && currentManifest.pages[pageIndex]) {
-      currentManifest.pages[pageIndex].rendered = true;
-      currentManifest.pages[pageIndex].render_revision = data.render_revision;
-      currentManifest.pages[pageIndex].render_layout_conflicts = data.layout_conflicts || [];
-      currentManifest.pages[pageIndex].render_layout_issue_types = data.layout_issue_types || {};
-      if (Number(window.editorState?.activePageIndex) === Number(pageIndex)) {
-        window.renderEditorPanel?.(pageIndex);
-      }
-    }
-    if (data.warning) {
-      showToast(data.warning, "info");
-    }
-    return true;
-  } catch (err) {
-    if (chapterId === currentChapterId) {
-      showToast("Kết xuất ảnh thất bại: " + err.message, "error");
-    }
-  }
 }
 
 async function loadFonts() {

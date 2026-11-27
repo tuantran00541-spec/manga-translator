@@ -18,6 +18,13 @@ from app.downloader.http import read_response_limited, safe_get
 
 BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
                  "/System", "/Library", "/Applications", "/private", "/mnt", "/media"}
+WIN_BROAD_FOLDERS = {
+    os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows")),
+    os.path.normcase(os.environ.get("ProgramFiles", r"C:\Program Files")),
+    os.path.normcase(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
+    os.path.normcase(os.environ.get("ProgramData", r"C:\ProgramData")),
+    os.path.normcase(str(Path.home().parent)),
+}
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache"}
 ROOT_SKIP_DIRS = {"data", "models", "logs"}
 MAX_READ_LINES = 2000
@@ -174,13 +181,25 @@ def _path_glob(rel: str, pattern: str) -> bool:
         "/**/" in pattern and fnmatch.fnmatch(rel, pattern.replace("/**/", "/")))
 
 
+def _is_link_or_junction(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    isjunction = getattr(os.path, "isjunction", None)
+    return bool(isjunction and isjunction(path))
+
+
 class Workspace:
 
     def __init__(self, root: str | Path, policy: sandbox.Policy | None = None, read_roots: list[Path] | None = None):
         root = Path(root).expanduser().resolve()
         if not root.is_dir():
             raise ValueError(f"Workspace folder does not exist: {root}")
-        if root == Path(root.anchor) or root == Path.home().resolve() or str(root) in BROAD_FOLDERS:
+        if (
+            root == Path(root.anchor)
+            or root == Path.home().resolve()
+            or str(root) in BROAD_FOLDERS
+            or (os.name == "nt" and os.path.normcase(str(root)) in WIN_BROAD_FOLDERS)
+        ):
             raise ValueError(f"Pick a project folder, not {root}: the agent could read and change everything in it")
         self.root = root
         self.policy = policy or sandbox.Policy()
@@ -315,10 +334,18 @@ class Workspace:
         restrict = self.policy.mode != "full-access"
         roots = [self.root] + self.read_roots
         for folder, dirs, names in os.walk(top):
-            dirs[:] = sorted(d for d in dirs if not self.skipped(Path(folder) / d))
+            kept_dirs = []
+            for d in sorted(dirs):
+                sub = Path(folder) / d
+                if self.skipped(sub):
+                    continue
+                if _is_link_or_junction(sub):
+                    continue
+                kept_dirs.append(d)
+            dirs[:] = kept_dirs
             for n in sorted(names):
                 path = Path(folder) / n
-                if restrict and path.is_symlink():
+                if restrict and _is_link_or_junction(path):
                     try:
                         resolved = path.resolve()
                     except OSError:
@@ -342,7 +369,7 @@ class Workspace:
                 if entry.is_dir() and self.skipped(entry):
                     continue
                 rows.append(f"{'  ' * (level - 1)}{entry.name}{'/' if entry.is_dir() else ''}")
-                if entry.is_dir() and not entry.is_symlink() and level < depth:
+                if entry.is_dir() and not _is_link_or_junction(entry) and level < depth:
                     walk(entry, level + 1)
 
         walk(top, 1)
@@ -447,7 +474,7 @@ class Workspace:
                 continue
             if b"\0" in data[:8192]:
                 continue
-            text = data.decode("utf-8", errors="replace")
+            text = data.decode("utf-8", errors="replace").replace("\r\n", "\n")
             if whole is not None and not whole.search(text):
                 continue
             lines = text.splitlines()

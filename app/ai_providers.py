@@ -127,8 +127,6 @@ PROVIDERS: dict[str, AIProvider] = {
     ),
 }
 
-PROVIDER_IDS = frozenset(PROVIDERS)
-
 CLOUD_PROVIDER_ID = "manga-cloud"
 _cloud_job: ContextVar[tuple[AIProvider, str] | None] = ContextVar("cloud_job", default=None)
 

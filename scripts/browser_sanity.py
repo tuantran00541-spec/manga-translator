@@ -272,6 +272,40 @@ def check_css_budget() -> None:
     print(f"CSS budget OK: {len(CSS_PATHS)}/{MAX_CSS_FILES} files, maximum {MAX_CSS_LINES} lines each")
 
 
+def check_css_braces() -> None:
+    failures: list[str] = []
+    for path in CSS_PATHS:
+        source = path.read_text(encoding="utf-8")
+        # Strip /* ... */ comments and quoted strings before counting braces.
+        cleaned = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+        cleaned = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', '""', cleaned)
+        depth = 0
+        for line_no, line in enumerate(cleaned.splitlines(), 1):
+            for ch in line:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth < 0:
+                        failures.append(f"{path}:{line_no}: unmatched closing '}}'")
+                        depth = 0
+        if depth != 0:
+            failures.append(f"{path}: {depth} unclosed '{{' brace(s) at EOF")
+    _fail("CSS brace balance failures:", failures)
+    print(f"CSS brace balance OK: {len(CSS_PATHS)} files")
+
+
+def check_no_orphan_js_files() -> None:
+    html_sources = "\n".join(path.read_text(encoding="utf-8") for path in HTML_PATHS)
+    failures: list[str] = []
+    for path in sorted((STATIC_ROOT / "js").glob("*.js")):
+        ref = f"/static/js/{path.name}"
+        if ref not in html_sources:
+            failures.append(f"{path}: top-level JS file is not loaded by any HTML template")
+    _fail("Orphan top-level JS files found:", failures)
+    print("Top-level JS reachability OK")
+
+
 def _consume_js_string_literal(source: str, start: int) -> str | None:
     if start >= len(source) or source[start] not in {'"', "'", "`"}:
         return None
@@ -342,8 +376,10 @@ def check_browser_state_contracts() -> None:
     contracts = {
         Path("app/static/js/api.js"): (
             "async function flushPreserveRegionSaves(",
-            "await window.flushPreserveRegionSaves(chapterId);",
             "state.persistedVersion < state.version",
+        ),
+        Path("app/static/js/main.js"): (
+            "await window.flushPreserveRegionSaves(chapterId);",
         ),
         Path("app/static/js/editor-geometry.js"): (
             "if (currentGen === geomGeneration)",
@@ -384,8 +420,8 @@ def check_workbench_shell_contract() -> None:
     failures: list[str] = []
     source = WORKBENCH_PATH.read_text(encoding="utf-8")
     for marker in (
-        ".workbench-stage-grid { position: relative; display: grid;",
-        "grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) var(--studio-inspector-width)",
+        ".app-shell {",
+        ".review-document-toolbar-compact",
         "@media (max-width: 1000px)",
     ):
         if marker not in source:
@@ -397,7 +433,9 @@ def check_workbench_shell_contract() -> None:
 def main() -> None:
     check_markup_integrity()
     check_browser_asset_reachability()
+    check_no_orphan_js_files()
     check_css_budget()
+    check_css_braces()
     check_design_token_convergence()
     check_unsafe_html_sinks()
     check_browser_state_contracts()

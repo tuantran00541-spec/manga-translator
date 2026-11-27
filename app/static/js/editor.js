@@ -300,31 +300,39 @@ window.switchEditorPage = switchEditorPage;
 
 const _pendingAutoSync = new Map();
 
-async function ensureAutoTextObjects(pageIndex) {
+async function ensureAutoTextObjects(pageIndexOrList) {
   const chapterId = window.currentChapterId;
   if (!chapterId) return null;
-  const key = `${chapterId}:${pageIndex}`;
+  const rawList = Array.isArray(pageIndexOrList) ? pageIndexOrList : [pageIndexOrList];
+  const indices = [...new Set(rawList.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 0))].sort((a, b) => a - b);
+  if (!indices.length) return null;
+  const key = `${chapterId}:${indices.join(",")}`;
   if (_pendingAutoSync.has(key)) return _pendingAutoSync.get(key);
 
   const job = (async () => {
-    const response = await fetch("/api/text_objects/ensure", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapter_id: chapterId, page_indices: [pageIndex] }),
-    });
     const parse = typeof window.parseApiResponse === "function"
       ? window.parseApiResponse
       : async (r) => r.json().catch(() => ({}));
-    const data = await parse(response);
-    if (!response.ok) {
-      const getError = typeof window.getErrorMessage === "function"
-        ? window.getErrorMessage
-        : (status, payload) => payload?.detail || `HTTP ${status}`;
-      throw new Error(getError(response.status, data));
+    const getError = typeof window.getErrorMessage === "function"
+      ? window.getErrorMessage
+      : (status, payload) => payload?.detail || `HTTP ${status}`;
+    let latestData = null;
+    for (let start = 0; start < indices.length; start += 200) {
+      const chunk = indices.slice(start, start + 200);
+      const response = await fetch("/api/text_objects/ensure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chapter_id: chapterId, page_indices: chunk }),
+      });
+      const data = await parse(response);
+      if (!response.ok) {
+        throw new Error(getError(response.status, data));
+      }
+      if (chapterId !== window.currentChapterId) return null;
+      window.currentManifest = data;
+      latestData = data;
     }
-    if (chapterId !== window.currentChapterId) return null;
-    window.currentManifest = data;
-    return data;
+    return latestData;
   })();
 
   _pendingAutoSync.set(key, job);

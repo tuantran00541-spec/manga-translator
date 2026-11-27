@@ -747,7 +747,7 @@
       const pageIndex = Number.parseInt(overlay?.dataset?.pageIndex || active.dataset?.pageIndex || window.editorState?.activePageIndex, 10);
       if (objectId && Number.isInteger(pageIndex)) {
         const field = active.classList.contains("ocr-textarea") ? "ocr_text" : "translation";
-        const surface = active.classList.contains("review-inline-translation")
+        const surface = (active.classList.contains("review-inline-editor") || active.classList.contains("review-inline-translation"))
           ? "inline"
           : active.classList.contains("ocr-textarea")
             ? "panel-ocr"

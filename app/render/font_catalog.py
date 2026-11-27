@@ -8,7 +8,7 @@ from typing import Any
 
 from app.config import DEFAULT_FONT
 
-__all__ = ["FontCatalog", "FontNotFoundError", "FontRecord", "clear_font_catalog_cache", "list_font_records", "load_font_catalog", "resolve_font_id"]
+__all__ = ["FontCatalog", "FontNotFoundError", "FontRecord", "list_font_records", "load_font_catalog", "resolve_font_id"]
 
 
 class FontNotFoundError(ValueError):
@@ -120,10 +120,6 @@ def load_font_catalog() -> FontCatalog:
         records=tuple(sorted(records, key=lambda record: record.default_rank)),
         aliases=aliases,
     )
-
-
-def clear_font_catalog_cache() -> None:
-    load_font_catalog.cache_clear()
 
 
 def resolve_font_id(font_id: str | None) -> Path:

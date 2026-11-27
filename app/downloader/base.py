@@ -38,10 +38,6 @@ class BaseAdapter(ABC):
     def extract_image_urls(self, chapter_url: str) -> list[str]:
         ...
 
-    def download(self, chapter_url: str, output_dir: Path) -> list[Path]:
-        image_urls = self.extract_image_urls(chapter_url)
-        return self.download_urls(image_urls, output_dir, referer=chapter_url)
-
     def download_urls(
         self,
         image_urls: list[str],

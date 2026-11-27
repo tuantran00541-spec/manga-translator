@@ -397,8 +397,9 @@ class PageProcessingMixin:
         ]
         second_pass_boxes = 0
         seen: set[tuple[int, int, int, int]] = set()
+        leftover_targets = effective_boxes
         for _ in range(LEFTOVER_PASSES if effective_boxes else 0):
-            leftovers = [box for box in self.detector.leftover_boxes(clean_image, effective_boxes)
+            leftovers = [box for box in self.detector.leftover_boxes(clean_image, leftover_targets)
                          if not geometry_center_in_regions(
                              {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2}, preserve_regions)
                          and not geometry_center_in_regions(
@@ -411,6 +412,7 @@ class PageProcessingMixin:
             clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
             for box in leftovers:
                 _fold_leftover(inpainted_records, box)
+            leftover_targets = leftovers
         auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
         from app.render.balloon_layout import plan_balloon_regions
 

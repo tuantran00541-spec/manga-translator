@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
 
 from app.mask_store import decode_mask_value
-from app.render.font_catalog import FontNotFoundError, load_font_catalog, resolve_font_id
+from app.render.font_catalog import FontNotFoundError, resolve_font_id
 from app.render.font_guide import font_for
 
-__all__ = ["font_path_for_id", "resolve_object_font"]
+__all__ = ["resolve_object_font"]
 
 
 def _valid_font_id(value: str | None) -> bool:
@@ -88,7 +87,3 @@ def resolve_object_font(
     if _valid_font_id(style_font) and style_font.lower() != "default":
         return style_font, "legacy", {"reason": "legacy_style"}
     return "default", "default", {"reason": "default_fallback"}
-
-
-def font_path_for_id(font_id: str) -> Path:
-    return load_font_catalog().resolve(font_id)

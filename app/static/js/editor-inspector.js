@@ -1,4 +1,10 @@
+let _activeFontPopCleanup = null;
+
 function renderEditorPanel(pageIndex) {
+  if (typeof _activeFontPopCleanup === "function") {
+    _activeFontPopCleanup();
+    _activeFontPopCleanup = null;
+  }
   const panelHost = document.querySelector(".translation-panel-host");
   if (!panelHost) return;
   const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
@@ -295,8 +301,10 @@ function buildTextSection(body, panel, obj, pageIndex) {
   let activePop = null;
   const closeFontPop = (restoreFocus = false) => {
     if (!activePop) return;
-    activePop.cleanup();
+    const cleanup = activePop.cleanup;
     activePop = null;
+    if (_activeFontPopCleanup === cleanup) _activeFontPopCleanup = null;
+    cleanup();
     fontBtn.setAttribute("aria-expanded", "false");
     fontBtn.classList.remove("is-open");
     if (restoreFocus && fontBtn.isConnected) fontBtn.focus();
@@ -307,6 +315,10 @@ function buildTextSection(body, panel, obj, pageIndex) {
     if (activePop) {
       closeFontPop();
       return;
+    }
+    if (typeof _activeFontPopCleanup === "function") {
+      _activeFontPopCleanup();
+      _activeFontPopCleanup = null;
     }
     document.querySelectorAll(".font-picker-pop").forEach((el) => el.remove());
 
@@ -425,15 +437,15 @@ function buildTextSection(body, panel, obj, pageIndex) {
     window.addEventListener("resize", onScrollOrResize, true);
     window.addEventListener("scroll", onScrollOrResize, true);
 
-    activePop = {
-      cleanup: () => {
-        document.removeEventListener("pointerdown", onOutside, true);
-        document.removeEventListener("keydown", onKey, true);
-        window.removeEventListener("resize", onScrollOrResize, true);
-        window.removeEventListener("scroll", onScrollOrResize, true);
-        pop.remove();
-      },
+    const cleanup = () => {
+      document.removeEventListener("pointerdown", onOutside, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", onScrollOrResize, true);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      pop.remove();
     };
+    activePop = { cleanup };
+    _activeFontPopCleanup = cleanup;
     fontBtn.setAttribute("aria-expanded", "true");
     fontBtn.classList.add("is-open");
     search.focus();

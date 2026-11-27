@@ -148,9 +148,10 @@ class AgentCommandsMixin:
             except SyntaxError as exc:
                 raise ToolError(f"Syntax error: {exc}") from exc
             folder.mkdir(parents=True, exist_ok=True)
-            path.write_text(code, encoding="utf-8")
+            raw = code.encode("utf-8")
+            path.write_bytes(raw)
             if scope == "user":
-                registry.trust_user_plugin(self.trust, home_path, path, code.encode("utf-8"))
+                registry.trust_user_plugin(self.trust, home_path, path, raw)
             done = f"Wrote plugin {name} ({path})."
         if scope == "workspace" and was_trusted:
             self.trust.allow(self.workspace.root, "plugins", registry.sources_digest(registry.plugin_sources(self.workspace.root, home_path)))

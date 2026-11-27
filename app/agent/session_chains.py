@@ -62,7 +62,11 @@ class AgentChainsMixin:
 
     def _on_copy(self, value, copy: Path):
         if isinstance(value, str):
-            return value.replace(str(self.workspace.root), str(copy))
+            out = value.replace(str(self.workspace.root), str(copy))
+            root_posix = self.workspace.root.as_posix()
+            if root_posix != str(self.workspace.root):
+                out = out.replace(root_posix, copy.as_posix())
+            return out
         if isinstance(value, dict):
             return {k: self._on_copy(v, copy) for k, v in value.items()}
         if isinstance(value, list):

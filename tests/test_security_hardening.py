@@ -303,20 +303,33 @@ def test_skill_install_rejects_symlinks_and_oversized_total_archive(tmp_path, mo
 
 
 def test_workspace_files_skips_symlinks_escaping_root(tmp_path):
+    import os
+    import subprocess
+
     ws_dir = tmp_path / "ws"
     ws_dir.mkdir()
-    outside = tmp_path / "secret.txt"
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside = outside_dir / "secret.txt"
     outside.write_text("TOP_SECRET_OUTSIDE", encoding="utf-8")
     (ws_dir / "ok.txt").write_text("hello", encoding="utf-8")
     link = ws_dir / "leak.txt"
     try:
         link.symlink_to(outside)
     except OSError:
-        pytest.skip("symlinks unavailable without privileges on this host")
+        assert os.name == "nt", "symlinks should work on POSIX"
+        link = ws_dir / "leak_dir"
+        proc = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(outside_dir)],
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, proc.stderr or proc.stdout
     ws = Workspace(ws_dir, sandbox.Policy("workspace-write", False))
     found = [p.name for p in ws._files(ws.root)]
     assert "ok.txt" in found
     assert "leak.txt" not in found
+    assert "secret.txt" not in found
 
 
 def test_taint_blocks_web_search_and_outside_reads_and_wraps_web_content(tmp_path, monkeypatch):

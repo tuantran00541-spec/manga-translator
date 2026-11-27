@@ -126,10 +126,11 @@ def test_a_lone_exclamation_mark_has_a_source_size():
 
 def test_a_box_holding_lettering_plus_giant_sfx_reads_the_lettering_size():
     image = np.full((378, 675, 3), 255, np.uint8)
-    cv2.putText(image, "I GOT IT.", (60, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
+    cv2.putText(image, "I GOT IT.", (60, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3, cv2.LINE_8)
+    actual_h = int(np.ptp(np.nonzero(image[..., 0] < 128)[0]) + 1)
     for x, y, w, h in ((80, 20, 30, 137), (220, 40, 40, 172), (420, 10, 35, 201)):
         cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 0), -1)
     for x, y in ((500, 300), (550, 320), (600, 290), (520, 330), (580, 350), (640, 310)):
         cv2.circle(image, (x, y), 5, (0, 0, 0), -1)
     cap = source_cap_px(image, (0, 0, 675, 378))
-    assert cap is not None and 30 <= cap <= 55, cap
+    assert cap is not None and abs(cap - actual_h) <= 4 and cap <= 55, (cap, actual_h)

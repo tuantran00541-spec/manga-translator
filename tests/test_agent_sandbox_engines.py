@@ -57,15 +57,35 @@ def _run(command: str, root: Path, mode: str = "workspace-write", timeout: int =
     return sandbox.run(command, sandbox.Policy(mode, False), root, timeout)
 
 
+def _windows_desktop_name() -> str:
+    if not WINDOWS:
+        return ""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    hdesk = user32.GetThreadDesktop(ctypes.windll.kernel32.GetCurrentThreadId())
+    needed = ctypes.c_uint(0)
+    buf = ctypes.create_unicode_buffer(256)
+    if user32.GetUserObjectInformationW(hdesk, 2, buf, ctypes.sizeof(buf), ctypes.byref(needed)):
+        return buf.value
+    return ""
+
+
 @pytest.mark.skipif(not WINDOWS, reason="the low-integrity sandbox is Windows only")
 def test_windows_commands_write_only_inside_the_workspace(tmp_path, home):
     assert sandbox.backend() == "low-integrity" and not sandbox.full()
     root, outside = tmp_path / "ws", Path(tempfile.mkdtemp(prefix="outside-"))
     (root / "pkg").mkdir(parents=True)
     (root / "pkg" / "old.txt").write_text("old")
-    code, out = _run("echo made> new.txt && echo changed> pkg\\old.txt && python -c \"print(6*7)\" && git --version", root)
+    # Ephemeral non-Default Windows desktops (e.g., isolated CI/harness desktops)
+    # restrict Low-IL processes from initializing user32.dll (0xC0000142) inside git.exe.
+    check_git = _windows_desktop_name().lower() in ("", "default")
+    cmd = 'echo made> new.txt && echo changed> pkg\\old.txt && python -c "print(6*7)"'
+    if check_git:
+        cmd += " && git --version"
+    code, out = _run(cmd, root)
     assert code == 0, out
-    assert "42" in out and "git version" in out
+    assert "42" in out and (not check_git or "git version" in out)
     assert (root / "new.txt").read_text().strip() == "made" and (root / "pkg" / "old.txt").read_text().strip() == "changed"
     code, out = _run(f'echo bad> "{outside / "x.txt"}"', root)
     assert code != 0 and not (outside / "x.txt").exists(), out

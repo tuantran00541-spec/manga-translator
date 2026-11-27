@@ -23,6 +23,13 @@ def _is_safe_rel(rel: str) -> bool:
     return bool(parts) and all(p not in ("", ".", "..") for p in parts)
 
 
+def _is_link_or_junction(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    isjunction = getattr(os.path, "isjunction", None)
+    return bool(isjunction and isjunction(path))
+
+
 def _files(top: Path):
     for folder, dirs, names in os.walk(top):
         at_root = Path(folder) == top
@@ -32,7 +39,7 @@ def _files(top: Path):
             if d not in SKIP_DIRS
             and d != CONFLICTS
             and not (at_root and d in ROOT_SKIP_DIRS)
-            and not (Path(folder) / d).is_symlink()
+            and not _is_link_or_junction(Path(folder) / d)
         ]
         for name in names:
             path = Path(folder) / name
@@ -77,7 +84,7 @@ def _has_symlink_component(target: Path, base: Path) -> bool:
     cur = base
     for part in rel_parts:
         cur = cur / part
-        if cur.is_symlink():
+        if _is_link_or_junction(cur):
             return True
     return False
 
@@ -118,7 +125,7 @@ def snapshot(root: Path, dest: Path) -> dict[str, str] | None:
             and not (at_root and d in ROOT_SKIP_DIRS)
         ]
         for name in dirs + names:
-            if (Path(folder) / name).is_symlink():
+            if _is_link_or_junction(Path(folder) / name):
                 return None
         for name in names:
             path = Path(folder) / name

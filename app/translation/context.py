@@ -74,7 +74,6 @@ SETTING_REGISTERS = {
     "horror": 'Kinh dị / tâm linh: exorcist "thầy"/"con", spirits "ta"/"ngươi", ordinary people "tôi"/"cậu".',
     "family": 'Gia đình / lãng mạn: "anh"/"em", "bố"/"mẹ"/"con", "tớ"/"cậu".',
 }
-DEFAULT_SETTING = "modern"
 _GENERAL_REGISTER = ('match the setting: martial-arts/historical worlds use "ta"/"ngươi" (king "trẫm", subject "thần"/"bệ hạ") '
                      'and letter person and technique names in Hán Việt (Sino-Vietnamese), not Latin/English; '
                      'never "bạn"/"tôi"/"cậu"/"tớ" in martial-arts/historical worlds, not even to an AI/system; '

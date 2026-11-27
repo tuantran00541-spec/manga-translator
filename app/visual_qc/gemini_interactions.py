@@ -8,7 +8,6 @@ from app.api_proxy import redact_secret
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_VISUAL_QC_MODEL", "gemini-3.7-flash")
-DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
 try:
     DEFAULT_TIMEOUT_SECONDS = max(15, min(300, int(os.getenv("GEMINI_VISUAL_QC_TIMEOUT_SECONDS", "120"))))
 except ValueError:

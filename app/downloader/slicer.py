@@ -316,17 +316,14 @@ def _get_content_row_mask(
 
     scale = 2 if (w >= 400 and h >= 1600) else 1
     if scale == 2:
+        del full_edges
         sh, sw = max(1, h // 2), max(1, w // 2)
         work = cv2.resize(gray, (sw, sh), interpolation=cv2.INTER_AREA)
+        edges = cv2.Canny(work, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH)
     else:
         sh, sw = h, w
         work = gray
-
-    edges = (
-        cv2.Canny(work, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH)
-        if scale == 2
-        else full_edges
-    )
+        edges = full_edges
 
     combined = cv2.bitwise_or(edges, _content(work))
 
@@ -352,8 +349,12 @@ def _get_content_row_mask(
 
     if color is not None and color.ndim == 3 and color.shape[0] == h and color.shape[1] >= 2:
         kernel = _horizontal_kernel_width(color.shape[1])
-        color_bg = cv2.blur(color, (kernel, 1))
-        color_dev = cv2.absdiff(color, color_bg)
-        mask |= np.any(color_dev >= SLICE_BACKGROUND_DISTANCE, axis=(1, 2))
+        chunk = 1024
+        for y0 in range(0, h, chunk):
+            y1 = min(h, y0 + chunk)
+            strip = color[y0:y1]
+            color_bg = cv2.blur(strip, (kernel, 1))
+            color_dev = cv2.absdiff(strip, color_bg)
+            mask[y0:y1] |= np.any(color_dev >= SLICE_BACKGROUND_DISTANCE, axis=(1, 2))
 
     return mask

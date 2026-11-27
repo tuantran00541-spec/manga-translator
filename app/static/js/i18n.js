@@ -888,7 +888,7 @@
     if (applyDepth === 0 && observer) observer.takeRecords();
   }
 
-  const TEXT_SKIP_SELECTOR = "[data-no-i18n], .agent-user, .agent-prose, .agent-pre, .agent-think-body, .agent-target, .ocr-textarea, .review-translation-input, .review-inline-translation, .proofing-source, .proofing-translation, .review-proof-source, .review-proof-translation, .translation-textarea";
+  const TEXT_SKIP_SELECTOR = "[data-no-i18n], .agent-user, .agent-prose, .agent-pre, .agent-think-body, .agent-target, .ocr-textarea, .review-translation-input, .review-inline-translation, .review-inline-editor, .review-overlay-preview-text, .koharu-layer-name, .proofing-source, .proofing-translation, .review-proof-source, .review-proof-translation, .translation-textarea";
 
   function isHardSkippedElement(el) {
     if (!el || el.nodeType !== 1) return false;

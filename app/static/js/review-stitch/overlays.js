@@ -512,19 +512,19 @@ export function renderOverlays(shell, signal) {
 export function restoreWorkspaceState(shell) {
   if (shell._restoreApplied) return;
   const workspace = shell.closest(".review-workspace-shell");
-  const state = workspace?._reviewRestoreState;
-  if (!state || state.chapterId !== chapterKey()) return;
+  const saved = workspace?._reviewRestoreState;
+  if (!saved || saved.chapterId !== chapterKey()) return;
   shell._restoreApplied = true;
   workspace._reviewRestoreState = null;
 
   const viewport = shell.querySelector(".review-document-viewport");
   if (viewport) {
-    viewport.scrollLeft = Math.max(0, Number(state.scrollLeft || 0));
-    viewport.scrollTop = Math.max(0, Number(state.scrollTop || 0));
+    viewport.scrollLeft = Math.max(0, Number(saved.scrollLeft || 0));
+    viewport.scrollTop = Math.max(0, Number(saved.scrollTop || 0));
   }
 
-  const pageIndex = Number(state.activePageIndex);
-  const id = state.selectedTextObjectId;
+  const pageIndex = Number(saved.activePageIndex);
+  const id = saved.selectedTextObjectId;
   if (state.variant === "clean" && Number.isInteger(pageIndex) && id) {
     const overlay = shell.querySelector(
       `.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"]`,
@@ -547,15 +547,21 @@ export async function waitForOcr(shell, pageIndex, id, signal) {
 
 export async function ensureObjects(shell) {
   if (typeof window.ensureAutoTextObjects !== "function") return;
+  const missing = [];
+  const keys = [];
   for (const desc of shell._descriptors || []) {
-    const pageIndex = Number(desc.item.canonicalIndex), key = `${chapterKey()}:${pageIndex}`;
+    const pageIndex = Number(desc.item.canonicalIndex);
+    const key = `${chapterKey()}:${pageIndex}`;
     if (isAutoSynced(key)) continue;
-    try {
-      await window.ensureAutoTextObjects(pageIndex);
-      markAutoSynced(key);
-    } catch (err) {
-      console.warn("Could not ensure text objects", pageIndex, err);
-    }
+    missing.push(pageIndex);
+    keys.push(key);
+  }
+  if (!missing.length) return;
+  try {
+    await window.ensureAutoTextObjects(missing);
+    keys.forEach((key) => markAutoSynced(key));
+  } catch (err) {
+    console.warn("Could not ensure text objects", missing, err);
   }
 }
 

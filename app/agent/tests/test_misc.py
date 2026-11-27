@@ -3,7 +3,9 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import json
+import os
 import stat
+import sys
 import threading
 from pathlib import Path
 
@@ -76,7 +78,8 @@ class TestH11BranchApproval:
         assert "refused" in out.lower() or "deny" in out.lower() or "denied" in out.lower()
 
     def test_branch_tools_still_work_when_allowed(self, ask_session, agent_home):
-        out, ok, asked = self._run_branch_check(ask_session, "touch h11_ok_marker", "allow")
+        cmd = f'"{sys.executable}" -c "open(\'h11_ok_marker\', \'w\').close()"'
+        out, ok, asked = self._run_branch_check(ask_session, cmd, "allow")
         assert asked, "approval path was not consulted"
         markers = list((agent_home / ".manga-agent" / "outputs").rglob("h11_ok_marker"))
         assert markers, "allowed branch run_command did not execute"
@@ -109,7 +112,8 @@ class TestL2PrivateStateFiles:
         target.write_text("old", encoding="utf-8")
         AgentSession._write_private(target, "secret payload")
         assert target.read_text(encoding="utf-8") == "secret payload"
-        assert _mode(target) == 0o600
+        if os.name != "nt":
+            assert _mode(target) == 0o600
         assert not list(tmp_path.glob("state.txt.part-*")), "temp file leaked"
 
     def test_offload_file_is_owner_only(self, ask_session):
@@ -117,9 +121,10 @@ class TestL2PrivateStateFiles:
         big = "x" * (13_000)
         note = ask_session._offload(call, big)
         assert "full output saved to" in note
-        path = Path(note.split("full output saved to ")[1].split(":")[0])
+        path = Path(note.split("full output saved to ")[1].split(": ")[0])
         assert path.is_file()
-        assert _mode(path) == 0o600
+        if os.name != "nt":
+            assert _mode(path) == 0o600
         assert path.read_text(encoding="utf-8") == big
 
     def test_archive_file_is_owner_only(self, ask_session):
@@ -128,7 +133,8 @@ class TestL2PrivateStateFiles:
         note = ask_session._archive(items, "the test")
         path = Path(note.split("saved in ")[1].split(";")[0])
         assert path.is_file()
-        assert _mode(path) == 0o600
+        if os.name != "nt":
+            assert _mode(path) == 0o600
         saved = json.loads(path.read_text(encoding="utf-8"))
         assert saved[1]["content"] == "token=sk-canary world"
 

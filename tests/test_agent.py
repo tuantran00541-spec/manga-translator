@@ -48,7 +48,13 @@ def test_paths_stay_inside_the_workspace(ws, tmp_path):
         ws.resolve("../outside.txt")
     with pytest.raises(ToolError):
         ws.resolve(str(tmp_path / "x"))
-    (ws.root / "link").symlink_to(tmp_path)
+    link = ws.root / "link"
+    try:
+        link.symlink_to(tmp_path)
+    except OSError:
+        import subprocess
+        proc = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(tmp_path)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr or proc.stdout
     with pytest.raises(ToolError):
         ws.run("read_file", {"path": "link/anything"})
 
@@ -347,21 +353,25 @@ def test_create_takes_code_wrapped_in_a_markdown_fence(ws, home):
 
 
 def test_autonomous_work_that_ends_without_a_passing_check_is_asked_once_to_run_one(ws, home):
+    py = f'"{sys.executable}"'
     fake = scripted(turn(calls=[call("run_command", command="exit 3")]), turn("Done."), turn("Still done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert len(fake.seen) == 3 and "exit 3" in fake.seen[2][0][-1]["content"], "one nudge naming the failed command, then it may finish"
-    fake = scripted(turn(calls=[call("run_command", command="true")]), turn("Done."))
+    fake = scripted(turn(calls=[call("run_command", command=f'{py} -c "pass"')]), turn("Done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert len(fake.seen) == 2, "a command that passed needs no nudge"
-    check = "python3 -c \"raise SystemExit('boom')\" || true; python3 -c 'import sys; sys.stderr.write(\"Traceback (most recent call last):\\n\")'"
-    fake = scripted(turn(calls=[call("run_command", command=check)]), turn(calls=[call("run_command", command="cat pkg/a.py")]), turn("Done."), turn("Ok."))
+    check = f'{py} -c "import sys; sys.stderr.write(\'Traceback (most recent call last):\\n\')"'
+    read_cmd = f'{py} -c "print(open(\'pkg/a.py\').read())"'
+    fake = scripted(turn(calls=[call("run_command", command=check)]), turn(calls=[call("run_command", command=read_cmd)]), turn("Done."), turn("Ok."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert len(fake.seen) == 4 and "this command failed" in fake.seen[3][0][-1]["content"], "a failed check is not hidden by a later passing cat"
-    fake = scripted(turn(calls=[call("run_command", command="test -f done.txt")]), turn(calls=[call("run_command", command="touch done.txt")]),
-                    turn(calls=[call("run_command", command="test -f done.txt")]), turn("Done."))
+    has_done = f'{py} -c "import os, sys; sys.exit(0 if os.path.isfile(\'done.txt\') else 1)"'
+    make_done = f'{py} -c "open(\'done.txt\', \'w\').close()"'
+    fake = scripted(turn(calls=[call("run_command", command=has_done)]), turn(calls=[call("run_command", command=make_done)]),
+                    turn(calls=[call("run_command", command=has_done)]), turn("Done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert len(fake.seen) == 4, "the same check passing later clears it"
@@ -447,9 +457,10 @@ def test_skills_todos_and_the_read_only_helper(ws, home):
 
 def test_hooks_block_and_report_only_once_trusted(ws, home, tmp_path):
     (ws.root / ".agents").mkdir()
+    py = f'"{sys.executable}"'
     (ws.root / ".agents" / "settings.json").write_text(json.dumps({"hooks": {
-        "PreToolUse": [{"matcher": "Bash", "command": "echo 'no shell today' >&2; exit 2"}],
-        "PostToolUse": [{"matcher": "Write", "command": "echo checked >&2"}]}}), encoding="utf-8")
+        "PreToolUse": [{"matcher": "Bash", "command": f'{py} -c "import sys; sys.stderr.write(\'no shell today\\n\'); sys.exit(2)"'}],
+        "PostToolUse": [{"matcher": "Write", "command": f'{py} -c "import sys; sys.stderr.write(\'checked\\n\')"'}]}}), encoding="utf-8")
     ws.policy = sandbox.Policy("full-access", True)
     fake = scripted(turn(calls=[call("run_command", command="echo hi"), call("write_file", path="x.txt", content="x")]), turn("ok"),
                     turn(calls=[call("run_command", command="echo hi"), call("write_file", path="y.txt", content="y")]), turn("ok"))
@@ -1347,13 +1358,14 @@ def test_old_tool_outputs_are_masked_in_batches_and_recent_ones_stay(ws, home):
 
 def test_a_long_command_output_is_saved_to_a_file_the_model_can_read(ws, home):
     ws.policy = sandbox.Policy("full-access", True)
-    long = "python3 -c \"print('\\n'.join(f'line {i}' for i in range(6000)))\""
+    py = f'"{sys.executable}"'
+    long = f'{py} -c "print(chr(10).join(f\'line {{i}}\' for i in range(6000)))"'
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(
-        turn(calls=[call("run_command", command=long)]), turn(calls=[call("run_command", command="true")]), turn("done")))
+        turn(calls=[call("run_command", command=long)]), turn(calls=[call("run_command", command=f'{py} -c "pass"')]), turn("done")))
     run_to_idle(session)
     shown = tool_outputs(session)[0][2]
     assert "full output saved to" in shown and "line 0" in shown and "line 5999" in shown and "line 3000" not in shown
-    saved = Path(shown.split("full output saved to ")[1].split(":")[0])
+    saved = Path(shown.split("full output saved to ")[1].split(": ")[0])
     assert "line 3000" in saved.read_text()
     assert "line 3000" in session.workspace.run("read_file", {"path": str(saved), "offset": 3000, "limit": 3})
     session.history.insert(1, {"role": "tool", "id": "m", "name": "run_command", "content": shown})
@@ -1435,14 +1447,22 @@ def test_confined_commands_get_no_keys_and_bounded_output(ws, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
     monkeypatch.setenv("MY_SERVICE_TOKEN", "tok-secret")
     monkeypatch.setenv("HARMLESS", "fine")
+    py = f'"{sys.executable}"'
+    env_cmd = f'{py} -c "import os; print(chr(10).join(f\'{{k}}={{v}}\' for k, v in os.environ.items()))"'
     for mode in ("workspace-write", "read-only"):
-        code, out = sandbox.run("env", sandbox.Policy(mode, False), ws.root, 20)
+        code, out = sandbox.run(env_cmd, sandbox.Policy(mode, False), ws.root, 20)
         assert "HARMLESS=fine" in out and "sk-secret" not in out and "tok-secret" not in out
-    assert "sk-secret" in sandbox.run("env", sandbox.Policy("full-access", True), ws.root, 20)[1]
-    code, out = sandbox.run("head -c 12000000 /dev/zero | tr '\\0' a", sandbox.Policy("full-access", True), ws.root, 30)
+    assert "sk-secret" in sandbox.run(env_cmd, sandbox.Policy("full-access", True), ws.root, 20)[1]
+    big_cmd = f'{py} -c "import sys; sys.stdout.write(\'a\' * 12000000)"'
+    code, out = sandbox.run(big_cmd, sandbox.Policy("full-access", True), ws.root, 30)
     assert len(out) < 8_100_000 and "[output cut:" in out
     started = time.time()
-    code, out = sandbox.run("(sleep 30 &); echo started", sandbox.Policy("full-access", True), ws.root, 20)
+    linger_cmd = "(sleep 30 &); echo started" if os.name == "posix" else (
+        f'{py} -c "import subprocess, sys; '
+        f'subprocess.Popen([sys.executable, \'-c\', \'import time; time.sleep(30)\'], '
+        f'stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); print(\'started\')"'
+    )
+    code, out = sandbox.run(linger_cmd, sandbox.Policy("full-access", True), ws.root, 20)
     assert code == 0 and "started" in out and time.time() - started < 10, "a lingering child neither hangs nor survives the command"
 
 
@@ -1508,7 +1528,12 @@ def test_default_rules_protect_git_and_ask_before_destructive_commands(ws, home)
 
 
 def test_a_workspace_cannot_be_the_whole_machine_or_the_home_folder(tmp_path):
-    for bad in ("/", str(Path.home()), "/etc", "/usr"):
+    sys_dirs = (
+        (os.environ.get("SystemRoot", r"C:\Windows"), os.environ.get("ProgramFiles", r"C:\Program Files"))
+        if os.name == "nt"
+        else ("/etc", "/usr")
+    )
+    for bad in (tmp_path.anchor, str(Path.home()), *sys_dirs):
         with pytest.raises(ValueError, match="project folder"):
             Workspace(bad)
     Workspace(tmp_path)
@@ -1521,8 +1546,9 @@ def test_a_turn_stops_at_its_token_budget_and_saved_sessions_are_private(ws, hom
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert any(e["type"] == "error" and "token" in e["text"] for e in session.events) and len(fake.seen) <= 2
-    mode = (tmp_path / "store" / "sessions" / f"{session.id}.json").stat().st_mode & 0o777
-    assert mode == 0o600
+    if os.name != "nt":
+        mode = (tmp_path / "store" / "sessions" / f"{session.id}.json").stat().st_mode & 0o777
+        assert mode == 0o600
 
 
 def test_this_process_is_not_readable_by_its_confined_children(home):
@@ -1538,6 +1564,7 @@ def test_web_search_reads_duckduckgo_and_tavily(monkeypatch):
     html = ('<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.python.org%2F&rut=x">Python</a>'
             '<a class="result__snippet">The official home</a></div>')
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.delenv("TINYFISH_API_KEY", raising=False)
     monkeypatch.setattr(websearch, "_duckduckgo", lambda q, n: websearch.parse_duckduckgo(html, n))
     assert websearch.search("python") == "1. Python\nhttps://www.python.org/\nThe official home"
     monkeypatch.setenv("TAVILY_API_KEY", "k")
@@ -1698,7 +1725,7 @@ def test_view_image_is_offered_only_to_models_that_can_see_and_reaches_them_as_a
     assert not any("images" in h for h in saved)
 
 
-def test_look_only_commands_never_ask_and_saved_rules_allow_a_command_prefix(ws, home):
+def test_look_only_commands_never_ask_and_saved_rules_allow_a_command_prefix(ws, home, monkeypatch):
     from app.agent import rules
     assert rules.safe_readonly("ls -la | head") and rules.safe_readonly("git status && git log --oneline")
     assert not rules.safe_readonly("cat a > b") and not rules.safe_readonly("rm x") and not rules.safe_readonly("echo $(id)") and not rules.safe_readonly("find . -delete")
@@ -1706,7 +1733,8 @@ def test_look_only_commands_never_ask_and_saved_rules_allow_a_command_prefix(ws,
     assert rules.remembered("run_command", {"command": "git commit -m x"}, None) == ("bash", "git commit *")
     assert rules.remembered("run_command", {"command": "python3 x.py"}, None) == ("bash", "python3 x.py"), "interpreters are saved exactly"
     assert rules.remembered("run_command", {"command": "git push"}, "ask") is None and rules.remembered("run_command", {"command": "a && b"}, None) is None
-    fake = scripted(turn(calls=[call("run_command", command="ls")]), turn(calls=[call("run_command", command="pytest -q")]), turn("done"))
+    monkeypatch.setattr(sandbox, "full", lambda: True)
+    fake = scripted(turn(calls=[call("run_command", command="echo ok")]), turn(calls=[call("run_command", command="pytest -q")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
     session.send("go")
     wait_for(session, "waiting")
@@ -1990,12 +2018,14 @@ def test_fan_out_runs_many_jobs_and_returns_every_report_in_one_call(ws, home):
 
 def test_a_command_cannot_leave_a_git_hook_behind_and_receipts_list_what_was_done(ws, home):
     import subprocess
+    py = f'"{sys.executable}"'
     subprocess.run(["git", "init", "-q"], cwd=ws.root, check=True)
     config_before = (ws.root / ".git" / "config").read_bytes()
-    out = ws.run("run_command", {"command": "printf '#!/bin/sh\\necho pwned' > .git/hooks/pre-commit && echo '[x]' >> .git/config"})
+    tamper = f'{py} -c "open(\'.git/hooks/pre-commit\', \'w\').write(\'#!/bin/sh\\necho pwned\'); open(\'.git/config\', \'a\').write(\'[x]\\n\')"'
+    out = ws.run("run_command", {"command": tamper})
     assert "[blocked:" in out and ".git/hooks/pre-commit" in out and ".git/config" in out
     assert not (ws.root / ".git" / "hooks" / "pre-commit").exists() and (ws.root / ".git" / "config").read_bytes() == config_before
-    fake = scripted(turn(calls=[call("write_file", path="r.txt", content="1"), call("run_command", command="echo hi")]), turn("done"), turn(calls=[call("run_command", command="true")]), turn("ok"))
+    fake = scripted(turn(calls=[call("write_file", path="r.txt", content="1"), call("run_command", command="echo hi")]), turn("done"), turn(calls=[call("run_command", command=f'{py} -c "pass"')]), turn("ok"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     receipts = session.command("/receipts")["message"]
@@ -2099,9 +2129,10 @@ def test_a_created_tool_calls_read_tools_as_functions_and_can_write(ws, home):
 
 
 def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
-    fake = scripted(turn(calls=[call("run_command", command="python3 -i -q", background=True, tty=True)]),
+    py = f'"{sys.executable}"'
+    fake = scripted(turn(calls=[call("run_command", command=f"{py} -i -q", background=True, tty=True)]),
                     turn(calls=[{"id": "i", "name": "job_input", "args": {"id": "job1", "chars": "print(6 * 7)\n"}}]),
-                    turn(calls=[call("run_command", command="read a; echo got $a", background=True)]),
+                    turn(calls=[call("run_command", command=f'{py} -u -c "print(\'got\', input(), flush=True)"', background=True)]),
                     turn(calls=[{"id": "j", "name": "job_input", "args": {"id": "job2", "chars": "yes\n"}}]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -2110,7 +2141,7 @@ def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
     assert "got yes" in outs[3][2] and "exited with code 0" in outs[3][2], outs[3]
     for job in session.jobs.values():
         job.stop()
-    session.jobs["job9"] = sandbox.Job("cat", sandbox.Policy("full-access", True), ws.root)
+    session.jobs["job9"] = sandbox.Job(f'{py} -u -c "import sys; sys.stdin.read()"', sandbox.Policy("full-access", True), ws.root)
     assert session._needs_approval({"name": "job_input", "args": {"id": "job9", "chars": "x"}}), "typing into an unsandboxed job asks"
     assert not session._needs_approval({"name": "job_input", "args": {"id": "job1", "chars": "x"}})
     session.jobs.pop("job9").stop()
@@ -2137,7 +2168,7 @@ def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, 
     fake = advised([turn(calls=[call("read_file", path="pkg/a.py")]),
                     turn("Plan: change f to return 2, then run the tests.", calls=[call("todo_write", items=[{"text": "edit f", "status": "in_progress"}])]),
                     turn(calls=[call("edit_file", path="pkg/a.py", old_text="return 1", new_text="return 2")]),
-                    turn(calls=[call("run_command", command="python -c 'import pkg.a'")]),
+                    turn(calls=[call("run_command", command=f'"{sys.executable}" -c "import pkg.a"')]),
                     turn(calls=[call("todo_write", items=[{"content": "edit f", "status": "completed"}])]), turn("Done.")], [[]])
     session = manager(home).create(PROVIDERS["openai"], "k", "small", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -2202,8 +2233,9 @@ def test_auto_mode_tells_the_agent_to_rule_instead_of_stalling_and_compaction_ke
 
 
 def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick_one_runs_as_before(ws, home):
-    fake = scripted(turn(calls=[call("run_command", command="echo hi; exit 3")]),
-                    turn(calls=[call("run_command", command="echo started; sleep 20; echo finished", timeout=1)]),
+    py = f'"{sys.executable}"'
+    fake = scripted(turn(calls=[call("run_command", command=f'{py} -c "import sys; print(\'hi\'); sys.exit(3)"')]),
+                    turn(calls=[call("run_command", command=f'{py} -u -c "import time; print(\'started\', flush=True); time.sleep(20); print(\'finished\', flush=True)"', timeout=1)]),
                     turn(calls=[{"id": "o", "name": "job_stop", "args": {"id": "job1"}}]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -2213,7 +2245,7 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     assert "Stopped job1" in outs[2][2]
     (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"timeout_to_background": False}))
-    fake = scripted(turn(calls=[call("run_command", command="sleep 20", timeout=1)]), turn("ok"))
+    fake = scripted(turn(calls=[call("run_command", command=f'{py} -c "import time; time.sleep(20)"', timeout=1)]), turn("ok"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert "[stopped after 1 s]" in tool_outputs(session)[0][2] and not session.jobs
@@ -2460,6 +2492,7 @@ def test_a_busy_model_429_is_waited_out_but_a_spent_quota_is_not(monkeypatch):
 
 def test_web_search_falls_through_the_providers_filters_by_site_and_names_a_constraint_it_dropped(monkeypatch):
     from app.agent import websearch
+    monkeypatch.delenv("TINYFISH_API_KEY", raising=False)
     monkeypatch.setenv("TAVILY_API_KEY", "t")
     rows = [("Repo", "https://github.com/anthropics/claude-code", "code"), ("Talk", "https://www.reddit.com/r/x", "chat"), ("Paper", "https://docs.example.org/a.pdf", "pdf")]
     seen = {}
@@ -2831,7 +2864,7 @@ def test_small_session_fixes(ws, home, tmp_path):
 def test_tool_events_keep_a_clipped_copy_while_the_model_sees_everything(ws, home):
     (ws.root / "big.txt").write_text("\n".join("line %d %s" % (i, "y" * 60) for i in range(1500)), encoding="utf-8")
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass",
-                                   complete=scripted(turn(calls=[call("run_command", command="cat big.txt")]), turn("done")))
+                                   complete=scripted(turn(calls=[call("run_command", command=f'"{sys.executable}" -c "print(open(\'big.txt\').read())"')]), turn("done")))
     run_to_idle(session, "show")
     event = next(e for e in session.events if e["type"] == "tool")
     assert len(event["output"]) <= 20_100
@@ -2893,7 +2926,8 @@ def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(ap
     assert row["editable"] and row["type"] == "stdio" and row["env"] == {"TOKEN": "•••"} and "s3cret" not in added.text
     stored = json.loads((home / ".manga-agent" / "mcp.json").read_text(encoding="utf-8"))
     assert stored["mcpServers"]["calc"]["args"] == [str(tmp_path / "calc.py")] and stored["mcpServers"]["calc"]["env"] == {"TOKEN": "s3cret"}
-    assert oct((home / ".manga-agent" / "mcp.json").stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":
+        assert oct((home / ".manga-agent" / "mcp.json").stat().st_mode & 0o777) == "0o600"
     tested = http.post(f"/api/agent/mcp/calc/test?workspace={root}", headers=head).json()
     assert tested == {"ok": True, "tools": ["get_sum"]}
     pasted = http.post("/api/agent/mcp", headers=head, json={"pasted": '"docs": {"type": "http", "url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer t"}},'})
@@ -2973,12 +3007,15 @@ def test_replace_in_files_previews_then_changes_every_file(ws, home):
 
 
 def test_move_and_delete_files_then_review_and_revert_through_the_session(ws, home):
-    move = ("tools.run_command(command='mkdir -p lib && mv pkg/a.py lib/a.py')\n"
+    py = f'"{sys.executable}"'
+    move_cmd = f'{py} -c "import os, shutil; os.makedirs(\'lib\', exist_ok=True); shutil.move(\'pkg/a.py\', \'lib/a.py\')"'
+    rm_cmd = f'{py} -c "import os; os.remove(\'new.txt\')"'
+    move = (f"tools.run_command(command={move_cmd!r})\n"
             "tools.write_file(path='new.txt', content='hi')\n"
             "print('Moved pkg/a.py to lib/a.py')\n")
     fake = scripted(turn(calls=[call("create", name="reorganise", code=move, keep=False)]),
                     turn("moved it"),
-                    turn(calls=[call("run_command", command="rm new.txt"), call("checkpoint", diff=True)]),
+                    turn(calls=[call("run_command", command=rm_cmd), call("checkpoint", diff=True)]),
                     turn(calls=[call("checkpoint", action="restore", path="pkg/a.py"), call("checkpoint", action="restore", path="lib/a.py")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "reorganise")
@@ -2988,16 +3025,17 @@ def test_move_and_delete_files_then_review_and_revert_through_the_session(ws, ho
     assert "--- a/pkg/a.py" in diff and "+++ b/lib/a.py" in diff and "new.txt" not in diff, "a file created and deleted again shows no change"
     assert (ws.root / "pkg" / "a.py").is_file() and not (ws.root / "lib" / "a.py").exists(), "both ends of the move are put back"
     assert session.command("/undo")["message"].startswith("Đã hoàn tác")
-    assert "same file" in ws.run("run_command", {"command": "mv pkg/a.py pkg/a.py"})
-    assert "Is a directory" in ws.run("run_command", {"command": "rm pkg"})
+    if os.name != "nt":
+        assert "same file" in ws.run("run_command", {"command": "mv pkg/a.py pkg/a.py"})
+        assert "Is a directory" in ws.run("run_command", {"command": "rm pkg"})
 
 
 def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted())
-    assert session._needs_approval(call("delete_file", path="x")) and session._needs_approval(call("checkpoint", action="restore", path="x"))
+    assert session._needs_approval(call("write_file", path="x")) and session._needs_approval(call("checkpoint", action="restore", path="x"))
     assert not session._needs_approval(call("checkpoint")) and not session._needs_approval(call("checkpoint", action="save", name="a"))
     edits = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted())
-    assert not edits._needs_approval(call("move_file", path="a", to="b")) and not edits._needs_approval(call("checkpoint", action="restore", path="a"))
+    assert not edits._needs_approval(call("edit_file", path="a", old_text="1", new_text="2")) and not edits._needs_approval(call("checkpoint", action="restore", path="a"))
     output, ok = edits._run_call(call("write_file", path=".env", content="x"))
     assert not ok and "Denied" in output, "the .env rule covers the new edit tools"
     reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "bypass", complete=scripted())
@@ -3105,26 +3143,45 @@ def test_tools_command_lists_shows_removes_and_exports_to_an_mcp_server(ws, home
     assert "double" not in session.created
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="the shell tool uses a POSIX shell")
 def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_background(ws, home, monkeypatch):
     from app.agent import session as session_module
-    stateful = {"name": "sh", "description": "Shell that remembers its folder.", "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}},
-                "code": ("import os, subprocess\ndef sh(cmd):\n    f = os.path.join(os.environ['AGENT_STATE'], 'cwd')\n"
-                         "    cwd = open(f).read().strip() if os.path.exists(f) else os.getcwd()\n"
-                         "    r = subprocess.run(cmd + '; pwd > ' + repr(f), shell=True, cwd=cwd, capture_output=True, text=True)\n"
-                         "    return r.stdout + r.stderr + f'[exit {r.returncode}]'\n")}
+    stateful = {
+        "name": "sh",
+        "description": "Stateful folder helper.",
+        "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}},
+        "code": (
+            "import os, time\n"
+            "from pathlib import Path\n"
+            "def sh(cmd):\n"
+            "    f = Path(os.environ['AGENT_STATE']) / 'cwd'\n"
+            "    cwd = Path(f.read_text(encoding='utf-8').strip()) if f.exists() else Path.cwd()\n"
+            "    if cmd.startswith('cd '):\n"
+            "        cwd = (cwd / cmd[3:].strip()).resolve()\n"
+            "        f.write_text(str(cwd), encoding='utf-8')\n"
+            "        return f'{cwd.as_posix()}\\n[exit 0]'\n"
+            "    if cmd == 'edit':\n"
+            "        (cwd / 'a.py').write_text('changed\\n', encoding='utf-8')\n"
+            "        (cwd / 'n.txt').write_text('new\\n', encoding='utf-8')\n"
+            "        return f'{cwd.as_posix()}\\n[exit 0]'\n"
+            "    if cmd == 'slow':\n"
+            "        time.sleep(2)\n"
+            "        (cwd / 'late.txt').write_text('late\\n', encoding='utf-8')\n"
+            "        return '[exit 0]'\n"
+            "    return '[exit 1]'\n"
+        ),
+    }
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     session._create(stateful)
     run = lambda cmd: session._run_call({"id": cmd[:8], "name": "sh", "args": {"cmd": cmd}})[0]
     assert "[exit 0]" in run("cd pkg")
-    out = run("pwd && echo changed > a.py && echo new > n.txt")
+    out = run("edit")
     assert out.splitlines()[0].endswith("/pkg"), "the folder from the last call is kept"
     assert "[changed: pkg/a.py, pkg/n.txt]" in out
     assert session.command("/undo")["message"]
     assert (ws.root / "pkg" / "a.py").read_text().startswith("def f()") and not (ws.root / "pkg" / "n.txt").exists(), "/undo restores what a created tool changed"
     monkeypatch.setattr(session_module, "CREATED_TIMEOUT", 1)
-    out = run("sleep 2 && echo late > late.txt")
+    out = run("slow")
     assert "moved to the background as job1" in out and "job_output" in [s["name"] for s in session.specs()]
     time.sleep(2.5)
     session._notifications()
@@ -3530,9 +3587,14 @@ def test_python_run_by_run_command_calls_the_library_through_the_agent(ws, home)
     (ws.root / "use.py").write_text("from agent_tools import tools\nprint(tools.read_file(path='notes.txt').count('hello'))\n")
     out = session._run_foreground({"command": f'"{sys.executable}" use.py'})
     assert out.strip().splitlines()[0].strip() == "1" and "[exit code 0]" in out, out
-    out = session._run_foreground({"command": "agent-tool read_file path=notes.txt && agent-tool nope; echo $?"})
-    assert "hello" in out and "no tool 'nope'" in out and out.strip().splitlines()[-2].strip() == "1", out
-    out = session._run_foreground({"command": "agent-tool --help; agent-tool skill nope"})
+    if os.name != "nt":
+        out = session._run_foreground({"command": "agent-tool read_file path=notes.txt && agent-tool nope; echo $?"})
+        assert "hello" in out and "no tool 'nope'" in out and out.strip().splitlines()[-2].strip() == "1", out
+        out = session._run_foreground({"command": "agent-tool --help; agent-tool skill nope"})
+    else:
+        out = session._run_foreground({"command": "agent-tool read_file path=notes.txt && agent-tool nope"})
+        assert "hello" in out and "no tool 'nope'" in out and "[exit code 1]" in out, out
+        out = session._run_foreground({"command": "agent-tool --help & agent-tool skill nope"})
     assert "read_file:" in out and "No skill named 'nope'" in out, "help lists the tools and a bare value goes to the first parameter"
     if os.name != "nt":
         out = session._run_foreground({"command": "read_file path=notes.txt && skill nope; echo $?"})
@@ -3543,7 +3605,8 @@ def test_python_run_by_run_command_calls_the_library_through_the_agent(ws, home)
         assert (ws.root / "n.txt").read_text() == "1", "nothing is applied before adopting"
         out = session._run_foreground({"command": "adopt three && cat n.txt"})
         assert "Adopted branch three" in out and (ws.root / "n.txt").read_text() == "3", out
-    seen = session._start_job({"command": "agent-tool read_file path=notes.txt; sleep 30"})
+    bg_cmd = "agent-tool read_file path=notes.txt; sleep 30" if os.name != "nt" else f'agent-tool read_file path=notes.txt & "{sys.executable}" -c "import time; time.sleep(30)"'
+    seen = session._start_job({"command": bg_cmd})
     deadline = time.time() + 10
     while "hello" not in seen and time.time() < deadline:
         time.sleep(0.1)
@@ -3552,8 +3615,12 @@ def test_python_run_by_run_command_calls_the_library_through_the_agent(ws, home)
     session.jobs.pop("job1").stop()
 
 
-def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
+def test_the_worked_example_in_the_prompt_runs_as_written(ws, home, monkeypatch):
     from app.agent import session as session_module
+    if os.name == "nt" and sandbox.backend() == "low-integrity":
+        # Avoid pytest autoloading unrelated global plugins (e.g. anyio -> _ssl)
+        # whose native DLLs fail DllMain under Low-IL on ephemeral Windows desktops.
+        monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     (ws.root / "app").mkdir()
     (ws.root / "tests").mkdir()
     (ws.root / "app" / "__init__.py").write_text("")
@@ -3578,7 +3645,7 @@ def test_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
     real = ws.root / "pkg" / "a.py"
     chain = ("def go():\n"
              "    a = \"tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 2')\"\n"
-             f"    b = \"tools.edit_file(path='{real}', old_text='return 1', new_text='return 3')\\nprint('b done')\"\n"
+             f"    b = \"tools.edit_file(path='{real.as_posix()}', old_text='return 1', new_text='return 3')\\nprint('b done')\"\n"
              "    nested = \"tools.branch({'x': 'pass', 'y': 'pass'})\"\n"
              "    check = \"import subprocess, sys\\nr = subprocess.run([sys.executable, '-c', 'import pkg.a as m; assert m.x == 3, m.x'], capture_output=True, text=True)\\n"
              "print('PASS' if r.returncode == 0 else 'FAIL ' + r.stderr.strip().splitlines()[-1])\"\n"
@@ -3765,16 +3832,33 @@ def test_the_effort_is_set_through_the_api_and_kept_on_resume(api):
 
 
 def test_a_server_a_finished_command_left_running_stays_up_and_outlives_the_session(ws, home, monkeypatch):
-    fake = scripted(turn(calls=[call("run_command", command="echo $DEBIAN_FRONTEND; (sleep 30; echo late) &", timeout=10)]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    out = tool_outputs(session)[0][2]
-    assert "noninteractive" in out, "a package install cannot stop to ask a question"
-    assert "keep running as job1" in out and session.jobs["job1"].alive, out
-    session._notifications()
-    assert not any("job1 finished" in str(h["content"]) for h in session.history), "a job whose server still runs is not reported finished"
-    session.jobs["job1"].stop()
-    assert not session.jobs["job1"].alive
+    if os.name == "posix":
+        fake = scripted(turn(calls=[call("run_command", command="echo $DEBIAN_FRONTEND; (sleep 30; echo late) &", timeout=10)]), turn("done"))
+        session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+        run_to_idle(session)
+        out = tool_outputs(session)[0][2]
+        assert "noninteractive" in out, "a package install cannot stop to ask a question"
+        assert "keep running as job1" in out and session.jobs["job1"].alive, out
+        session._notifications()
+        assert not any("job1 finished" in str(h["content"]) for h in session.history), "a job whose server still runs is not reported finished"
+        session.jobs["job1"].stop()
+        assert not session.jobs["job1"].alive
+    else:
+        py = f'"{sys.executable}"'
+        fake = scripted(
+            turn(calls=[call("run_command", command=f'{py} -c "import os; print(os.environ.get(\'DEBIAN_FRONTEND\'))"', timeout=10)]),
+            turn(calls=[call("run_command", command=f'{py} -c "import time; time.sleep(30)"', background=True)]),
+            turn("done"),
+        )
+        session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+        run_to_idle(session)
+        out = tool_outputs(session)[0][2]
+        assert "noninteractive" in out, "a package install cannot stop to ask a question"
+        assert "job1" in session.jobs and session.jobs["job1"].alive
+        session._notifications()
+        assert not any("job1 finished" in str(h["content"]) for h in session.history)
+        session.jobs["job1"].stop()
+        assert not session.jobs["job1"].alive
 
 
 def test_a_profile_switches_whole_features_off(ws, home):
@@ -3834,7 +3918,7 @@ def test_with_keep_jobs_a_running_service_outlives_the_session(ws, home):
 
 
 def test_polling_a_running_job_is_not_taken_for_a_loop(ws, home):
-    script = "python3 -u -c \"import time; time.sleep(300)\""
+    script = f'"{sys.executable}" -u -c "import time; time.sleep(300)"'
     fake = scripted(turn(calls=[call("run_command", command=script, background=True)]),
                     *[turn(calls=[call("job_output", id="job1", wait_s=1)]) for _ in range(4)],
                     turn(calls=[call("job_stop", id="job1")]), turn("done"))

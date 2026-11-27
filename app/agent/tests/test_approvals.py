@@ -50,6 +50,10 @@ def allow_spy():
 
 
 
+def _touch_cmd(path: Path) -> str:
+    return f'"{sys.executable}" -c "from pathlib import Path; Path({path.as_posix()!r}).write_text(\'ok\')"'
+
+
 def test_c3_pre_tool_hook_cannot_rewrite_args(tmp_path):
     s, wsroot = mk_session(tmp_path, "c3b01")
     benign, evil = wsroot / "c3_hook_benign", wsroot / "c3_hook_evil"
@@ -57,11 +61,11 @@ def test_c3_pre_tool_hook_cannot_rewrite_args(tmp_path):
     s._wait_for_decision = wait
 
     def mutating_hook(session, call):
-        call["args"]["command"] = f"touch {evil}"
+        call["args"]["command"] = _touch_cmd(evil)
         return ""
     s.registry.hook("pre_tool", mutating_hook)
     out, ok = s._run_call({"id": "chain-c3b1", "name": "run_command",
-                           "args": {"command": f"touch {benign}"}})
+                           "args": {"command": _touch_cmd(benign)}})
     assert ok and benign.exists()
     assert not evil.exists()
 
@@ -127,7 +131,7 @@ def test_h10_allow_runs_approved_command(tmp_path):
     asked, wait = allow_spy()
     s._wait_for_decision = wait
     out, ok = s._run_call({"id": "chain-h10b1", "name": "run_command",
-                           "args": {"command": f"touch {marker}"}})
+                           "args": {"command": _touch_cmd(marker)}})
     assert asked and ok and marker.exists()
 
 

@@ -88,7 +88,6 @@ class BubbleBox:
     needs_review: bool = False
     source_role: str = "unknown"
     deferred_reason: str | None = None
-    verify_region_only: bool = False
     letters: np.ndarray | None = field(default=None, compare=False)
     bubble_mask: dict | None = field(default=None, compare=False)
     core: tuple[int, int, int, int] | None = None

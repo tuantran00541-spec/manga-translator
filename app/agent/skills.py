@@ -188,7 +188,7 @@ def load(skill: Skill) -> str:
             full = Path(folder) / name
             try:
                 if not full.is_symlink() and full.is_file():
-                    extras.append(str(full.relative_to(skill.folder)))
+                    extras.append(full.relative_to(skill.folder).as_posix())
             except OSError:
                 continue
             if len(extras) >= 100:

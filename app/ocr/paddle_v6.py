@@ -22,8 +22,6 @@ from app.parameters import (
     OCR_SELECTIVE_RETRY,
 )
 
-UNIFIED_LANGS = {"en", "english", "ch", "zh", "ja", "japan"}
-KOREAN_LANGS = {"ko", "korean"}
 _COMPLETENESS_REASONS = {"crop-edge-text", "incomplete-coverage"}
 
 

@@ -131,7 +131,7 @@ def _watched(git: Path, common: Path) -> dict[Path, _FileState]:
 
 def _display_name(root: Path, path: Path) -> str:
     try:
-        return os.path.relpath(path, root)
+        return Path(os.path.relpath(path, root)).as_posix()
     except ValueError:
         return str(path)
 

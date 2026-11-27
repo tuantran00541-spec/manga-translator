@@ -75,7 +75,6 @@ MASKLESS_MIN_COVERAGE = 0.02
 ROTATED_MIN_SCORE = PAGE_CONFIDENCE
 ROTATED_AUX_MIN_SCORE = 0.50
 NATIVE_AUX_CONFIDENCE = 0.25
-NATIVE_AUX_OVERLAP = 0.45
 NATIVE_AUX_STRICT_CONF = 0.32
 ENHANCED_CTD_MIN_SCORE = 0.35
 ENHANCED_CTD_AUX_MIN_SCORE = 0.50
@@ -1286,11 +1285,6 @@ class KiuyhaTextDetector:
             self._aux_session = aux_session
             self._aux_input_name = aux_inp.name
             self._aux_fixed = (int(ah), int(aw))
-
-    def _input_size(self, height: int, width: int) -> tuple[int, int]:
-        if self.fixed is not None:
-            return self.fixed
-        return int(math.ceil(height / STRIDE) * STRIDE), int(math.ceil(width / STRIDE) * STRIDE)
 
     def _run_raw_boxes(
         self,

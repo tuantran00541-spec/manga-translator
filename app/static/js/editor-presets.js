@@ -2,6 +2,7 @@
 (() => {
   let presets = [];
   let loaded = null;
+  let activeChangeListener = null;
 
   const STYLE_KEYS = Object.keys(window.DEFAULT_TEXT_OBJECT_STYLE || {});
 
@@ -159,7 +160,19 @@
       if (event.key === "Enter") { event.preventDefault(); doStore(); }
       else if (event.key === "Escape") { event.preventDefault(); saveRow.hidden = true; addBtn.setAttribute("aria-pressed", "false"); }
     });
-    const onChange = () => { if (!select.isConnected) { document.removeEventListener("style-presets-changed", onChange); return; } fill(); };
+    if (activeChangeListener) {
+      document.removeEventListener("style-presets-changed", activeChangeListener);
+      activeChangeListener = null;
+    }
+    const onChange = () => {
+      if (!select.isConnected) {
+        document.removeEventListener("style-presets-changed", onChange);
+        if (activeChangeListener === onChange) activeChangeListener = null;
+        return;
+      }
+      fill();
+    };
+    activeChangeListener = onChange;
     document.addEventListener("style-presets-changed", onChange);
 
     fill();

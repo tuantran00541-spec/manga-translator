@@ -307,6 +307,10 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
     return {**base, "DEBIAN_FRONTEND": base.get("DEBIAN_FRONTEND", "noninteractive")}
 
 
+def decode_output(data: bytes) -> str:
+    return data.decode("utf-8", errors="replace").replace("\r\n", "\n")
+
+
 class Job:
     def __init__(
         self,
@@ -406,7 +410,7 @@ class Job:
     def read(self) -> str:
         data = self.out.read_from(self.cursor)
         self.cursor += len(data)
-        return data.decode("utf-8", errors="replace")
+        return decode_output(data)
 
     @property
     def code(self) -> int | None:
@@ -491,7 +495,7 @@ class _Capture(threading.Thread):
             raw = bytes(self.data)
             total = self.total
         cut = f"\n[output cut: {total - len(raw)} bytes more]" if total > len(raw) else ""
-        return raw.decode("utf-8", errors="replace") + cut
+        return decode_output(raw) + cut
 
 
 def _group_alive(pgid: int) -> bool:

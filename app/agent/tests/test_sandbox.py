@@ -45,8 +45,9 @@ def test_h2_benign_vars_preserved():
 
 
 def test_h2_leaky_names_do_not_reach_confined_command(tmp_path):
-    code, out = sandbox.run("env", sandbox.Policy("workspace-write", False), tmp_path, 30)
-    assert code == 0, f"confined 'env' failed: {out[:200]}"
+    cmd = f'"{sys.executable}" -c "import os; print(chr(10).join(f\'{{k}}={{v}}\' for k, v in os.environ.items()))"'
+    code, out = sandbox.run(cmd, sandbox.Policy("workspace-write", False), tmp_path, 30)
+    assert code == 0, f"confined env dump failed: {out[:200]}"
     leaked = [n for n in POC_LEAKY + POC_CONTROLS if f"{n}={CANARY}" in out]
     assert not leaked, f"secret-ish vars visible to confined command: {leaked}"
 
