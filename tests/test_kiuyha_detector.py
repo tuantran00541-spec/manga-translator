@@ -462,7 +462,7 @@ def test_a_vertical_sign_is_found_when_the_upright_passes_see_nothing(monkeypatc
     _blind_ctd(monkeypatch)
     image = np.full((900, 300, 3), (200, 180, 160), np.uint8)
     detector = KiuyhaTextDetector("unused", session=_FixedSession([]))
-    sideways = iter([[(100, 50, 200, 150, 0.8)], [(699, 149, 799, 249, 0.7)]])
+    sideways = iter([[(101, 50, 201, 150, 0.8)], [(699, 150, 799, 250, 0.7)]])
 
     def raw_boxes(blob_image):
         if blob_image.shape[1] > blob_image.shape[0]:

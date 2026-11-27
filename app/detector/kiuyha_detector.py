@@ -2049,8 +2049,7 @@ class KiuyhaTextDetector:
                     if _passes_glyph_plausibility(image.shape[:2], rect, enhanced_mask, enhanced_letters, score, is_aux=is_medium_aux):
                         add_segmented(rect, score, enhanced_mask, enhanced_letters, core)
                     continue
-            is_low_aux = is_medium_aux and score < ENHANCED_CTD_AUX_MIN_SCORE
-            if is_low_aux or score < MASKLESS_MIN_SCORE:
+            if is_medium_aux or score < MASKLESS_MIN_SCORE:
                 continue
 
             crop = image[y1:y2, x1:x2]
