@@ -588,6 +588,8 @@ class PipelineEditingMixin(PipelineMasksMixin):
             "shape": shape,
             "region": region_dict,
             "source_boxes": [],
+            "origin": "manual",
+            "manual": True,
             "ocr_text": "",
             "translation": "",
             "style": dict(DEFAULT_TEXT_OBJECT_STYLE),
@@ -654,6 +656,15 @@ class PipelineEditingMixin(PipelineMasksMixin):
                 if obj.get("region") != new_region:
                     obj["region"] = new_region
                     obj["geometry_overridden"] = True
+                    for stale_key in (
+                        "bubble_mask",
+                        "letter_bounds",
+                        "letters_mask",
+                        "verified_balloon",
+                        "ocr_text_region",
+                        "seam_owner",
+                    ):
+                        obj.pop(stale_key, None)
 
             if "ocr_text" in changes:
                 obj["ocr_text"] = changes["ocr_text"] or ""

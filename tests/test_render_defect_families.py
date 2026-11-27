@@ -98,10 +98,14 @@ def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
     ImageDraw.Draw(image).polygon(star, fill="white", outline=(0, 0, 0), width=4)
     long = "HẮN ĐÃ CHIẾN ĐẤU VỚI MỘT CON NGƯỜI ĐIÊN CUỒNG, VƯỢT QUA VÔ SỐ CẠM BẪY"
     stats: dict = {}
-    render_text_in_box(image.copy(), long, (200, 60, 500, 340),
+    out_fit = image.copy()
+    render_text_in_box(out_fit, long, (200, 60, 500, 340),
                        font_name="dialogue.mac-dinh-3", font_size=60,
                        container="spiky", stats=stats)
-    assert stats["size"] == 30, f"fixed 60px should fall back to the fit, got {stats['size']}"
+    outline_px = np.asarray(image)[..., 0] < 100
+    ink_px = (np.asarray(out_fit) != np.asarray(image)).any(axis=2)
+    assert 24 <= stats["size"] <= 30, f"fixed 60px should fall back to the fit, got {stats['size']}"
+    assert not np.any(ink_px & outline_px), "fallback fit must stay cleanly inside spiky outline"
     stats = {}
     render_text_in_box(image.copy(), "HẮN ĐÃ CHIẾN ĐẤU", (200, 60, 500, 340),
                        font_name="dialogue.mac-dinh-3", font_size=24,

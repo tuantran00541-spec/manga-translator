@@ -14,6 +14,7 @@ from app.render.composition import _interior
 from app.render.font_metrics import parse_color
 from app.render.placement import (
     anchor_union, covers_source_ink, detector_anchors, detector_position, ink_window, source_ink_bounds,
+    user_position,
 )
 from app.render.size_bands import preferred_dialogue_cap, uses_dialogue_size
 from app.render.source_size import source_cap_px, source_ink_hex
@@ -1041,8 +1042,7 @@ def render_text_objects(
                     )
                 else:
                     style["letters_box"] = coords_raw
-        moved_by_user = (original.get("auto_generated") and _valid_region(original.get("auto_geometry"))
-                         and original.get("region") != original["auto_geometry"] and not original.get("seam_owner"))
+        moved_by_user = user_position(original)
         if moved_by_user:
             style.update(bubble_mask=None, container=None, source_letter_box=None,
                          letters=None, letters_box=None)
@@ -1072,7 +1072,14 @@ def render_text_objects(
                     for other_id, spots in anchors_by_id.items()):
                 mask = clip_bubble_mask(mask, ink_window(anchor, coords))
             if mask is None:
-                coords = (coords if seam and _boxes_overlap(coords, anchor) else ink_window(anchor, coords))
+                anchor_area = max(1, (anchor[2] - anchor[0]) * (anchor[3] - anchor[1]))
+                coords_area = max(1, (coords[2] - coords[0]) * (coords[3] - coords[1]))
+                if not (
+                    (seam and _boxes_overlap(coords, anchor))
+                    or container in ("box", "screen", "bubble", "spiky")
+                    or anchor_area < 0.50 * coords_area
+                ):
+                    coords = ink_window(anchor, coords)
             if coords[0] >= coords[2] or coords[1] >= coords[3]:
                 if verdicts is not None:
                     verdicts.append({"id": oid, "guard": "placement_unverified", "review": True})
@@ -1245,7 +1252,8 @@ def render_text_objects(
                         shift_box = (base_box[0], base_box[1] + dy,
                                      base_box[2], base_box[3] + dy)
                         shifted_res = _rerender_non_colliding(
-                            image, render_text, shift_box, style, placed_mask)
+                            image, render_text, shift_box, style, placed_mask,
+                            frame_bound=cand_frame)
                         if shifted_res is not None:
                             scandidate, smask, sbox_ink, sstats = shifted_res
                             image.paste(scandidate)

@@ -95,10 +95,10 @@ export async function renderStrip(shell, items, signal) {
       }
 
       let preloaded = null;
-      if (!(stripWidth > 0) && !(width > 0)) {
+      if (!(width > 0)) {
         preloaded = await loadImage(url);
         if (token !== state.renderToken) return;
-        width = preloaded.naturalWidth;
+        width = preloaded.naturalWidth || stripWidth;
         if (!(height > 0)) height = preloaded.naturalHeight;
       }
       if (!(stripWidth > 0)) stripWidth = width;

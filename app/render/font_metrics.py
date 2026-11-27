@@ -193,6 +193,15 @@ def list_available_fonts() -> list[dict[str, str]]:
     return fonts
 
 
+def measure_line_ink(draw, line: str, font, *, stroke_w: int = 0, bold: bool = False) -> tuple[int, int, int, int, int, int]:
+    """Return exact raster ink bounds (gx0, gy0, gx1, gy1, ink_w, ink_h) including stroke and bold."""
+    gx0, gy0, gx1, gy1 = draw.textbbox((0, 0), line, font=font, stroke_width=stroke_w)
+    b = 1 if bold else 0
+    gx1 += b
+    gy1 += b
+    return int(gx0), int(gy0), int(gx1), int(gy1), max(0, int(gx1 - gx0)), max(0, int(gy1 - gy0))
+
+
 def _calc_line_height(draw, font, stroke_w: int = 0) -> int:
     try:
         ascent, descent = font.getmetrics()
@@ -207,18 +216,19 @@ def _line_start_x(
     draw, line, font, *, x1, pad, box_w, h_align, centred, curved,
     line_centres, draw_spans, i, line_count, stroke_w=0, bold_extra=0,
 ):
-    line_w = draw.textbbox((0, 0), line, font=font)[2]
+    gx0, _, gx1, _, ink_w, _ = measure_line_ink(draw, line, font, stroke_w=stroke_w, bold=bool(bold_extra))
     if h_align == "left":
-        return x1 + pad, line_w
+        return x1 + pad - gx0, ink_w
     if h_align == "right":
-        return x1 + pad + max(0, box_w - line_w), line_w
+        return (x1 + pad + box_w) - gx1, ink_w
     if centred and curved and line_centres and len(line_centres) == line_count:
-        start_x = x1 + pad + int(line_centres[i] - line_w / 2)
+        start_x = x1 + pad + round(line_centres[i] - (gx0 + gx1) / 2.0)
         if draw_spans is not None and i < len(draw_spans):
             lo, hi = draw_spans[i]
-            gx1, _, gx2, _ = draw.textbbox((0, 0), line, font=font, stroke_width=stroke_w)
-            gx2 += bold_extra
-            start_x = x1 + pad + int(line_centres[i] - (gx1 + gx2) / 2)
-            return max(x1 + pad + lo - gx1, min(start_x, x1 + pad + hi - gx2)), line_w
-        return max(x1 + pad, min(start_x, x1 + pad + max(0, box_w - line_w))), line_w
-    return x1 + pad + max(0, (box_w - line_w) // 2), line_w
+            if ink_w <= (hi - lo):
+                return max(x1 + pad + lo - gx0, min(start_x, x1 + pad + hi - gx1)), ink_w
+            return round(x1 + pad + (lo + hi - ink_w) / 2.0 - gx0), ink_w
+        if ink_w <= box_w:
+            return max(x1 + pad - gx0, min(start_x, x1 + pad + box_w - gx1)), ink_w
+        return round(x1 + pad + (box_w - ink_w) / 2.0 - gx0), ink_w
+    return round(x1 + pad + (box_w - ink_w) / 2.0 - gx0), ink_w

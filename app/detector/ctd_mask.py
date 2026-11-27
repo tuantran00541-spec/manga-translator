@@ -67,6 +67,8 @@ def probability(img: np.ndarray) -> np.ndarray:
     if min(h, w) >= 360 and max(h, w) >= 560:
         p25 = _prob(img, 0.25)
         prob = np.maximum(prob, np.where(p25 >= 0.48, p25, 0.0))
+    elif min(h, w) < 120 and max(h, w) < 320 and float((prob > CORE).mean()) < 0.015:
+        prob = np.maximum(prob, _prob(img, 1.5))
     return prob
 
 
@@ -255,13 +257,21 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
     region = spread(start, reach)
     further = spread(region, reach) & ~region
     far = cv2.distanceTransform((~start).astype(np.uint8), cv2.DIST_L2, 3) > max(2, reach * 0.4)
-    n, parts = cv2.connectedComponents((region & ~start & far).astype(np.uint8))
-    for i in range(1, n):
-        part = parts == i
-        edge = part[:2].any() or part[-2:].any() or part[:, :2].any() or part[:, -2:].any()
-        near = cv2.dilate(part.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
-        if edge or (further & near).sum() > 0.3 * part.sum():
-            region &= ~part
+    n, parts, pstats, _ = cv2.connectedComponentsWithStats((region & ~start & far).astype(np.uint8))
+    if n > 1:
+        for i in range(1, n):
+            px, py, pw, ph, _ = (int(v) for v in pstats[i])
+            roi = np.s_[py:py + ph, px:px + pw]
+            part = parts[roi] == i
+            edge = (
+                (py < 2 and part[:min(2 - py, ph)].any())
+                or (py + ph > region.shape[0] - 2 and part[max(0, region.shape[0] - 2 - py):].any())
+                or (px < 2 and part[:, :min(2 - px, pw)].any())
+                or (px + pw > region.shape[1] - 2 and part[:, max(0, region.shape[1] - 2 - px):].any())
+            )
+            near = cv2.dilate(part.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+            if edge or (further[roi] & near).sum() > 0.3 * part.sum():
+                region[roi] &= ~part
     return _fringe(lab, seed, region, reach)
 
 
@@ -310,16 +320,18 @@ SPECK_HOPS = knob("mask.speck_hops")
 DOT = knob("mask.dot")
 
 
-def _parts(seed: np.ndarray):
+def _parts(seed: np.ndarray, *, with_stats: bool = False):
     n, labels, stats, _ = cv2.connectedComponentsWithStats(seed.astype(np.uint8))
     size = text_size(seed)
     big = np.zeros(n, bool)
     big[1:] = stats[1:, cv2.CC_STAT_HEIGHT] >= max(4, SPECK * size)
+    if with_stats:
+        return labels, big, size, stats
     return labels, big, size
 
 
 def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
-    labels, big, size = _parts(seed)
+    labels, big, size, stats = _parts(seed, with_stats=True)
     if len(big) <= 1:
         return seed
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * max(4, int(CHAIN * size)) + 1,) * 2)
@@ -334,7 +346,6 @@ def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
         if (grown & big == keep & big).all():
             break
         keep = grown
-    stats = cv2.connectedComponentsWithStats(seed.astype(np.uint8))[2]
     width, height, area = (stats[:, column] for column in (cv2.CC_STAT_WIDTH, cv2.CC_STAT_HEIGHT, cv2.CC_STAT_AREA))
     short = np.minimum(width, height)
     dot = (short >= max(3, DOT * size)) & (np.maximum(width, height) <= 2 * short) & (area >= 0.5 * width * height)
@@ -349,14 +360,17 @@ def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
 
 
 def _cut(seed: np.ndarray) -> tuple[bool, bool, bool, bool]:
-    labels, big, _ = _parts(seed)
+    labels, big, size = _parts(seed)
+    edge_px = min(16, max(4, int(round(0.08 * size))))
     edge = {side: np.unique(part) for side, part in
-            (("l", labels[:, :2]), ("t", labels[:2]), ("r", labels[:, -2:]), ("b", labels[-2:]))}
+            (("l", labels[:, :edge_px]), ("t", labels[:edge_px]),
+             ("r", labels[:, -edge_px:]), ("b", labels[-edge_px:]))}
     return tuple(bool(big[edge[side]].any()) for side in "ltrb")
 
 
-def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step: int):
+def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step: int | tuple[int, int]):
     h, w = image.shape[:2]
+    step_x, step_y = step if isinstance(step, tuple) else (step, step)
     bx1, by1, bx2, by2 = first
     prob = probability(image[by1:by2, bx1:bx2])
     seed = prob > THRESHOLD
@@ -365,8 +379,11 @@ def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step
         cut = (left and bx1 > 0, top and by1 > 0, right and bx2 < w, bottom and by2 < h)
         if not any(cut):
             break
-        bx1, by1 = max(0, bx1 - step * cut[0]), max(0, by1 - step * cut[1])
-        bx2, by2 = min(w, bx2 + step * cut[2]), min(h, by2 + step * cut[3])
+        cur_size = text_size(seed, prob)
+        grow_x = max(step_x, min(140, int(0.85 * cur_size)))
+        grow_y = max(step_y, min(140, int(0.85 * cur_size)))
+        bx1, by1 = max(0, bx1 - grow_x * cut[0]), max(0, by1 - grow_y * cut[1])
+        bx2, by2 = min(w, bx2 + grow_x * cut[2]), min(h, by2 + grow_y * cut[3])
         prob = probability(image[by1:by2, bx1:bx2])
         seed = prob > THRESHOLD
     if (bx1, by1, bx2, by2) == first:
@@ -420,10 +437,15 @@ def _line_art(
         return seed
     gray = cv2.cvtColor(around, cv2.COLOR_BGR2GRAY) if around.ndim == 3 else around
     _, ink, stats, _ = cv2.connectedComponentsWithStats((gray < LINE_INK).astype(np.uint8), connectivity=8)
+    gw, gh = stats[:, cv2.CC_STAT_WIDTH], stats[:, cv2.CC_STAT_HEIGHT]
+    garea = stats[:, cv2.CC_STAT_AREA]
     lines = np.flatnonzero(
-        (stats[:, cv2.CC_STAT_WIDTH] >= LINE_WIDE * gray.shape[1])
-        & (stats[:, cv2.CC_STAT_HEIGHT] >= LINE_TALL * gray.shape[0])
-        & (stats[:, cv2.CC_STAT_AREA] <= 0.35 * gray.size)
+        (garea <= 0.35 * gray.size)
+        & (
+            ((gw >= LINE_WIDE * gray.shape[1]) & (gh >= LINE_TALL * gray.shape[0]))
+            | ((gw >= 0.85 * gray.shape[1]) & (gh <= 0.18 * gray.shape[0]))
+            | ((gh >= 0.85 * gray.shape[0]) & (gw <= 0.18 * gray.shape[1]))
+        )
     )
     lines = lines[lines > 0]
     if not len(lines):
@@ -439,22 +461,24 @@ def _line_art(
     sizes = np.maximum(np.bincount(parts[seed], minlength=count), 1)
     drop = (dark_px >= LINE_DARK * sizes) & (hits >= LINE_ON * np.maximum(dark_px, 1))
     drop[0] = False
+    sh, sw = seed.shape[:2]
     for k in np.flatnonzero(drop):
-        pw = int(pstats[k, cv2.CC_STAT_WIDTH])
-        ph = int(pstats[k, cv2.CC_STAT_HEIGHT])
-        parea = int(pstats[k, cv2.CC_STAT_AREA])
-        pm = parts == k
+        px, py, pw, ph, parea = (int(v) for v in pstats[k])
+        rx0, ry0 = max(0, px - 3), max(0, py - 3)
+        rx1, ry1 = min(sw, px + pw + 3), min(sh, py + ph + 3)
+        roi = np.s_[ry0:ry1, rx0:rx1]
+        pm = parts[roi] == k
         # Protect white-filled dark-outlined lettering and large high-confidence CTD text blocks.
         if min(pw, ph) >= 20:
-            if float((gview[pm] >= 175).mean()) >= 0.30:
+            if float((gview[roi][pm] >= 175).mean()) >= 0.30:
                 drop[k] = False
                 continue
-            if prob is not None and min(pw, ph) >= 24 and parea >= 600 and float(prob[pm].mean()) >= 0.72:
+            if prob is not None and min(pw, ph) >= 24 and parea >= 600 and float(prob[roi][pm].mean()) >= 0.72:
                 drop[k] = False
                 continue
         piece = pm.astype(np.uint8)
-        rim = (cv2.dilate(piece, np.ones((7, 7), np.uint8)) > 0) & (piece == 0) & ~seed
-        if rim.any() and (~dark[rim]).mean() < LINE_PAPER:
+        rim = (cv2.dilate(piece, np.ones((7, 7), np.uint8)) > 0) & (piece == 0) & ~seed[roi]
+        if rim.any() and (~dark[roi][rim]).mean() < LINE_PAPER:
             drop[k] = False
     return seed & ~drop[parts]
 
@@ -492,11 +516,12 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_lette
     x1, y1, x2, y2 = box
     h, w = image.shape[:2]
     pad = min(48, max(8, int((y2 - y1) * PAD_SHARE)))
+    step_x = min(64, max(pad, int((x2 - x1) * 0.15)))
     first = (max(0, x1 - pad), max(0, y1 - pad), min(w, x2 + pad), min(h, y2 + pad))
     if min(first[2] - first[0], first[3] - first[1]) < 8:
         empty = np.zeros((max(0, first[3] - first[1]), max(0, first[2] - first[0])), bool)
         return (first, empty, empty) if with_letters else (first, empty)
-    (bx1, by1, bx2, by2), seed, prob = _reach_cut_letters(image, first, pad)
+    (bx1, by1, bx2, by2), seed, prob = _reach_cut_letters(image, first, (step_x, pad))
     seed = _faint_letters(seed, prob)
     crop = image[by1:by2, bx1:bx2]
     ex1, ey1, ex2, ey2 = max(0, bx1 - RING), max(0, by1 - RING), min(w, bx2 + RING), min(h, by2 + RING)

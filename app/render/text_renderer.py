@@ -31,6 +31,7 @@ from app.render.font_metrics import (
     get_font_object,
     get_font_path,
     list_available_fonts,
+    measure_line_ink,
     parse_color,
 )
 from app.render.text_fitting import (
@@ -311,6 +312,27 @@ def _art_ink(palette, backgrounds, preferred_outline):
     return [fill] * len(palette), outline
 
 
+def _mask_frame_coherent(
+    mask: dict | None,
+    box: tuple[int, int, int, int],
+    image_size: tuple[int, int],
+    *,
+    verified_balloon: bool = False,
+) -> tuple[int, int, int, int] | None:
+    if mask is None or mask.get("kind") != "bubble":
+        return None
+    mx1, my1, mx2, my2 = (int(v) for v in mask["bbox"])
+    mx1, my1 = max(0, mx1), max(0, my1)
+    mx2, my2 = min(image_size[0], mx2), min(image_size[1], my2)
+    if mx2 - mx1 < 16 or my2 - my1 < 16:
+        return None
+    bx1, by1, bx2, by2 = box
+    # Reject only if the box and mask are completely disjoint (stale mask).
+    if min(mx2, bx2) <= max(mx1, bx1) or min(my2, by2) <= max(my1, by1):
+        return None
+    return (mx1, my1, mx2, my2)
+
+
 def render_text_in_box(
     image: Image.Image,
     text: str,
@@ -486,17 +508,18 @@ def render_text_in_box(
             target_size = _readable_fixed
 
     if target_size is not None and curved and centred:
-        if _mask is not None and _mask.get("kind") == "bubble":
-            mx1, my1, mx2, my2 = (int(v) for v in _mask["bbox"])
-            measured = (max(0, mx1), max(0, my1), min(image.width, mx2), min(image.height, my2))
-            if measured[2] - measured[0] >= 16 and measured[3] - measured[1] >= 16:
-                fixed_frame = measured
-                x1, y1, x2, y2 = measured
-                raw_w, raw_h = x2 - x1, y2 - y1
-                pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-                box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+        measured = _mask_frame_coherent(_mask, (x1, y1, x2, y2), image.size, verified_balloon=verified_balloon)
+        if measured is not None:
+            fixed_frame = measured
+            x1, y1, x2, y2 = measured
+            raw_w, raw_h = x2 - x1, y2 - y1
+            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
         _fixed_font = get_font_object(font_path_str, target_size)
-        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True, keep_compounds=keep_compounds)
+        _fixed_lines = _wrap_text(
+            draw, text, _fixed_font, box_w, balance=True, keep_compounds=keep_compounds,
+            stroke_w=stroke_w, bold_extra=int(is_bold),
+        )
         if fixed_frame is not None:
             _bands = _mask_bands(_mask, (x1 + pad, y1 + pad, x2 - pad, y2 - pad))
             if _bands is not None:
@@ -511,21 +534,39 @@ def render_text_in_box(
                     else:
                         target_size = None
                         _fixed_height_fallback = True
-        elif not _lines_fit_ellipse(draw, _fixed_lines, _fixed_font, box_w, box_h, stroke_w):
+        elif not _lines_fit_ellipse(draw, _fixed_lines, _fixed_font, box_w, box_h, stroke_w + int(is_bold)):
             target_size = None
             _fixed_height_fallback = True
 
     if target_size is not None:
         _fixed_font = get_font_object(font_path_str, target_size)
-        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True, keep_compounds=keep_compounds)
+        _fixed_lines = _wrap_text(
+            draw, text, _fixed_font, box_w, balance=True, keep_compounds=keep_compounds,
+            stroke_w=stroke_w, bold_extra=int(is_bold),
+        )
         _bold_extra = 1 if is_bold else 0
         _whole_words = [w for ln in _fixed_lines for w in ln.split()] == text.split()
-        _max_line_w = max((draw.textbbox((0, 0), line, font=_fixed_font)[2] for line in _fixed_lines), default=0)
+        _fixed_lh = _calc_line_height(draw, _fixed_font, stroke_w=stroke_w)
+        _max_line_w = max(
+            (measure_line_ink(draw, line, _fixed_font, stroke_w=stroke_w, bold=is_bold)[4] for line in _fixed_lines),
+            default=0,
+        )
+        _fixed_min_y = min(
+            (i * _fixed_lh + measure_line_ink(draw, ln, _fixed_font, stroke_w=stroke_w, bold=is_bold)[1]
+             for i, ln in enumerate(_fixed_lines)),
+            default=0,
+        )
+        _fixed_max_y = max(
+            (i * _fixed_lh + measure_line_ink(draw, ln, _fixed_font, stroke_w=stroke_w, bold=is_bold)[3]
+             for i, ln in enumerate(_fixed_lines)),
+            default=0,
+        )
+        _fixed_ink_h = max(_fixed_lh * len(_fixed_lines), _fixed_max_y - _fixed_min_y)
         if (
             not _fixed_lines
             or not _whole_words
-            or _calc_line_height(draw, _fixed_font, stroke_w=stroke_w) * len(_fixed_lines) > box_h
-            or _max_line_w + 2 * stroke_w + _bold_extra > box_w
+            or _fixed_ink_h > box_h
+            or _max_line_w > box_w
         ):
             target_size = None
             _fixed_height_fallback = True
@@ -533,7 +574,10 @@ def render_text_in_box(
     if target_size is not None:
         actual_size = target_size
         font = get_font_object(font_path_str, actual_size)
-        lines = _wrap_text(draw, text, font, box_w, balance=True, keep_compounds=keep_compounds)
+        lines = _wrap_text(
+            draw, text, font, box_w, balance=True, keep_compounds=keep_compounds,
+            stroke_w=stroke_w, bold_extra=int(is_bold),
+        )
         line_centres = [(a + b) / 2 for a, b in fixed_spans] if fixed_spans else None
         lines_source = "fixed_size"
         draw_spans = fixed_spans
@@ -569,14 +613,26 @@ def render_text_in_box(
         if fit_stats.get("omit_glow"):
             profile_glow_radius = 0
         lines = fitted_lines if positioned else _wrap_text(
-            draw, text, font, box_w, balance=True, keep_compounds=keep_compounds)
+            draw, text, font, box_w, balance=True, keep_compounds=keep_compounds,
+            stroke_w=stroke_w, bold_extra=int(is_bold))
         lines_source = "balanced"
         draw_spans = spans_holder if spans_holder else None
         _lh_check = _calc_line_height(draw, font, stroke_w=stroke_w)
         _bold_extra = 1 if is_bold else 0
+        _ink_min_y = min(
+            (i * _lh_check + measure_line_ink(draw, ln, font, stroke_w=stroke_w, bold=is_bold)[1]
+             for i, ln in enumerate(lines)),
+            default=0,
+        )
+        _ink_max_y = max(
+            (i * _lh_check + measure_line_ink(draw, ln, font, stroke_w=stroke_w, bold=is_bold)[3]
+             for i, ln in enumerate(lines)),
+            default=0,
+        )
         if fitted_lines and (
             _lh_check * len(lines) > box_h
-            or max((draw.textbbox((0, 0), ln, font=font)[2] for ln in lines), default=0) + 2 * stroke_w + _bold_extra > box_w
+            or (_ink_max_y - _ink_min_y) > box_h
+            or max((measure_line_ink(draw, ln, font, stroke_w=stroke_w, bold=is_bold)[4] for ln in lines), default=0) > box_w
         ):
             lines = fitted_lines
             lines_source = "fitted"
@@ -587,13 +643,13 @@ def render_text_in_box(
                 if len(lines) != len(draw_spans):
                     lines = fitted_lines
                     lines_source = "fitted"
-                elif (not _lines_fit_spans(draw, lines, font, draw_spans, stroke_w)
+                elif (not _lines_fit_spans(draw, lines, font, draw_spans, stroke_w + _bold_extra)
                         and len(fitted_lines) == len(draw_spans)
-                        and _lines_fit_spans(draw, fitted_lines, font, draw_spans, stroke_w)):
+                        and _lines_fit_spans(draw, fitted_lines, font, draw_spans, stroke_w + _bold_extra)):
                     lines = fitted_lines
                     lines_source = "fitted"
-            elif not _lines_fit_ellipse(draw, lines, font, box_w, box_h, stroke_w):
-                if _lines_fit_ellipse(draw, fitted_lines, font, box_w, box_h, stroke_w):
+            elif not _lines_fit_ellipse(draw, lines, font, box_w, box_h, stroke_w + _bold_extra):
+                if _lines_fit_ellipse(draw, fitted_lines, font, box_w, box_h, stroke_w + _bold_extra):
                     lines = fitted_lines
                     lines_source = "fitted"
     if stats is not None:
@@ -636,23 +692,35 @@ def render_text_in_box(
 
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
+    ink_metrics = [
+        measure_line_ink(draw, line, font, stroke_w=stroke_w, bold=is_bold)
+        for line in lines
+    ]
+    if lines:
+        block_min_y = min(i * line_height + m[1] for i, m in enumerate(ink_metrics))
+        block_max_y = max(i * line_height + m[3] for i, m in enumerate(ink_metrics))
+        actual_block_h = max(0, block_max_y - block_min_y)
+    else:
+        block_min_y = block_max_y = actual_block_h = 0
 
     if v_align == "top":
-        start_y = y1 + pad
+        start_y = (y1 + pad) - block_min_y
     elif v_align == "bottom":
-        start_y = y1 + pad + max(0, box_h - total_h)
+        start_y = (y2 - pad) - block_max_y
     elif block_top is not None:
         start_y = int(block_top)
     else:
-        start_y = y1 + pad + max(0, (box_h - total_h) // 2)
-    if lines:
-        first_top = draw.textbbox((0, 0), lines[0], font=font)[1] - stroke_w
-        if start_y + first_top < y1 + 1:
-            shift_down = min(
-                max(0, (y2 - pad) - (start_y + total_h)),
-                (y1 + 1) - (start_y + first_top),
-            )
-            start_y += shift_down
+        start_y = round((y1 + pad) + (box_h - actual_block_h) / 2.0 - block_min_y)
+
+    if lines and actual_block_h <= box_h:
+        min_sy = (y1 + pad) - block_min_y
+        max_sy = (y2 - pad) - block_max_y
+        start_y = max(min_sy, min(start_y, max_sy))
+    elif lines:
+        min_sy = y1 - block_min_y
+        max_sy = y2 - block_max_y
+        if max_sy >= min_sy:
+            start_y = max(min_sy, min(start_y, max_sy))
 
     offsets = [(0, 0), (1, 0), (0, 1), (1, 1)] if is_bold else [(0, 0)]
 
@@ -663,7 +731,7 @@ def render_text_in_box(
     for i, line in enumerate(lines):
         if positioned:
             start_x, cur_y, _ = positioned[i]
-            line_w = draw.textbbox((0, 0), line, font=font)[2]
+            line_w = ink_metrics[i][4]
         else:
             start_x, line_w = _line_start_x(draw, line, font, x1=x1, pad=pad, box_w=box_w,
                                             h_align=h_align, centred=centred, curved=curved,
@@ -676,17 +744,34 @@ def render_text_in_box(
             bold = 1 if is_bold else 0
             gx0, gy0, gx1, gy1 = draw.textbbox(
                 (start_x, cur_y), line, font=font, stroke_width=stroke_w)
-            glyph_boxes.append((gx0, gy0, gx1 + bold, gy1 + bold))
+            gbox = (gx0, gy0, gx1 + bold, gy1 + bold)
+            glyph_boxes.append(gbox)
             glyph_layouts.append((start_x, cur_y, line))
-            line_box = glyph_boxes[-1] if positioned else (
-                min(start_x, gx0),
-                min(cur_y, gy0),
-                max(start_x + line_w, gx1) + bold,
-                max(cur_y + line_height, gy1) + bold,
-            )
-            ink_box = line_box if ink_box is None else (
-                min(ink_box[0], line_box[0]), min(ink_box[1], line_box[1]),
-                max(ink_box[2], line_box[2]), max(ink_box[3], line_box[3]))
+            ink_box = gbox if ink_box is None else (
+                min(ink_box[0], gbox[0]), min(ink_box[1], gbox[1]),
+                max(ink_box[2], gbox[2]), max(ink_box[3], gbox[3]))
+
+    # Hard post-layout containment guard: keep every raster glyph pixel strictly inside the frame.
+    if ink_box is not None:
+        ix1, iy1, ix2, iy2 = ink_box
+        nudge_x = 0
+        if ix2 - ix1 <= (x2 - x1):
+            if ix1 < x1:
+                nudge_x = x1 - ix1
+            elif ix2 > x2:
+                nudge_x = x2 - ix2
+        nudge_y = 0
+        if iy2 - iy1 <= (y2 - y1):
+            if iy1 < y1:
+                nudge_y = y1 - iy1
+            elif iy2 > y2:
+                nudge_y = y2 - iy2
+        if nudge_x or nudge_y:
+            line_layouts = [(sx + nudge_x, sy + nudge_y, ln) for sx, sy, ln in line_layouts]
+            glyph_layouts = [(sx + nudge_x, sy + nudge_y, ln) for sx, sy, ln in glyph_layouts]
+            glyph_boxes = [(gx0 + nudge_x, gy0 + nudge_y, gx1 + nudge_x, gy1 + nudge_y)
+                           for gx0, gy0, gx1, gy1 in glyph_boxes]
+            ink_box = (ix1 + nudge_x, iy1 + nudge_y, ix2 + nudge_x, iy2 + nudge_y)
 
     if adapt_contrast is True or (adapt_contrast is None and explicit_fill):
         if art_auto_ink:
@@ -838,12 +923,10 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
     frame_source = "region_no_frame"
     fallbacks: list[str] = []
     use_mask = False
-    if mask is not None and mask.get("kind") == "bubble":
-        mx1, my1, mx2, my2 = (int(v) for v in mask["bbox"])
-        mx1, my1 = max(0, mx1), max(0, my1)
-        mx2, my2 = min(image_size[0], mx2), min(image_size[1], my2)
-        if mx2 - mx1 >= 16 and my2 - my1 >= 16:
-            frame = (mx1, my1, mx2, my2)
+    if centered:
+        measured = _mask_frame_coherent(mask, (x1, y1, x2, y2), image_size, verified_balloon=verified_balloon)
+        if measured is not None:
+            frame = measured
             frame_source = "mask"
             x1, y1, x2, y2 = frame
             use_mask = True
@@ -923,13 +1006,13 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         omit_glow = plan is None and glow > 0
         if omit_glow:
             plan = compose_text(image, text, inner_frame, font_path_str, **options)
-        if plan is None:
-            return floor, [], False, inner_frame
-        if stats_out is not None:
-            stats_out.update(frame=inner_frame, frame_source=frame_source, floor_px=floor,
-                             composition=plan.lines, layout_score=plan.score,
-                             edge_clearance=plan.clearance, preferred_size=plan.target, omit_glow=omit_glow)
-        return plan.size, [line for _, _, line in plan.lines], True, inner_frame
+        if plan is not None:
+            if stats_out is not None:
+                stats_out.update(frame=inner_frame, frame_source=frame_source, floor_px=floor,
+                                 composition=plan.lines, layout_score=plan.score,
+                                 edge_clearance=plan.clearance, preferred_size=plan.target, omit_glow=omit_glow)
+            return plan.size, [line for _, _, line in plan.lines], True, inner_frame
+        fallbacks.append("compose_text_fallback")
 
     def search(fx1, fy1, fx2, fy2):
         fw, fh = fx2 - fx1, fy2 - fy1

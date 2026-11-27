@@ -577,29 +577,56 @@ def _wrap_to_spans(draw, text: str, font, spans: list[tuple[int, int]], stroke_w
     return out
 
 
+def _measured_width(draw, text: str, font, stroke_w: int = 0, bold_extra: int = 0) -> int:
+    if not text:
+        return 0
+    gx0, _, gx1, _ = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_w)
+    return max(0, int(gx1 - gx0) + int(bold_extra))
+
+
+def _actual_block_height(draw, lines: Sequence[str], font, line_height: int, stroke_w: int = 0, bold_extra: int = 0) -> int:
+    if not lines:
+        return 0
+    min_y = None
+    max_y = None
+    b = int(bool(bold_extra))
+    for i, line in enumerate(lines):
+        _, gy0, _, gy1 = draw.textbbox((0, 0), line, font=font, stroke_width=stroke_w)
+        top = i * line_height + int(gy0)
+        bot = i * line_height + int(gy1) + b
+        min_y = top if min_y is None else min(min_y, top)
+        max_y = bot if max_y is None else max(max_y, bot)
+    nominal_h = line_height * len(lines)
+    ink_h = max(0, (max_y or 0) - (min_y or 0))
+    return max(nominal_h, ink_h)
+
+
 def _fits(
     draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int,
     curved: bool = False, bands=None, anchor_y: int | None = None,
-    keep_compounds: bool = False,
+    keep_compounds: bool = False, bold_extra: int = 0,
 ) -> tuple[bool, list[str]]:
     if box_w <= 0 or box_h <= 0 or not str(text or "").strip():
         return False, []
     font = get_font_object(font_path_str, size)
-    lines = _wrap_text(draw, text, font, box_w, keep_compounds=keep_compounds)
+    lines = _wrap_text(
+        draw, text, font, box_w, keep_compounds=keep_compounds,
+        stroke_w=stroke_w, bold_extra=bold_extra,
+    )
     if not lines:
         return False, []
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     if line_height <= 0:
         return False, lines
-    total_h = line_height * len(lines)
-    widths = [draw.textbbox((0, 0), line, font=font)[2] for line in lines]
+    total_h = _actual_block_height(draw, lines, font, line_height, stroke_w=stroke_w, bold_extra=bold_extra)
+    widths = [_measured_width(draw, line, font, stroke_w=stroke_w, bold_extra=bold_extra) for line in lines]
     whole = [word for line in lines for word in line.split()] == text.split()
-    fits = whole and total_h <= box_h and max(widths) + 2 * stroke_w <= box_w
+    fits = whole and total_h <= box_h and max(widths) <= box_w
     if fits:
         if bands is not None:
             top0 = _anchored_top(box_h, line_height * len(lines), anchor_y)
             spans0 = _band_line_spans(box_w, box_h, len(lines), line_height, bands, top=top0)
-            if _lines_fit_spans(draw, lines, font, spans0, stroke_w):
+            if _lines_fit_spans(draw, lines, font, spans0, stroke_w + int(bool(bold_extra))):
                 pass
             else:
                 fitted_to_bands = None
@@ -609,15 +636,15 @@ def _fits(
                     spans = _band_line_spans(box_w, box_h, k, line_height, bands, top=top)
                     if spans is None:
                         continue
-                    cand = _wrap_to_spans(draw, text, font, spans, stroke_w, keep_compounds=keep_compounds)
-                    if cand is None or line_height * len(cand) > box_h:
+                    cand = _wrap_to_spans(draw, text, font, spans, stroke_w + int(bool(bold_extra)), keep_compounds=keep_compounds)
+                    if cand is None or _actual_block_height(draw, cand, font, line_height, stroke_w=stroke_w, bold_extra=bold_extra) > box_h:
                         continue
                     if len(cand) == k:
                         fitted_to_bands = cand
                         break
                     ctop = _anchored_top(box_h, line_height * len(cand), anchor_y)
                     cspans = _band_line_spans(box_w, box_h, len(cand), line_height, bands, top=ctop)
-                    if _lines_fit_spans(draw, cand, font, cspans, stroke_w):
+                    if _lines_fit_spans(draw, cand, font, cspans, stroke_w + int(bool(bold_extra))):
                         fitted_to_bands = cand
                         break
                 if fitted_to_bands is not None:
@@ -627,7 +654,7 @@ def _fits(
         elif curved:
             limits = _ellipse_line_widths(box_w, box_h, len(lines), line_height)
             fits = len(limits) == len(lines) and all(
-                w + 2 * stroke_w <= limit for w, limit in zip(widths, limits)
+                w <= limit for w, limit in zip(widths, limits)
             )
     return fits, lines
 
@@ -659,6 +686,7 @@ def _fit_text(
     bands=None,
     anchor_y: int | None = None,
     keep_compounds: bool = False,
+    bold_extra: int = 0,
 ) -> tuple[int, list[str], bool]:
     minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
     hi_max = max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
@@ -670,7 +698,7 @@ def _fit_text(
     while lo <= hi:
         mid = (lo + hi) // 2
         ok, lines = _fits(draw, text, box_w, box_h, font_path_str, mid, stroke_w,
-                          keep_compounds=keep_compounds)
+                          keep_compounds=keep_compounds, bold_extra=bold_extra)
         if ok:
             best_size = mid
             best_lines = lines
@@ -684,7 +712,7 @@ def _fit_text(
     misses = 0
     for size in range(best_size + 1, hi_max + 1):
         ok, lines = _fits(draw, text, box_w, box_h, font_path_str, size, stroke_w,
-                          keep_compounds=keep_compounds)
+                          keep_compounds=keep_compounds, bold_extra=bold_extra)
         if ok:
             best_size = size
             best_lines = lines
@@ -700,25 +728,30 @@ def _fit_text(
             ok, lines = _fits(
                 draw, text, box_w, box_h, font_path_str, size, stroke_w,
                 curved=curved, bands=bands, anchor_y=anchor_y, keep_compounds=keep_compounds,
+                bold_extra=bold_extra,
             )
             if ok:
                 return size, lines, True
         min_font = get_font_object(font_path_str, minimum_size)
         return minimum_size, _wrap_text(
-            draw, text, min_font, box_w, keep_compounds=keep_compounds
+            draw, text, min_font, box_w, keep_compounds=keep_compounds,
+            stroke_w=stroke_w, bold_extra=bold_extra,
         ), False
 
     if not best_lines:
         min_font = get_font_object(font_path_str, minimum_size)
-        best_lines = _wrap_text(draw, text, min_font, box_w, keep_compounds=keep_compounds)
+        best_lines = _wrap_text(
+            draw, text, min_font, box_w, keep_compounds=keep_compounds,
+            stroke_w=stroke_w, bold_extra=bold_extra,
+        )
     return best_size, best_lines, found_fit
 
 
-def _greedy_groups(draw, words: Sequence[str], font, width: int) -> list[list[str]]:
+def _greedy_groups(draw, words: Sequence[str], font, width: int, *, stroke_w: int = 0, bold_extra: int = 0) -> list[list[str]]:
     groups, current = [], []
     for word in words:
         candidate = " ".join(current + [word])
-        if not current or draw.textbbox((0, 0), candidate, font=font)[2] <= width:
+        if not current or _measured_width(draw, candidate, font, stroke_w=stroke_w, bold_extra=bold_extra) <= width:
             current.append(word)
         else:
             groups.append(current)
@@ -728,8 +761,8 @@ def _greedy_groups(draw, words: Sequence[str], font, width: int) -> list[list[st
     return groups
 
 
-def _greedy_lines(draw, words: Sequence[str], font, width: int) -> list[str]:
-    return [" ".join(group) for group in _greedy_groups(draw, words, font, width)]
+def _greedy_lines(draw, words: Sequence[str], font, width: int, *, stroke_w: int = 0, bold_extra: int = 0) -> list[str]:
+    return [" ".join(group) for group in _greedy_groups(draw, words, font, width, stroke_w=stroke_w, bold_extra=bold_extra)]
 
 
 _VI_WORDS = Path(__file__).with_name("vi_words.txt")
@@ -763,28 +796,31 @@ def _word_units(words: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(units)
 
 
-def _balanced_lines(draw, words: Sequence[str], font, box_w: int, *, keep_compounds: bool = False) -> list[str]:
-    lines = _greedy_lines(draw, words, font, box_w)
+def _balanced_lines(
+    draw, words: Sequence[str], font, box_w: int, *, keep_compounds: bool = False,
+    stroke_w: int = 0, bold_extra: int = 0,
+) -> list[str]:
+    lines = _greedy_lines(draw, words, font, box_w, stroke_w=stroke_w, bold_extra=bold_extra)
     if len(lines) < 2:
         return lines
     if not keep_compounds:
         units = _word_units(tuple(words))
-        if len(units) < len(words) and all(draw.textbbox((0, 0), unit, font=font)[2] <= box_w for unit in units) \
-                and len(_greedy_lines(draw, units, font, box_w)) == len(lines):
+        if len(units) < len(words) and all(_measured_width(draw, unit, font, stroke_w=stroke_w, bold_extra=bold_extra) <= box_w for unit in units) \
+                and len(_greedy_lines(draw, units, font, box_w, stroke_w=stroke_w, bold_extra=bold_extra)) == len(lines):
             words = units
-    lo = max(draw.textbbox((0, 0), word, font=font)[2] for word in words)
+    lo = max(_measured_width(draw, word, font, stroke_w=stroke_w, bold_extra=bold_extra) for word in words)
     hi = box_w
     while lo < hi:
         mid = (lo + hi) // 2
-        if len(_greedy_lines(draw, words, font, mid)) <= len(lines):
+        if len(_greedy_lines(draw, words, font, mid, stroke_w=stroke_w, bold_extra=bold_extra)) <= len(lines):
             hi = mid
         else:
             lo = mid + 1
-    groups = _greedy_groups(draw, words, font, hi)
+    groups = _greedy_groups(draw, words, font, hi, stroke_w=stroke_w, bold_extra=bold_extra)
     if len(groups) >= 2 and len(groups[-1]) == 1 and len(groups[-2]) >= 2:
         moved = groups[-2][-1]
         new_last = " ".join([moved] + groups[-1])
-        if draw.textbbox((0, 0), new_last, font=font)[2] <= box_w:
+        if _measured_width(draw, new_last, font, stroke_w=stroke_w, bold_extra=bold_extra) <= box_w:
             groups[-2] = groups[-2][:-1]
             groups[-1] = [moved] + groups[-1]
     return [" ".join(group) for group in groups]
@@ -792,7 +828,7 @@ def _balanced_lines(draw, words: Sequence[str], font, box_w: int, *, keep_compou
 
 def _wrap_text(
     draw, text: str, font, box_w: int, *, balance: bool = False, join_lines: bool = False,
-    keep_compounds: bool = False,
+    keep_compounds: bool = False, stroke_w: int = 0, bold_extra: int = 0,
 ) -> list[str]:
     if join_lines:
         text = " ".join(text.split())
@@ -804,30 +840,30 @@ def _wrap_text(
         words = raw_line.split()
         if keep_compounds:
             units = _word_units(tuple(words))
-            if all(draw.textbbox((0, 0), unit, font=font)[2] <= box_w for unit in units):
-                lines = (_balanced_lines(draw, units, font, box_w, keep_compounds=True)
-                         if balance else _greedy_lines(draw, units, font, box_w))
+            if all(_measured_width(draw, unit, font, stroke_w=stroke_w, bold_extra=bold_extra) <= box_w for unit in units):
+                lines = (_balanced_lines(draw, units, font, box_w, keep_compounds=True, stroke_w=stroke_w, bold_extra=bold_extra)
+                         if balance else _greedy_lines(draw, units, font, box_w, stroke_w=stroke_w, bold_extra=bold_extra))
                 all_wrapped.extend(lines)
                 continue
-        if balance and all(draw.textbbox((0, 0), word, font=font)[2] <= box_w for word in words):
-            all_wrapped.extend(_balanced_lines(draw, words, font, box_w, keep_compounds=keep_compounds))
+        if balance and all(_measured_width(draw, word, font, stroke_w=stroke_w, bold_extra=bold_extra) <= box_w for word in words):
+            all_wrapped.extend(_balanced_lines(draw, words, font, box_w, keep_compounds=keep_compounds, stroke_w=stroke_w, bold_extra=bold_extra))
             continue
         current = ""
         for word in words:
-            if draw.textbbox((0, 0), word, font=font)[2] > box_w:
+            if _measured_width(draw, word, font, stroke_w=stroke_w, bold_extra=bold_extra) > box_w:
                 if current:
                     all_wrapped.append(current)
                     current = ""
                 for char in word:
                     candidate = f"{current}{char}"
-                    if draw.textbbox((0, 0), candidate, font=font)[2] <= box_w or not current:
+                    if _measured_width(draw, candidate, font, stroke_w=stroke_w, bold_extra=bold_extra) <= box_w or not current:
                         current = candidate
                     else:
                         all_wrapped.append(current)
                         current = char
             else:
                 candidate = f"{current} {word}".strip()
-                w = draw.textbbox((0, 0), candidate, font=font)[2]
+                w = _measured_width(draw, candidate, font, stroke_w=stroke_w, bold_extra=bold_extra)
                 if w <= box_w or not current:
                     current = candidate
                 else:

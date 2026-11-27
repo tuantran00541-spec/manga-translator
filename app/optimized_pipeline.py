@@ -82,13 +82,20 @@ class OptimizedChapterPipeline(ChapterPipeline):
             local_mask = np.zeros((cy2 - cy1, cx2 - cx1), dtype=np.uint8)
             component = labels[cy1:cy2, cx1:cx2] == label
             local_mask[component] = 255
+            other = (binary[cy1:cy2, cx1:cx2] > 0) & ~component
+            hole_mask = (other.astype(np.uint8) * 255) if np.any(other) else None
+
+            paint_kwargs = {"feather": False, "force_lama": force_lama}
+            if hole_mask is not None:
+                import inspect
+                if "hole" in inspect.signature(self.inpainter._smart_paint_region).parameters:
+                    paint_kwargs["hole"] = hole_mask
 
             component_candidate = self.inpainter._smart_paint_region(
                 scratch,
                 local_mask,
                 crop_box,
-                feather=False,
-                force_lama=force_lama,
+                **paint_kwargs,
             )
             result[cy1:cy2, cx1:cx2][component] = component_candidate[
                 cy1:cy2, cx1:cx2

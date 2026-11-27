@@ -40,10 +40,18 @@ def adaptive_dilate_mask(
 
     if crop_img is not None and crop_img.ndim >= 2:
         gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY) if crop_img.ndim == 3 else crop_img
-        border_bool = (cv2.dilate(dilated, np.ones((3, 3), np.uint8)) > 127) & (dilated <= 127)
+        dilated_u8 = (dilated > 127).astype(np.uint8)
+        border_bool = (cv2.dilate(dilated_u8, np.ones((3, 3), np.uint8)) > 0) & (dilated_u8 == 0)
         if np.any(border_bool):
-            border_std = float(gray[border_bool].std())
-            if border_std > MASK_ADAPTIVE_BORDER_STD_THRESHOLD:
+            border_vals = gray[border_bool].astype(np.float32)
+            border_std = float(border_vals.std())
+            border_med = float(np.median(border_vals))
+            border_mad = 1.4826 * float(np.median(np.abs(border_vals - border_med)))
+            # Only escalate dilation when pervasive fringe/texture surrounds the mask rather than
+            # a small section grazing a speech-bubble border while >80% of the rim is clean flat paper.
+            if border_std > MASK_ADAPTIVE_BORDER_STD_THRESHOLD and (
+                border_mad > 8.0 or float(np.mean(np.abs(border_vals - border_med) > 18.0)) >= 0.20
+            ):
                 expanded_kernel = cv2.getStructuringElement(
                     cv2.MORPH_ELLIPSE,
                     (
@@ -69,16 +77,32 @@ def _repair_mask_from_ink(
     gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY) if crop_img.ndim == 3 else crop_img
     if gray.shape[:2] != mask.shape[:2]:
         return mask
-    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if np.count_nonzero(ink) > ink.size / 2:
-        ink = 255 - ink
+    height, width = gray.shape
+    ink = np.zeros_like(gray)
+    for rx1, ry1, rx2, ry2 in box_rects:
+        lx1, ly1 = max(0, rx1 - 6), max(0, ry1 - 6)
+        lx2, ly2 = min(width, rx2 + 6), min(height, ry2 + 6)
+        if lx2 <= lx1 or ly2 <= ly1:
+            continue
+        sub = gray[ly1:ly2, lx1:lx2]
+        thresh, _ = cv2.threshold(sub, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        pad_x = max(32, int(0.25 * (rx2 - rx1)))
+        pad_y = max(32, int(0.25 * (ry2 - ry1)))
+        wx1, wy1 = max(0, rx1 - pad_x), max(0, ry1 - pad_y)
+        wx2, wy2 = min(width, rx2 + pad_x), min(height, ry2 + pad_y)
+        wide_sub = gray[wy1:wy2, wx1:wx2]
+        wide_pos = wide_sub > thresh
+        invert = np.count_nonzero(wide_pos) > wide_pos.size / 2
+        wide_ink = (~wide_pos) if invert else wide_pos
+        ink[wy1:wy2, wx1:wx2] = np.maximum(ink[wy1:wy2, wx1:wx2], wide_ink.astype(np.uint8) * 255)
+    if not np.any(ink):
+        return mask
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
     near_mask = cv2.dilate((mask > 127).astype(np.uint8), kernel) > 0
     _, labels, stats, _ = cv2.connectedComponentsWithStats((ink > 0).astype(np.uint8), connectivity=8)
     repair = np.zeros_like(mask)
     collar = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
     fringe = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    height, width = gray.shape
     for label, (x, y, w, h, area) in enumerate(
             (tuple(int(v) for v in row) for row in stats[1:]), start=1):
         if area < 12:
@@ -132,11 +156,13 @@ def _component_in_box(x: int, y: int, w: int, h: int,
 
 def _is_frame_component(w: int, h: int, area: int,
                         rect: tuple[int, int, int, int]) -> bool:
-    rw = rect[2] - rect[0]
-    rh = rect[3] - rect[1]
+    rw = max(1, rect[2] - rect[0])
+    rh = max(1, rect[3] - rect[1])
+    long_side = max(w, h)
+    if long_side >= 0.85 * max(rw, rh) and area < 0.30 * w * h:
+        return True
     if rw < 240 and rh < 200:
         return False
-    long_side = max(w, h)
     if long_side > 300:
         return True
     return long_side > 180 and area < 0.35 * w * h
@@ -218,13 +244,21 @@ def build_mask(
             precise = box.mask_source in PRECISE_INK_MASK_SOURCES or box.mask_source == "border_protected_display"
             if (box.source_role == box.mask_source == "text_segmenter"
                     and not _rectangle_fallback_allowed(box) and fills_rectangle(box.mask)):
-                ink = flat_background_ink(crop_img[y1:y2, x1:x2]) if crop_img is not None else None
-                if ink is None:
-                    continue
-                src = expand_local_ink(ink)
-                if fills_rectangle(src):
-                    continue
-                precise = True
+                letters = getattr(box, "letters", None)
+                if letters is not None and np.asarray(letters).shape == box.mask.shape:
+                    lsrc = np.asarray(letters, dtype=bool)[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
+                    if np.any(lsrc) and not fills_rectangle(lsrc):
+                        cand = expand_local_ink(lsrc)
+                        src = cand if not fills_rectangle(cand) else (lsrc.astype(np.uint8) * 255)
+                        precise = True
+                if not precise:
+                    ink = flat_background_ink(crop_img[y1:y2, x1:x2]) if crop_img is not None else None
+                    if ink is None:
+                        continue
+                    src = expand_local_ink(ink)
+                    if fills_rectangle(src):
+                        continue
+                    precise = True
             if precise:
                 if precise_mask is None:
                     precise_mask = np.zeros_like(mask)

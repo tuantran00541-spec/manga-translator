@@ -13,7 +13,7 @@ _CANNY_HIGH = 140
 _CROP_MARGIN_SHARE = 1.0
 _CROP_MIN_MARGIN = 12
 _FLOOD_MIN_BOX_SHARE = 0.15
-_FLOOD_MAX_BOX_SHARE = 16.0
+_FLOOD_MAX_BOX_SHARE = 9.0
 _MIN_NONEMPTY_ROWS = 20
 _MIN_FILL_RATIO = 0.25
 
@@ -65,30 +65,83 @@ def _rect_mask(box: tuple[int, int, int, int]) -> dict:
     }
 
 
+def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    if not intervals:
+        return []
+    ordered = sorted(intervals)
+    merged: list[list[int]] = []
+    for a, b in ordered:
+        if b <= a:
+            continue
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return [(a, b) for a, b in merged]
+
+
+def _intersect_interval_lists(a: list[tuple[int, int]], b: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    i = j = 0
+    while i < len(a) and j < len(b):
+        lo = max(a[i][0], b[j][0])
+        hi = min(a[i][1], b[j][1])
+        if hi > lo:
+            out.append((lo, hi))
+        if a[i][1] < b[j][1]:
+            i += 1
+        else:
+            j += 1
+    return out
+
+
 def _rows_from_spans(spans: list[tuple[int, int, list[tuple[int, int]]]],
-                     bbox: tuple[int, int, int, int]) -> list[list[list[int]]]:
+                     bbox: tuple[int, int, int, int],
+                     *,
+                     inset: int = MASK_INSET_PX) -> list[list[list[int]]]:
     bx1, by1, bx2, by2 = bbox
     height = max(1, by2 - by1)
     rows: list[list[list[int]]] = []
     for i in range(MASK_ROWS):
         band_y1 = by1 + (i * height) // MASK_ROWS
         band_y2 = by1 + ((i + 1) * height) // MASK_ROWS
-        intervals: list[tuple[int, int]] = []
-        for sy1, sy2, xs in spans:
-            if sy2 <= band_y1 or sy1 >= band_y2:
+        active = [(sy1, sy2, xs) for sy1, sy2, xs in spans if sy2 > band_y1 and sy1 < band_y2]
+        if not active:
+            rows.append([])
+            continue
+        pts = sorted({band_y1, band_y2}
+                     | {max(band_y1, sy1) for sy1, _, _ in active}
+                     | {min(band_y2, sy2) for _, sy2, _ in active})
+        common: list[tuple[int, int]] | None = None
+        for ya, yb in zip(pts, pts[1:]):
+            if yb <= ya:
                 continue
-            intervals.extend(xs)
-        intervals.sort()
-        merged: list[list[int]] = []
-        for a, b in intervals:
-            if merged and a <= merged[-1][1]:
-                merged[-1][1] = max(merged[-1][1], b)
-            else:
-                merged.append([a, b])
+            slice_xs: list[tuple[int, int]] = []
+            for sy1, sy2, xs in active:
+                if sy1 <= ya and sy2 >= yb:
+                    slice_xs.extend(xs)
+            merged_slice = _merge_intervals(slice_xs)
+            if not merged_slice:
+                continue
+            common = merged_slice if common is None else _intersect_interval_lists(common, merged_slice)
+            if not common:
+                break
+        if common is None:
+            common = []
+        elif not common and len(pts) > 2:
+            # Split-lobe or narrow cap transition: take the middle non-empty slice rather than unioning.
+            mid_y = (band_y1 + band_y2) // 2
+            slice_xs = [pair for sy1, sy2, xs in active if sy1 <= mid_y < sy2 for pair in xs]
+            if not slice_xs:
+                for ya, yb in zip(pts, pts[1:]):
+                    slice_xs = [pair for sy1, sy2, xs in active if sy1 <= ya and sy2 >= yb for pair in xs]
+                    if slice_xs:
+                        break
+            common = _merge_intervals(slice_xs)
         kept = []
-        for a, b in merged:
-            a2 = a + MASK_INSET_PX
-            b2 = b - MASK_INSET_PX
+        for a, b in common:
+            a2 = a + inset if inset > 0 else a
+            b2 = b - inset if inset > 0 else b
             if b2 - a2 <= 0:
                 a2, b2 = a, b
             if b2 > a2:
@@ -152,11 +205,15 @@ def derive_bubble_mask(image, box, *, seed=None, letters=None) -> dict:
         return _none_mask((x1, y1, x2, y2))
 
     sx, sy = _seed_for((x1, y1, x2, y2), seed, letters)
+    state: dict[str, bool] = {"crop_edge_leak": False}
     for share in (0.5, 1.0):
+        state["crop_edge_leak"] = False
         mask = _derive_from_crop(image, (x1, y1, x2, y2), (sx, sy), letters,
-                                 margin_share=share)
+                                 margin_share=share, _state=state)
         if mask is not None:
             return mask
+    if max(width, height) > 2000 and state["crop_edge_leak"]:
+        return _rect_mask((cx1, cy1, cx2, cy2))
     full = _derive_from_crop(image, (x1, y1, x2, y2), (sx, sy), letters,
                              crop=(0, 0, width, height))
     if full is not None:
@@ -180,7 +237,8 @@ def _seed_candidates(box: tuple[int, int, int, int],
     return seen
 
 
-def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -> dict | None:
+def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None,
+                      _state: dict[str, bool] | None = None) -> dict | None:
     x1, y1, x2, y2 = box
     height, width = image.shape[:2]
     if crop is None:
@@ -206,14 +264,21 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
     edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
 
     letter_points = None
+    letter_mask_crop = None
     if letters is not None:
         letters = np.asarray(letters)
         if letters.size and letters.any() and letters.shape == (y2 - y1, x2 - x1):
             ys, xs = np.nonzero(letters)
-            letter_points = (xs + x1 - ox1, ys + y1 - oy1)
+            lx_all = xs + x1 - ox1
+            ly_all = ys + y1 - oy1
+            letter_points = (lx_all, ly_all)
+            letter_mask_crop = np.zeros((ch, cw), dtype=bool)
+            valid = (lx_all >= 0) & (lx_all < cw) & (ly_all >= 0) & (ly_all < ch)
+            letter_mask_crop[ly_all[valid], lx_all[valid]] = True
 
     best = None
     visited = np.zeros(edges.shape, dtype=bool)
+    box_diag = max(1.0, float(max(x2 - x1, y2 - y1)))
     for sx, sy in _seed_candidates(box, seed):
         start = _flood_seed(edges, (sx - ox1, sy - oy1))
         if start is None or visited[start[1], start[0]]:
@@ -226,14 +291,27 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
         if retval < _FLOOD_MIN_BOX_SHARE * box_area:
             continue
         if retval > _FLOOD_MAX_BOX_SHARE * box_area:
+            if _state is not None:
+                _state["crop_edge_leak"] = True
             continue
+        fx, fy, fw, fh = rect
+        if retval > 5.5 * box_area:
+            fcx = ox1 + fx + fw / 2.0
+            fcy = oy1 + fy + fh / 2.0
+            if max(abs(fcx - seed[0]), abs(fcy - seed[1])) > 1.1 * box_diag:
+                continue
         interior = flooded_mask
         if float((gray[interior] < 100).mean()) >= 0.5:
-            continue
+            sample = interior & ~letter_mask_crop if letter_mask_crop is not None else interior
+            vals = gray[sample] if sample.any() else gray[interior]
+            if float(np.median(vals)) >= 70.0 or float(vals.std()) >= 22.0:
+                continue
         filled = np.zeros(interior.shape, np.uint8)
         contours, _ = cv2.findContours(
             interior.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(filled, contours, -1, 255, -1)
+        # Bridge thin (<=5px) horizontal text slits touching the outline without expanding outer curved walls.
+        filled = cv2.morphologyEx(filled, cv2.MORPH_CLOSE, np.ones((7, 1), np.uint8))
         interior = filled > 0
         coverage = 1.0
         if letter_points is not None:
@@ -243,10 +321,13 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
             coverage = float(covered) / len(lx)
             if coverage < 0.7:
                 continue
-        fx, fy, fw, fh = rect
         if (ox1 > 0 and fx <= 0) or (oy1 > 0 and fy <= 0):
+            if _state is not None:
+                _state["crop_edge_leak"] = True
             continue
         if (ox2 < width and fx + fw >= cw) or (oy2 < height and fy + fh >= ch):
+            if _state is not None:
+                _state["crop_edge_leak"] = True
             continue
         image_borders = (1 if ox1 == 0 and fx <= 0 else 0) \
             + (1 if oy1 == 0 and fy <= 0 else 0) \
@@ -766,7 +847,7 @@ def _mask_from_spans(spans: list[tuple[int, int, list[tuple[int, int]]]],
     xs = [v for _, _, intervals in spans for p, q in intervals for v in (p, q)]
     ys = [v for a, b, _ in spans for v in (a, b)]
     bbox = (min(xs), min(ys), max(xs), max(ys))
-    rows = _rows_from_spans(spans, bbox)
+    rows = _rows_from_spans(spans, bbox, inset=0)
     cx = (bbox[0] + bbox[2]) // 2
     cy = (bbox[1] + bbox[3]) // 2
     try:
@@ -853,7 +934,7 @@ def merge_bubble_masks(masks: list[dict | None]) -> dict | None:
     if not xs or not ys:
         return None
     bbox = (min(xs), min(ys), max(xs), max(ys))
-    rows = _rows_from_spans(spans, bbox)
+    rows = _rows_from_spans(spans, bbox, inset=0)
     kind = "bubble" if any(m.get("kind") == "bubble" for m in usable) else "rect"
     seeds: list[tuple[int, int]] = []
     for m in usable:

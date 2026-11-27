@@ -614,6 +614,8 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
                     merged_region = _union_rect(dup_of.get("region"), obj.get("region"))
                     if merged_region is not None:
                         dup_of["region"] = merged_region
+                        if dup_of.get("auto_generated") and not dup_of.get("geometry_overridden"):
+                            dup_of["auto_geometry"] = dict(merged_region)
                     merged_bounds = _union_rect(dup_of.get("letter_bounds"), obj.get("letter_bounds"))
                     if merged_bounds is not None:
                         dup_of["letter_bounds"] = merged_bounds

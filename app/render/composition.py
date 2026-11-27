@@ -116,7 +116,13 @@ def _exclude_art(safe, inside, image, frame, gap) -> bool:
         foreign_ink = deviation > 32
     foreign_ink &= occupied
     if foreign_ink.any():
-        inside[foreign_ink] = 0
+        count, flabels, fstats, _ = cv2.connectedComponentsWithStats(foreign_ink.astype(np.uint8), connectivity=8)
+        min_art_area = max(16, int(0.002 * int(np.count_nonzero(occupied))))
+        keep_ids = np.flatnonzero(fstats[1:, cv2.CC_STAT_AREA] >= min_art_area) + 1
+        if keep_ids.size == 0:
+            return False
+        significant = np.isin(flabels, keep_ids)
+        inside[significant] = 0
         safe &= _edge_distances(inside) > gap
         return True
     return False
@@ -223,6 +229,19 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
     weight = (distance[rows, cols] - gap) ** 2
     anchor_x = float(np.average(cols, weights=weight))
     anchor_y = float(np.average(rows, weights=weight))
+    if anchor is not None and not verified_balloon:
+        ax1, ay1, ax2, ay2 = anchor
+        anchor_area = max(1, (ax2 - ax1) * (ay2 - ay1))
+        safe_area = int(rows.size)
+        if safe_area > 2.8 * anchor_area:
+            acx = max(0.0, min(float(w - 1), (ax1 + ax2) / 2.0 - x1))
+            acy = max(0.0, min(float(h - 1), (ay1 + ay2) / 2.0 - y1))
+            blend = min(0.75, 1.0 - (2.8 * anchor_area / safe_area))
+            cand_x = anchor_x * (1.0 - blend) + acx * blend
+            cand_y = anchor_y * (1.0 - blend) + acy * blend
+            best_idx = int(np.argmin((cols - cand_x) ** 2 + (rows - cand_y) ** 2))
+            anchor_x = float(cols[best_idx])
+            anchor_y = float(rows[best_idx])
     art_excluded = False
     if mask is not None:
         art_excluded = _exclude_art(safe, inside, image, frame, gap)
@@ -253,7 +272,7 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
     preferred = max(floor, preferred)
     ceiling = min(preferred, int(maximum_height * 1.45))
     sizes = {max(floor, round(ceiling * f)) for f in
-             (1, .94, .87, .79, .70, .61, .52, .44, .36, .29, .22, .16, 0)}
+             (1, .97, .94, .90, .85, .79, .72, .64, .56, .48, .40, .33, .26, .20, .14, 0)}
     one_line = False
     if verified_balloon and w >= h and paragraph_count == 1 and len(words) <= 5:
         body_size = DEFAULT_BODY_FONT_SIZE * max(1.0, image.width / REFERENCE_PAGE_WIDTH)

@@ -12,6 +12,7 @@ export function ownedObjects(shell) {
     if (!page || page.skipped) continue;
     for (const obj of page.text_objects || []) {
       if (!obj?.id || !obj.region) continue;
+      if (obj.source_missing || obj.joined_into || obj.overlap_dropped) continue;
       const center = (Number(obj.region.y1) + Number(obj.region.y2)) / 2;
       if (center >= desc.localY1 && center < desc.localY2) out.push({ desc, pageIndex, obj });
     }

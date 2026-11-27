@@ -24,6 +24,7 @@ from app.inpaint.api_inpaint import (
 )
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
 from app.inpaint.linework import continue_linework
+from app.inpaint.screentone import try_screentone_fill
 from app.inpaint.smart_fill import (
     blend_painted,
     match_boundary_tone,
@@ -32,6 +33,7 @@ from app.inpaint.smart_fill import (
     restore_inpaint_sharpness,
     ring_fill_color,
     smart_fill_color,
+    smart_fill_gradient_surface,
     smart_fill_surface,
 )
 from app.detector.mask_builder import build_mask
@@ -800,10 +802,10 @@ class Inpainter:
         else:
             filled[mask_bool] = np.clip(np.rint(paper_color), 0, 255).astype(np.uint8)
 
-        # Repair only tiny notches where giant display letters protruded into colored panel art.
+        # Repair only tiny notches where giant display letters protruded into panel art or midtones.
         if crop.ndim == 3 and crop.shape[2] == 3:
             hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-            art = clean_context & (gray < 220) & ((hsv[..., 1] >= 45) | (gray < 130))
+            art = clean_context & (gray < 218) & ((hsv[..., 1] >= 40) | (gray < 218))
             near_art = cv2.dilate(
                 art.astype(np.uint8),
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (41, 41)),
@@ -835,7 +837,9 @@ class Inpainter:
                     painted_sub = match_boundary_tone(source, painted_sub, sub_mask, hole=sub_hole)
                     painted_sub = restore_inpaint_sharpness(source, painted_sub, sub_mask, hole=sub_hole)
                     painted_sub = continue_linework(source, painted_sub, sub_mask, hole=sub_hole)
-                    filled[region][sub_mask > 127] = painted_sub[sub_mask > 127]
+                    sub_img = filled.copy()
+                    self._blend_painted(sub_img, painted_sub, sub_mask, (ax1, ay1, ax2, ay2), feather=False, hole=sub_hole)
+                    filled[region][sub_mask > 127] = sub_img[region][sub_mask > 127]
                     did_lama = True
             if did_lama:
                 self._metric_add("lama_regions")
@@ -845,10 +849,7 @@ class Inpainter:
             self._metric_add("smart_fill_regions")
 
         filled = restore_ambient_grain(crop, filled, local_mask, crop_box, hole=hole)
-        result = image.copy()
-        result_crop = result[cy1:cy2, cx1:cx2]
-        result_crop[mask_bool] = filled[mask_bool]
-        return result
+        return self._blend_painted(image.copy(), filled, local_mask, crop_box, feather=False, hole=hole)
 
     def _smart_paint_region(
         self,
@@ -884,6 +885,22 @@ class Inpainter:
             filled = restore_ambient_grain(crop, filled, local_mask, crop_box, hole=hole)
             return self._blend_painted(image, filled, local_mask, crop_box, feather, hole=hole)
 
+        if not force_lama:
+            gradient_surface = smart_fill_gradient_surface(crop, local_mask, hole=hole)
+            if gradient_surface is not None:
+                self._metric_add("smart_fill_regions")
+                self._metric_add("smart_fill_gradient_regions")
+                filled = crop.copy()
+                filled[mask_bool] = gradient_surface
+                filled = restore_ambient_grain(crop, filled, local_mask, crop_box, hole=hole)
+                return self._blend_painted(image, filled, local_mask, crop_box, feather, hole=hole)
+
+            screentone_filled = try_screentone_fill(crop, local_mask, hole=hole)
+            if screentone_filled is not None:
+                self._metric_add("screentone_fill_regions")
+                aligned = match_boundary_tone(crop, screentone_filled, local_mask, hole=hole)
+                return self._blend_painted(image, aligned, local_mask, crop_box, feather, hole=hole)
+
         # Fast CPU bypass: tiny isolated specks (<= 180px) on low-edge backgrounds don't need
         # a full 512x512 LaMa ONNX forward pass; OpenCV Telea finishes in <0.5ms cleanly.
         if not force_lama and hole is None:
@@ -916,16 +933,15 @@ class Inpainter:
         ctx_mask = write_mask <= 127
         ctx_edge_density = float(np.mean(crop_edges[ctx_mask] > 0)) if np.any(ctx_mask) else 0.0
         textured_art = ctx_edge_density >= 0.035
-        if hole is None:
-            ys, xs = np.where(local_mask > 127)
-            if len(ys):
-                side = min(int(ys.max()) - int(ys.min()) + 1, int(xs.max()) - int(xs.min()) + 1)
-                # Keep model context dilation tight over detailed artwork so nearby strokes stay
-                # visible to LaMa instead of being masked out and hallucinated from afar.
-                max_ctx_radius = min(LAMA_MASK_DILATE_MAX, 7 if textured_art else 12)
-                radius = int(np.clip(round(side * LAMA_MASK_DILATE_SCALE), LAMA_MASK_DILATE_MIN, max_ctx_radius))
-                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
-                model_mask = cv2.dilate(local_mask, kernel, iterations=1)
+        ys, xs = np.where(local_mask > 127)
+        if len(ys):
+            side = min(int(ys.max()) - int(ys.min()) + 1, int(xs.max()) - int(xs.min()) + 1)
+            # Keep model context dilation tight over detailed artwork even on multi-box crops so
+            # anti-aliased text fringes never leak inward as ghost halos while write_mask stays exact.
+            max_ctx_radius = min(LAMA_MASK_DILATE_MAX, 6 if textured_art else 10)
+            radius = int(np.clip(round(side * LAMA_MASK_DILATE_SCALE), LAMA_MASK_DILATE_MIN, max_ctx_radius))
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+            model_mask = cv2.dilate(local_mask, kernel, iterations=1)
         self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
@@ -939,7 +955,7 @@ class Inpainter:
             mh = int(my.max()) - int(my.min()) + 1
             mw = int(mx.max()) - int(mx.min()) + 1
             if textured_art:
-                pad = min(72, max(36, int(round(0.45 * max(mh, mw)))))
+                pad = min(84, max(40, int(round(0.50 * max(mh, mw)))))
             else:
                 pad = min(48, max(24, int(round(0.35 * max(mh, mw)))))
             cand_x1 = max(0, int(mx.min()) - pad)
@@ -992,6 +1008,36 @@ class Inpainter:
             work_painted = self._lama_fill_tiled(work_crop, work_fill, own=work_write)
         else:
             work_painted = self._lama_fill_single(work_crop, work_fill)
+
+        # Selective 2-pass coarse-to-fine rescue when large textured holes collapse into blurry gray soup.
+        if (
+            not self._use_migan
+            and not feather
+            and hole is None
+            and len(my)
+            and mh >= 96
+            and mw >= 96
+            and textured_art
+            and float((work_write > 127).mean()) >= 0.22
+        ):
+            write_bin = work_write > 127
+            inner = cv2.erode(write_bin.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (19, 19))) > 0
+            work_ctx = ~write_bin
+            if int(np.count_nonzero(inner)) >= 256 and int(np.count_nonzero(work_ctx)) >= 256:
+                src_g = cv2.cvtColor(work_crop, cv2.COLOR_BGR2GRAY).astype(np.float32)
+                pnt_g = cv2.cvtColor(work_painted, cv2.COLOR_BGR2GRAY).astype(np.float32)
+                lap_s = np.abs(cv2.Laplacian(src_g, cv2.CV_32F, ksize=3))
+                lap_p = np.abs(cv2.Laplacian(pnt_g, cv2.CV_32F, ksize=3))
+                ctx_e = float(np.percentile(lap_s[work_ctx], 90))
+                inner_e = float(np.percentile(lap_p[inner], 90))
+                ctx_std = max(1.0, float(np.std(src_g[work_ctx])))
+                inner_std = float(np.std(pnt_g[inner]))
+                if ctx_e >= 25.0 and inner_e < 0.40 * ctx_e and inner_std < 0.55 * ctx_std:
+                    self._metric_add("lama_refine_passes")
+                    work_crop_2 = np.where(write_bin[:, :, None], work_painted, work_crop)
+                    inner_mask_2 = cv2.dilate(inner.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))) * 255
+                    refined_2 = self._lama_fill_single(work_crop_2, inner_mask_2)
+                    work_painted = np.where(inner[:, :, None], refined_2, work_painted)
 
         # Base finishing on real context outside the write mask and any still-unpainted text.
         work_hole = hole[ty1:ty2, tx1:tx2] if hole is not None else None
@@ -1069,6 +1115,12 @@ class Inpainter:
         if np.any(context):
             edge_density = float(np.mean(edges[context] > 0))
             if edge_density < 0.025:
+                gray_f = gray.astype(np.float32)
+                hp = gray_f - cv2.GaussianBlur(gray_f, (5, 5), 1.0)
+                ctx_hp = hp[context]
+                hp_mad = 1.4826 * float(np.median(np.abs(ctx_hp - float(np.median(ctx_hp)))))
+                if hp_mad >= 3.5:
+                    return max_dim
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
                 safe = cv2.erode(context.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
                 collar = (cv2.dilate(local_mask, kernel) > 127) & safe
@@ -1219,6 +1271,10 @@ class Inpainter:
         overlap = min(DYNAMIC_LAMA_TILE_OVERLAP if self.dynamic_lama else MANUAL_TILE_OVERLAP, tile // 4)
         step = tile - overlap
 
+        work_img = crop.copy()
+        work_mask = local_mask.copy()
+        remaining_own = (local_mask if own is None else own).copy()
+
         output = np.zeros((h, w, 3), dtype=np.float32)
         weights = np.zeros((h, w), dtype=np.float32)
 
@@ -1228,14 +1284,14 @@ class Inpainter:
             y1 = min(h, y0 + tile)
             for x0 in x_starts:
                 x1 = min(w, x0 + tile)
-                tile_img = crop[y0:y1, x0:x1]
-                tile_mask = local_mask[y0:y1, x0:x1]
+                tile_img = work_img[y0:y1, x0:x1]
+                tile_mask = work_mask[y0:y1, x0:x1]
                 tile_h, tile_w = tile_img.shape[:2]
                 wy = self._tile_weight(tile_h, overlap, y0 > 0, y1 < h)
                 wx = self._tile_weight(tile_w, overlap, x0 > 0, x1 < w)
                 weight = wy[:, None] * wx[None, :]
 
-                if not np.any((tile_mask if own is None else own[y0:y1, x0:x1]) > 127):
+                if not np.any(remaining_own[y0:y1, x0:x1] > 127):
                     output[y0:y1, x0:x1] += tile_img.astype(np.float32) * weight[:, :, None]
                     weights[y0:y1, x0:x1] += weight
                     continue
@@ -1243,6 +1299,13 @@ class Inpainter:
                 tile_painted = self._lama_fill_single(tile_img, tile_mask)
                 output[y0:y1, x0:x1] += tile_painted.astype(np.float32) * weight[:, :, None]
                 weights[y0:y1, x0:x1] += weight
+
+                # Propagate confident interior pixels so adjacent tiles align cleanly without double lines.
+                core = (weight >= 0.5) & (tile_mask > 127)
+                if np.any(core):
+                    work_img[y0:y1, x0:x1][core] = tile_painted[core]
+                    work_mask[y0:y1, x0:x1][core] = 0
+                    remaining_own[y0:y1, x0:x1][core] = 0
 
         weights = np.maximum(weights, 1e-6)
         return np.clip(np.rint(output / weights[:, :, None]), 0, 255).astype(np.uint8)
@@ -1262,7 +1325,7 @@ class Inpainter:
         weight = np.ones(length, dtype=np.float32)
         if overlap <= 0:
             return weight
-        ramp = np.linspace(0.0, 1.0, min(overlap, length), dtype=np.float32)
+        ramp = 0.5 - 0.5 * np.cos(np.pi * np.linspace(0.0, 1.0, min(overlap, length), dtype=np.float32))
         if has_before:
             weight[:len(ramp)] = np.minimum(weight[:len(ramp)], ramp)
         if has_after:
