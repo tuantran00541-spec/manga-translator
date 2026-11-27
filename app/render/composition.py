@@ -233,10 +233,10 @@ def compose_text(image, text, frame, font_path, *, preferred, floor, stroke, bol
         ax1, ay1, ax2, ay2 = anchor
         anchor_area = max(1, (ax2 - ax1) * (ay2 - ay1))
         safe_area = int(rows.size)
-        if safe_area > 2.8 * anchor_area:
+        if safe_area > 1.8 * anchor_area:
             acx = max(0.0, min(float(w - 1), (ax1 + ax2) / 2.0 - x1))
             acy = max(0.0, min(float(h - 1), (ay1 + ay2) / 2.0 - y1))
-            blend = min(0.75, 1.0 - (2.8 * anchor_area / safe_area))
+            blend = min(0.75, 1.0 - (1.8 * anchor_area / safe_area))
             cand_x = anchor_x * (1.0 - blend) + acx * blend
             cand_y = anchor_y * (1.0 - blend) + acy * blend
             best_idx = int(np.argmin((cols - cand_x) ** 2 + (rows - cand_y) ** 2))

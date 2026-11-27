@@ -213,6 +213,8 @@ def _clearing_shift(cand_box, placed_boxes, height: int, frame=None, anchor_box=
         if not clears(moved):
             return False
         if frame is not None:
+            if moved[1] < frame[1] or moved[3] > frame[3]:
+                return False
             anchor = anchor_box if anchor_box is not None else cand_box
             if anchor[1] + dy < frame[1] or anchor[3] + dy > frame[3]:
                 return False

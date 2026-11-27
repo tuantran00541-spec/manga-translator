@@ -9,6 +9,7 @@ from app.detector.bubble_mask import mask_inscribed_rect
 from app.render.composition import compose_text
 from app.parameters import (
     MAX_FONT_SIZE,
+    MIN_FONT_SIZE,
     RENDER_AUTO_STROKE_WIDTH,
     RENDER_DEFAULT_PADDING,
     RENDER_MIN_READABLE_FONT_SIZE,
@@ -760,12 +761,16 @@ def render_text_in_box(
                 nudge_x = x1 - ix1
             elif ix2 > x2:
                 nudge_x = x2 - ix2
+        else:
+            nudge_x = round(((x1 + x2) - (ix1 + ix2)) / 2.0)
         nudge_y = 0
         if iy2 - iy1 <= (y2 - y1):
             if iy1 < y1:
                 nudge_y = y1 - iy1
             elif iy2 > y2:
                 nudge_y = y2 - iy2
+        else:
+            nudge_y = round(((y1 + y2) - (iy1 + iy2)) / 2.0)
         if nudge_x or nudge_y:
             line_layouts = [(sx + nudge_x, sy + nudge_y, ln) for sx, sy, ln in line_layouts]
             glyph_layouts = [(sx + nudge_x, sy + nudge_y, ln) for sx, sy, ln in glyph_layouts]
@@ -1031,10 +1036,11 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                 if widest < 0.4 * fbw:
                     bands = None
                     fallbacks.append("mask_degenerate_rectangle")
+        bold_extra = int(bool(bold))
         probe = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                           minimum_size=readable, maximum_size=maximum_size,
                           curved=bool(bands is not None or curved), bands=bands, anchor_y=anchor_y,
-                          keep_compounds=keep_compounds)[0]
+                          keep_compounds=keep_compounds, bold_extra=bold_extra)[0]
         fit_floor = floor if enlarge else max(floor, int(SOURCE_FLOOR_RATIO * probe))
         if enlarge:
             ceiling = maximum_size
@@ -1047,28 +1053,32 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
                                           curved=True, bands=bands, anchor_y=anchor_y,
-                                          keep_compounds=keep_compounds)
+                                          keep_compounds=keep_compounds, bold_extra=bold_extra)
             if not fits and fit_floor > readable:
                 size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                               minimum_size=readable, maximum_size=fit_floor,
                                               curved=True, bands=bands, anchor_y=anchor_y,
-                                              keep_compounds=keep_compounds)
+                                              keep_compounds=keep_compounds, bold_extra=bold_extra)
         elif curved:
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
-                                          curved=True, bands=None, keep_compounds=keep_compounds)
+                                          curved=True, bands=None, keep_compounds=keep_compounds,
+                                          bold_extra=bold_extra)
             if not fits and fit_floor > readable:
                 size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                               minimum_size=readable, maximum_size=fit_floor,
-                                              curved=True, bands=None, keep_compounds=keep_compounds)
+                                              curved=True, bands=None, keep_compounds=keep_compounds,
+                                              bold_extra=bold_extra)
         else:
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
-                                          curved=False, bands=None, keep_compounds=keep_compounds)
+                                          curved=False, bands=None, keep_compounds=keep_compounds,
+                                          bold_extra=bold_extra)
             if not fits and fit_floor > readable:
                 size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                               minimum_size=readable, maximum_size=fit_floor,
-                                              curved=False, bands=None, keep_compounds=keep_compounds)
+                                              curved=False, bands=None, keep_compounds=keep_compounds,
+                                              bold_extra=bold_extra)
         return size, lines, fits, bands, anchor_y, padded, ceiling, fit_floor
 
     size, lines, fits_readably, bands, anchor_y, padded, ceiling, floor = search(x1, y1, x2, y2)
@@ -1096,23 +1106,32 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         rpad = max(2, min(padding, int(min(rw, rh) * RENDER_PADDING_RATIO_MAX)))
         rbw, rbh = rw - rpad * 2, rh - rpad * 2
         if rbw > 0 and rbh > 0:
+            bold_extra = int(bool(bold))
             ok, flines = _fits(draw, text, rbw, rbh, font_path_str, floor, stroke_w,
-                               curved=False, bands=None, keep_compounds=keep_compounds)
+                               curved=False, bands=None, keep_compounds=keep_compounds, bold_extra=bold_extra)
             rsize = floor
             if not ok and floor > readable:
                 rsize, flines, ok = _fit_text(
                     draw, text, rbw, rbh, font_path_str, stroke_w=stroke_w,
                     minimum_size=readable, maximum_size=floor, curved=False, bands=None,
-                    keep_compounds=keep_compounds)
+                    keep_compounds=keep_compounds, bold_extra=bold_extra)
+            shrunk_below_readable = False
+            if not ok and readable > MIN_FONT_SIZE:
+                rsize, flines, ok = _fit_text(
+                    draw, text, rbw, rbh, font_path_str, stroke_w=stroke_w,
+                    minimum_size=MIN_FONT_SIZE, maximum_size=readable - 1, curved=False, bands=None,
+                    keep_compounds=keep_compounds, bold_extra=bold_extra)
+                shrunk_below_readable = ok
             if ok:
-                size, lines, fits_readably = rsize, flines, True
+                size, lines = rsize, flines
+                fits_readably = not shrunk_below_readable
                 x1, y1, x2, y2 = rx1, ry1, rx2, ry2
                 bands, anchor_y = None, None
                 padded = (rx1 + rpad, ry1 + rpad, rx2 - rpad, ry2 - rpad)
                 raw_w, raw_h = x2 - x1, y2 - y1
                 pad = rpad
                 box_w, box_h = rbw, rbh
-                fallbacks.append("outline_fit_failed_floor_rect")
+                fallbacks.append("overflow_shrink_below_readable" if shrunk_below_readable else "outline_fit_failed_floor_rect")
     block_top = None
     if fits_readably and lines and bands is not None:
         font_c = get_font_object(font_path_str, size)
