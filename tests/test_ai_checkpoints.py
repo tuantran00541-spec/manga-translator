@@ -1,6 +1,6 @@
 import numpy as np
 
-from app.ai_mode.checkpoints import SHEET_SIDE, TAG_PX, crops_for, pack
+from app.ai_mode.clean_review import SHEET_SIDE, TAG_PX, crops_for, pack
 
 
 def test_each_erased_box_gets_a_padded_raw_clean_pair_and_huge_ones_are_shrunk():

@@ -26,9 +26,9 @@ def get_pipeline():
         existing = globals().get("pipeline")
         if existing is None:
             _ensure_cpu_headroom()
-            from app.processing_pipeline_factory import build_processing_pipeline
+            from app.optimized_pipeline import OptimizedChapterPipeline
 
-            existing = build_processing_pipeline()
+            existing = OptimizedChapterPipeline()
             globals()["pipeline"] = existing
         return existing
 

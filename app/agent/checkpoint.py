@@ -13,6 +13,13 @@ MAX_DROPPED = 20
 MAX_RAN = 200
 
 
+def _is_link(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    isjunction = getattr(os.path, "isjunction", None)
+    return bool(isjunction and isjunction(path))
+
+
 def _norm_key(path: Path | str) -> str:
     return os.path.normpath(str(path))
 
@@ -46,7 +53,7 @@ class Checkpoints:
         if not self.turns or key in self.turns[-1] or key in self.skipped[-1]:
             return
         try:
-            if path.is_symlink():
+            if _is_link(path):
                 self.skipped[-1].add(key)
                 return
             if path.is_file():
@@ -111,7 +118,7 @@ class Checkpoints:
         files = {}
         for key in self.turns[-1]:
             p = Path(key)
-            if p.is_symlink():
+            if _is_link(p):
                 continue
             data = _read(p, max_bytes=MAX_FILE_BYTES)
             if data is _TOO_LARGE:
@@ -143,14 +150,14 @@ class Checkpoints:
         return state
 
     def restore(self, state: dict[str, bytes | None], only: str = "") -> list[str]:
-        only_norm = _norm_key(only) if only else ""
+        only_norm = os.path.normcase(_norm_key(only)) if only else ""
         done = []
         for name, data in state.items():
-            if only_norm and _norm_key(name) != only_norm:
+            if only_norm and os.path.normcase(_norm_key(name)) != only_norm:
                 continue
             path = Path(name)
             existing = _read(path, max_bytes=MAX_FILE_BYTES)
-            if not path.is_symlink() and existing is not _TOO_LARGE and existing == data:
+            if not _is_link(path) and existing is not _TOO_LARGE and existing == data:
                 continue
             self.save(path)
             if _write(path, data):
@@ -176,7 +183,7 @@ _TOO_LARGE = object()
 
 def _read(path: Path, *, max_bytes: int | None = None):
     try:
-        if path.is_symlink() or not path.is_file():
+        if _is_link(path) or not path.is_file():
             return None
         st = path.lstat()
         if not stat.S_ISREG(st.st_mode):

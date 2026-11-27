@@ -317,10 +317,12 @@ def cmd_free(args: list[str]) -> int:
 
     total, free_, avail = info.get("MemTotal", 0), info.get("MemFree", 0), info.get("MemAvailable", 0)
     cache = info.get("Buffers", 0) + info.get("Cached", 0)
+    used = max(0, total - avail) if "MemAvailable" in info else max(0, total - free_ - cache)
     print(f"{'':>8}{'total':>12}{'used':>12}{'free':>12}{'shared':>12}{'buff/cache':>12}{'available':>12}")
-    print(f"{'Mem:':<8}{show(total):>12}{show(total - avail):>12}{show(free_):>12}{show(info.get('Shmem', 0)):>12}{show(cache):>12}{show(avail):>12}")
+    print(f"{'Mem:':<8}{show(total):>12}{show(used):>12}{show(free_):>12}{show(info.get('Shmem', 0)):>12}{show(cache):>12}{show(avail):>12}")
     swap = info.get("SwapTotal", 0)
-    print(f"{'Swap:':<8}{show(swap):>12}{show(swap - info.get('SwapFree', 0)):>12}{show(info.get('SwapFree', 0)):>12}")
+    swap_free = info.get("SwapFree", 0)
+    print(f"{'Swap:':<8}{show(swap):>12}{show(max(0, swap - swap_free)):>12}{show(swap_free):>12}")
     return 0
 
 
@@ -435,6 +437,8 @@ def cmd_curl(args: list[str]) -> int:
             return 22
 
         target = opts.output or (_safe_remote_filename(url) if opts.remote_name else None)
+        if target == "-":
+            target = None
         head = (
             f"HTTP/1.1 {status} {reply.reason}\r\n"
             + "".join(f"{k}: {v}\r\n" for k, v in reply.headers.items())
@@ -500,7 +504,7 @@ def main(argv: list[str]) -> int:
     try:
         return COMMANDS[name](args) or 0
     except SystemExit as exc:
-        return int(exc.code or 0)
+        return exc.code if isinstance(exc.code, int) else (1 if exc.code else 0)
     except (OSError, ValueError) as exc:
         print(f"{name}: {exc}", file=sys.stderr)
         return 1

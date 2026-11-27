@@ -384,7 +384,7 @@ def test_glossary_transcript_lists_who_says_what_slice_by_slice():
 
 
 def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypatch):
-    from app.ai_mode import checkpoints
+    from app.ai_mode import clean_review
 
     box_a, box_b = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}, {"x1": 10, "y1": 300, "x2": 90, "y2": 340}
     runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [box_a, box_b]}, {"boxes": [box_a]}]})
@@ -396,7 +396,7 @@ def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypa
         sheets.append([crop.id for crop in crops])
         return [crop for crop in crops if crop.id in {"1.2", "2.1"}], None
 
-    monkeypatch.setattr(checkpoints, "review_sheet", review_sheet)
+    monkeypatch.setattr(clean_review, "review_sheet", review_sheet)
     fixed = []
     monkeypatch.setattr(ai_job, "pipeline_fix", lambda chapter, index, rects: fixed.append((index, rects)))
     asyncio.run(runner.review())
@@ -427,7 +427,7 @@ def test_a_repaint_the_letter_model_still_reads_gets_one_more_pass_then_goes_to_
 def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeypatch):
     import contextlib
 
-    from app.ai_mode import checkpoints
+    from app.ai_mode import clean_review
 
     watermark, kept = (323, 2825, 752, 3107), {"x1": 10, "y1": 10, "x2": 200, "y2": 100}
     stored = {"pages": [{"preserve_regions": [dict(zip(("x1", "y1", "x2", "y2"), watermark)), kept],
@@ -439,7 +439,7 @@ def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeyp
     monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: stored)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
-    monkeypatch.setattr(checkpoints, "review_sheet", lambda provider, model, key, sheet, crops: (crops, None))
+    monkeypatch.setattr(clean_review, "review_sheet", lambda provider, model, key, sheet, crops: (crops, None))
     seen = []
     monkeypatch.setattr(ai_job, "pipeline_fix",
                         lambda chapter, index, rects: seen.append(list(stored["pages"][0]["preserve_regions"])))
@@ -450,7 +450,7 @@ def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeyp
 
 def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
     import app.routers.chapters as chapters_router
-    from app.ai_mode import checkpoints
+    from app.ai_mode import clean_review
 
     runner = _runner(monkeypatch, "clean", {"pages": [{}, {}, {}]})
     runner.job.stages["review"] = {"done": 0, "total": 0, "detail": ""}
@@ -483,7 +483,7 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
         return []
 
     monkeypatch.setattr(chapters_router, "chapter_processing_jobs", Jobs())
-    monkeypatch.setattr(checkpoints, "crops_for", crops_for)
+    monkeypatch.setattr(clean_review, "crops_for", crops_for)
 
     async def scenario():
         await runner.clean()

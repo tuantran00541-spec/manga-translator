@@ -1,6 +1,6 @@
 import numpy as np
 
-from app.ai_mode.checkpoints import Crop, pack
+from app.ai_mode.clean_review import Crop, pack
 
 
 def test_pack_sheet_is_wide_enough_for_its_tag():

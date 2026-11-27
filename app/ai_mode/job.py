@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from fastapi import HTTPException
 
 from app.ai_mode import decider
-from app.ai_mode.checkpoints import _covered
+from app.ai_mode.clean_review import _covered
 from app.ai_mode.job_rendering import AIModeRenderingMixin
 from app.ai_mode.job_seams import AIModeSeamsMixin
 from app import series_memory
@@ -515,7 +515,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         self._review_task = asyncio.create_task(self._review_stream(total))
 
     async def _review_stream(self, total: int) -> None:
-        from app.ai_mode import checkpoints
+        from app.ai_mode import clean_review
 
         crops: list = []
         finished = 0
@@ -523,7 +523,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         def cut(page_index: int) -> list:
             original, clean = self._images(page_index, "clean", PROCESSED_DIR)
             boxes = self._page_boxes(page_index, for_repaint=True)
-            return checkpoints.crops_for(page_index, original, clean, self._in_core(page_index, boxes))
+            return clean_review.crops_for(page_index, original, clean, self._in_core(page_index, boxes))
 
         self._progress(0, total, stage="review")
         while (page_index := await self._review_queue.get()) is not None:
@@ -533,7 +533,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
                 _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
             finished += 1
             self._progress(finished, total, stage="review")
-        sheets = await asyncio.to_thread(checkpoints.pack, crops)
+        sheets = await asyncio.to_thread(clean_review.pack, crops)
         gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
 
         async def check(sheet, placed) -> list:
@@ -542,7 +542,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
                 if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
                     return []
                 try:
-                    found, cost = await _ai_call(checkpoints.review_sheet, self.provider, self.settings.model,
+                    found, cost = await _ai_call(clean_review.review_sheet, self.provider, self.settings.model,
                                                  self.api_key, sheet, placed)
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(self.report["qc_errors"], f"Bảng ảnh đối chiếu: {_detail(exc)[:200]}")

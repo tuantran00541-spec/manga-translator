@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from app.manifest_utils import load_manifest_raw
-from app.processing_pipeline_factory import build_processing_pipeline
+from app.optimized_pipeline import OptimizedChapterPipeline
 
 
 def main() -> int:
@@ -18,7 +18,7 @@ def main() -> int:
     args = parser.parse_args()
 
     zip_bytes = args.zip.read_bytes()
-    pipeline = build_processing_pipeline()
+    pipeline = OptimizedChapterPipeline()
     started = time.perf_counter()
     manifest = pipeline.create_chapter_from_uploads(
         args.chapter_id, [(args.zip.name, zip_bytes)]

@@ -12,7 +12,7 @@ from app.config import KIUYHA_TEXT_MODEL
 from app.detector.kiuyha_detector import KiuyhaTextDetector
 from app.image_io import read_image
 from app.manifest_utils import load_manifest_raw
-from app.processing_pipeline_factory import build_processing_pipeline
+from app.optimized_pipeline import OptimizedChapterPipeline
 
 
 def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
@@ -80,7 +80,7 @@ def main() -> int:
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
-    pipeline = build_processing_pipeline()
+    pipeline = OptimizedChapterPipeline()
     started = time.perf_counter()
     if Path(args.url).is_file():
         data = Path(args.url).read_bytes()

@@ -37,7 +37,7 @@ def main() -> int:
 
     from app.detector.kiuyha_detector import KiuyhaTextDetector
     from app.image_io import read_image
-    from app.processing_pipeline_factory import build_processing_pipeline
+    from app.optimized_pipeline import OptimizedChapterPipeline
 
     from huggingface_hub import hf_hub_download, list_repo_files
 
@@ -61,7 +61,7 @@ def main() -> int:
         }
     print(json.dumps(report, indent=1), flush=True)
 
-    manifest = build_processing_pipeline().download_chapter(args.url, "c1ea0004", workers=2)
+    manifest = OptimizedChapterPipeline().download_chapter(args.url, "c1ea0004", workers=2)
     pages = manifest["pages"][1:1 + args.slices]
     detectors = {name: KiuyhaTextDetector(models / name) for name in targets}
     totals = {"pt_1280": 0.0, "kiuyha-tuned-1023.onnx": 0.0}

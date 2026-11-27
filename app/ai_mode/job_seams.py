@@ -5,7 +5,7 @@ import asyncio
 import requests
 from fastapi import HTTPException
 
-from app.ai_mode.checkpoints import _covered
+from app.ai_mode.clean_review import _covered
 from app.ai_mode.job_compat import _j
 from app.manifest_utils import (
     get_manifest_lock,
@@ -178,7 +178,7 @@ class AIModeSeamsMixin:
         return (committed, dropped)
 
     async def _add_unboxed(self, page_index: int, boxes: list, source_lang: str) -> None:
-        from app.ai_mode.checkpoints import MARGIN_PX, MAX_AREA_RATIO, MIN_SIDE_PX
+        from app.ai_mode.clean_review import MARGIN_PX, MAX_AREA_RATIO, MIN_SIDE_PX
         from app.dependencies import pipeline
 
         page = self._manifest()["pages"][page_index]

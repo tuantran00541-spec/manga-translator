@@ -300,7 +300,7 @@ def _lines_fit_ellipse(draw, lines, font, box_w: int, box_h: int, stroke_w: int)
     if len(limits) != len(lines):
         return False
     return all(
-        draw.textbbox((0, 0), line, font=font)[2] + 2 * stroke_w <= limit
+        _measured_width(draw, line, font, stroke_w=stroke_w) <= limit
         for line, limit in zip(lines, limits)
     )
 
@@ -556,16 +556,16 @@ def _wrap_to_spans(draw, text: str, font, spans: list[tuple[int, int]], stroke_w
             if span_idx >= len(spans):
                 return None
             a, b = spans[span_idx]
-            span_w = int(b) - int(a) - 2 * stroke_w
+            span_w = int(b) - int(a)
             if span_w <= 0:
                 return None
             cur = words[idx]
-            if draw.textbbox((0, 0), cur, font=font)[2] > span_w:
+            if _measured_width(draw, cur, font, stroke_w=stroke_w) > span_w:
                 return None
             idx += 1
             while idx < len(words):
                 cand = f"{cur} {words[idx]}"
-                if draw.textbbox((0, 0), cand, font=font)[2] <= span_w:
+                if _measured_width(draw, cand, font, stroke_w=stroke_w) <= span_w:
                     cur = cand
                     idx += 1
                 else:

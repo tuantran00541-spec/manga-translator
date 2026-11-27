@@ -230,15 +230,19 @@ def try_screentone_fill(
     if int(np.count_nonzero(seam_band)) >= 32:
         d1x, d1y = v1
         sy_i, sx_i = np.nonzero(mask_bool)
-        tx = np.clip(sx_i + d1x, 0, w - 1)
-        ty = np.clip(sy_i + d1y, 0, h - 1)
-        ref = clean_ctx[ty, tx]
-        if int(np.count_nonzero(ref)) >= 32:
-            a = gray_filled[sy_i[ref], sx_i[ref]]
-            b = gray_filled[ty[ref], tx[ref]]
-            a_c, b_c = a - float(a.mean()), b - float(b.mean())
-            denom = float(np.sqrt(np.dot(a_c, a_c) * np.dot(b_c, b_c)))
-            if denom > 1e-3 and float(np.dot(a_c, b_c) / denom) < _SEAM_NCC_MIN:
-                return None
+        tx = sx_i + d1x
+        ty = sy_i + d1y
+        in_bounds = (tx >= 0) & (tx < w) & (ty >= 0) & (ty < h)
+        if np.any(in_bounds):
+            sy_b, sx_b = sy_i[in_bounds], sx_i[in_bounds]
+            ty_b, tx_b = ty[in_bounds], tx[in_bounds]
+            ref = clean_ctx[ty_b, tx_b]
+            if int(np.count_nonzero(ref)) >= 32:
+                a = gray_filled[sy_b[ref], sx_b[ref]]
+                b = gray_filled[ty_b[ref], tx_b[ref]]
+                a_c, b_c = a - float(a.mean()), b - float(b.mean())
+                denom = float(np.sqrt(np.dot(a_c, a_c) * np.dot(b_c, b_c)))
+                if denom > 1e-3 and float(np.dot(a_c, b_c) / denom) < _SEAM_NCC_MIN:
+                    return None
 
     return filled

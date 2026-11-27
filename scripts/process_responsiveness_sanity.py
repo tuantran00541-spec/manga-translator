@@ -107,12 +107,12 @@ def source_checks() -> None:
     dependencies = (ROOT / "app/dependencies.py").read_text(encoding="utf-8")
     configure_at = dependencies.find("configure_local_cpu_headroom()")
     pipeline_import_at = dependencies.find(
-        "from app.processing_pipeline_factory import build_processing_pipeline"
+        "from app.optimized_pipeline import OptimizedChapterPipeline"
     )
     check(configure_at >= 0, "CPU headroom configuration missing")
     check(
         pipeline_import_at >= 0 and configure_at < pipeline_import_at,
-        "CPU headroom must be configured before pipeline factory imports",
+        "CPU headroom must be configured before pipeline imports",
     )
 
     pipeline = (ROOT / "app/pipeline.py").read_text(encoding="utf-8")
