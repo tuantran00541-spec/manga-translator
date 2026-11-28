@@ -573,3 +573,30 @@ class VisualQCKeyRequest(BaseModel):
             raise ValueError("API key is unexpectedly long")
         return v
 
+
+class KeyRotationSaveRequest(BaseModel):
+    base_url: str
+    keys_text: str
+    append: bool = False
+    provider_label: str | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def _base_url_not_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Base URL is required")
+        if len(v) > 2048:
+            raise ValueError("Base URL is too long")
+        return v
+
+    @field_validator("keys_text")
+    @classmethod
+    def _keys_text_not_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("At least one API key is required")
+        if len(v) > 200000:
+            raise ValueError("Keys list is unexpectedly long")
+        return v
+

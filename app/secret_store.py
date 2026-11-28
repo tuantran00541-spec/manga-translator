@@ -306,7 +306,38 @@ def deepseek_key_status() -> dict:
     )
 
 
-MAX_KEYS = 10
+MAX_KEYS = 100
+_ROTATION_CURSORS: dict[str, int] = {}
+_KEY_COOLDOWNS: dict[tuple[str, str], float] = {}
+
+
+def mask_api_key(value: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+    if len(cleaned) <= 8:
+        return f"{cleaned[:2]}…{cleaned[-2:]}" if len(cleaned) >= 4 else "••••"
+    return f"{cleaned[:6]}…{cleaned[-4:]}"
+
+
+def parse_key_lines(raw_text: str | None) -> list[str]:
+    """Parse newline-separated API keys (e.g. 'sk-...\\nsk-...') with deduplication."""
+    if not raw_text:
+        return []
+    keys: list[str] = []
+    seen: set[str] = set()
+    for line in str(raw_text).splitlines():
+        token = line.strip()
+        if not token or token.startswith("#") or token.startswith("//"):
+            continue
+        token = token.rstrip(",;").strip()
+        if len(token) >= 2 and token[0] == token[-1] and token[0] in ("'", '"'):
+            token = token[1:-1].strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        keys.append(token)
+    return keys
 
 
 def split_keys(raw: str | None) -> list[str]:
@@ -339,16 +370,59 @@ def get_provider_api_keys(
     return split_keys(_raw_provider_key(provider_id, provider_label))
 
 
-def get_provider_api_key(
+def get_provider_key_hints(
     provider_id: str, *, provider_label: str | None = None
+) -> list[str]:
+    return [mask_api_key(k) for k in get_provider_api_keys(provider_id, provider_label=provider_label)]
+
+
+def mark_provider_key_rate_limited(
+    provider_id: str,
+    api_key: str,
+    *,
+    cooldown_seconds: float = 60.0,
+) -> None:
+    import time
+
+    normalized = normalize_provider_id(provider_id)
+    key = (api_key or "").strip()
+    if not key or cooldown_seconds <= 0:
+        return
+    with _STORE_LOCK:
+        _KEY_COOLDOWNS[(normalized, key)] = time.monotonic() + float(cooldown_seconds)
+
+
+def get_provider_api_key(
+    provider_id: str,
+    *,
+    provider_label: str | None = None,
+    rotate: bool = True,
 ) -> str | None:
     keys = get_provider_api_keys(provider_id, provider_label=provider_label)
-    return keys[0] if keys else None
+    if not keys:
+        return None
+    if len(keys) == 1 or not rotate:
+        return keys[0]
+    import time
+
+    normalized = (provider_id or "").strip().lower()
+    now = time.monotonic()
+    with _STORE_LOCK:
+        cursor = _ROTATION_CURSORS.get(normalized, 0) % len(keys)
+        chosen_idx = cursor
+        for offset in range(len(keys)):
+            idx = (cursor + offset) % len(keys)
+            until = _KEY_COOLDOWNS.get((normalized, keys[idx]), 0.0)
+            if until <= now:
+                chosen_idx = idx
+                break
+        _ROTATION_CURSORS[normalized] = (chosen_idx + 1) % len(keys)
+        return keys[chosen_idx]
 
 
-def set_provider_api_key(
+def set_provider_api_keys(
     provider_id: str,
-    value: str,
+    values: list[str],
     *,
     provider_label: str | None = None,
     append: bool = False,
@@ -358,11 +432,19 @@ def set_provider_api_key(
         "gemini": _GEMINI_ACCOUNT,
         "deepseek": _DEEPSEEK_ACCOUNT,
     }.get(provider_id, _provider_account(provider_id))
-    cleaned = _validate_secret_value(value, label)
-    if cleaned.startswith("["):
-        raise ValueError(f"{label} API key is invalid")
+    cleaned_keys: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        cleaned = _validate_secret_value(raw, label)
+        if cleaned.startswith("["):
+            raise ValueError(f"{label} API key is invalid")
+        if cleaned not in seen:
+            seen.add(cleaned)
+            cleaned_keys.append(cleaned)
+    if not cleaned_keys:
+        raise ValueError(f"{label} API key is required")
     with _STORE_LOCK:
-        keys = [cleaned]
+        keys = list(cleaned_keys)
         if append:
             keyring, KeyringError = _keyring_module()
             try:
@@ -371,11 +453,30 @@ def set_provider_api_key(
                 raise SecretStoreUnavailable(
                     f"Cannot read {label} API key from OS secure storage: {exc}"
                 ) from exc
-            keys = stored + [k for k in keys if k not in stored]
-            if len(keys) > MAX_KEYS:
-                raise ValueError(f"At most {MAX_KEYS} keys per provider")
+            keys = stored + [k for k in cleaned_keys if k not in stored]
+        if len(keys) > MAX_KEYS:
+            raise ValueError(f"At most {MAX_KEYS} keys per provider")
         _set_api_key(account, keys[0] if len(keys) == 1 else json.dumps(keys), label)
+        _ROTATION_CURSORS[provider_id] = 0
+        for k in list(_KEY_COOLDOWNS):
+            if k[0] == provider_id:
+                _KEY_COOLDOWNS.pop(k, None)
         return len(keys)
+
+
+def set_provider_api_key(
+    provider_id: str,
+    value: str,
+    *,
+    provider_label: str | None = None,
+    append: bool = False,
+) -> int:
+    return set_provider_api_keys(
+        provider_id,
+        [value],
+        provider_label=provider_label,
+        append=append,
+    )
 
 
 def delete_provider_api_key(
@@ -386,6 +487,11 @@ def delete_provider_api_key(
         "gemini": _GEMINI_ACCOUNT,
         "deepseek": _DEEPSEEK_ACCOUNT,
     }.get(provider_id, _provider_account(provider_id))
+    with _STORE_LOCK:
+        _ROTATION_CURSORS.pop(provider_id, None)
+        for k in list(_KEY_COOLDOWNS):
+            if k[0] == provider_id:
+                _KEY_COOLDOWNS.pop(k, None)
     _delete_api_key(account, label)
 
 

@@ -94,7 +94,12 @@
       svgIcon(["M12 3l7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7l7-4Z", "M9 12l2 2 4-4"]),
       el("span", "", "Proxy API"),
     );
-    nav.append(tabGeneralBtn, tabModelsBtn, tabProxyBtn);
+    const tabRotateBtn = button("", "settings-nav-item");
+    tabRotateBtn.append(
+      svgIcon(["M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5", "M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16", "M16 16h5v5"]),
+      el("span", "", "Xoay key"),
+    );
+    nav.append(tabGeneralBtn, tabModelsBtn, tabProxyBtn, tabRotateBtn);
 
     const generalPanel = el("section", "settings-panel");
     generalPanel.hidden = true;
@@ -104,22 +109,30 @@
     const proxyMonitorHost = el("div", "proxy-monitor-host");
     proxyMonitorHost.id = "proxy-monitor-host";
     proxyPanel.append(proxyMonitorHost);
+    const rotatePanel = el("section", "settings-panel key-rotate-panel");
+    rotatePanel.hidden = true;
 
+    let refreshKeyRotation = async () => {};
     const switchSettingsTab = (tab) => {
       const isGeneral = tab === "general";
       const isModels = tab === "models";
       const isProxy = tab === "proxy";
+      const isRotate = tab === "rotate";
       tabGeneralBtn.classList.toggle("is-active", isGeneral);
       tabModelsBtn.classList.toggle("is-active", isModels);
       tabProxyBtn.classList.toggle("is-active", isProxy);
+      tabRotateBtn.classList.toggle("is-active", isRotate);
       generalPanel.hidden = !isGeneral;
       modelsPanel.hidden = !isModels;
       proxyPanel.hidden = !isProxy;
+      rotatePanel.hidden = !isRotate;
       if (isProxy) window.refreshProxyMonitor?.(true);
+      if (isRotate) void refreshKeyRotation();
     };
     tabGeneralBtn.addEventListener("click", () => switchSettingsTab("general"));
     tabModelsBtn.addEventListener("click", () => switchSettingsTab("models"));
     tabProxyBtn.addEventListener("click", () => switchSettingsTab("proxy"));
+    tabRotateBtn.addEventListener("click", () => switchSettingsTab("rotate"));
 
     const permSelect = el("select", "ui-select settings-row-select");
     [["ask", "Hỏi trước"], ["edits", "Tự sửa và chạy"], ["bypass", "Tự động"]].forEach(([v, l]) => permSelect.add(new Option(l, v)));
@@ -446,7 +459,214 @@
       modelsBox,
     );
 
-    contentHost.append(generalPanel, modelsPanel, proxyPanel);
+    const rotateCard = el("div", "key-rotate-card");
+    const rotateHead = el("div", "key-rotate-head");
+    rotateHead.append(
+      el("h3", "key-rotate-title", "Xoay vòng nhiều khóa API"),
+      el("span", "key-rotate-pill", "Mỗi dòng 1 khóa · tự nhận diện"),
+    );
+    const rotateIntro = el(
+      "p",
+      "settings-row-desc",
+      "Nhập URL gốc (Base URL) của nhà cung cấp ở dòng đầu, rồi dán toàn bộ danh sách khóa API vào khung bên dưới (mỗi dòng một khóa). Ứng dụng sẽ tự tách từng dòng và xoay vòng khi gửi yêu cầu.",
+    );
+    const rotateQuickBar = el("div", "key-rotate-quick");
+    const rotateBaseInput = input("https://apihub.agnes-ai.com/v1", "URL gốc (Base URL)");
+    rotateBaseInput.autocomplete = "off";
+    rotateBaseInput.spellcheck = false;
+
+    const rotateTextarea = el("textarea", "key-rotate-textarea");
+    rotateTextarea.rows = 10;
+    rotateTextarea.spellcheck = false;
+    rotateTextarea.autocomplete = "off";
+    rotateTextarea.placeholder = "sk-...\nsk-...\nsk-...";
+    rotateTextarea.setAttribute("aria-label", "Danh sách khóa API (mỗi dòng một khóa)");
+
+    const rotateMeta = el("div", "key-rotate-meta");
+    const rotateDetected = el("span", "key-rotate-detected", "Chưa nhập khóa nào");
+    const rotateHint = el("span", "", "Tự bỏ dòng trống, dấu phẩy cuối dòng và khóa trùng lặp");
+    rotateMeta.append(rotateDetected, rotateHint);
+
+    const parseKeyLinesClient = (raw) => {
+      const seen = new Set();
+      const keys = [];
+      let duplicates = 0;
+      for (const line of String(raw || "").split(/\r?\n/)) {
+        let token = line.trim();
+        if (!token || token.startsWith("#") || token.startsWith("//")) continue;
+        token = token.replace(/[,;]+$/, "").trim();
+        if (token.length >= 2 && ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'")))) {
+          token = token.slice(1, -1).trim();
+        }
+        if (!token) continue;
+        if (seen.has(token)) {
+          duplicates += 1;
+          continue;
+        }
+        seen.add(token);
+        keys.push(token);
+      }
+      return { keys, duplicates };
+    };
+
+    const updateRotateCounter = () => {
+      const { keys, duplicates } = parseKeyLinesClient(rotateTextarea.value);
+      if (!keys.length) {
+        rotateDetected.textContent = "Chưa nhập khóa nào";
+      } else if (duplicates > 0) {
+        rotateDetected.textContent = `Đã nhận diện ${keys.length} khóa hợp lệ (bỏ qua ${duplicates} dòng trùng)`;
+      } else {
+        rotateDetected.textContent = `Đã nhận diện ${keys.length} khóa hợp lệ`;
+      }
+    };
+    rotateTextarea.addEventListener("input", updateRotateCounter);
+
+    const rotateSaveBtn = button("Lưu & thay thế", "ui-btn ui-btn-primary ui-btn-compact");
+    const rotateAppendBtn = button("Bổ sung vào danh sách", "ui-btn ui-btn-ghost ui-btn-compact");
+    const rotateClearInputBtn = button("Xóa ô nhập", "ui-btn ui-btn-ghost ui-btn-compact");
+    rotateClearInputBtn.addEventListener("click", () => {
+      rotateTextarea.value = "";
+      updateRotateCounter();
+      rotateTextarea.focus();
+    });
+    const rotateActions = el("div", "key-rotate-actions");
+    rotateActions.append(rotateSaveBtn, rotateAppendBtn, rotateClearInputBtn);
+
+    rotateCard.append(
+      rotateHead,
+      rotateIntro,
+      rotateQuickBar,
+      fieldBlock("URL gốc (Base URL)", rotateBaseInput),
+      fieldBlock("Danh sách khóa API (mỗi dòng một khóa)", rotateTextarea),
+      rotateMeta,
+      rotateActions,
+    );
+
+    const rotatePoolsCard = el("div", "key-rotate-card");
+    rotatePoolsCard.append(el("h3", "key-rotate-title", "Danh sách xoay key đang lưu"));
+    const rotatePoolsList = el("div", "key-rotate-pools");
+    rotatePoolsCard.append(rotatePoolsList);
+
+    rotatePanel.append(rotateCard, rotatePoolsCard);
+
+    const renderKeyRotationPools = (pools) => {
+      const list = Array.isArray(pools) ? pools : [];
+      rotateQuickBar.replaceChildren();
+      list.forEach((pool) => {
+        const pill = button(
+          pool.count > 1 ? `${pool.label} (${pool.count})` : pool.label,
+          "settings-provider-pill",
+        );
+        pill.title = pool.api_base || "";
+        pill.addEventListener("click", () => {
+          rotateBaseInput.value = pool.api_base || "";
+          rotateTextarea.focus();
+        });
+        rotateQuickBar.append(pill);
+      });
+
+      if (!list.length) {
+        rotatePoolsList.replaceChildren(
+          el("p", "proxy-monitor-empty", "Chưa có nhóm khóa xoay vòng nào được lưu."),
+        );
+        return;
+      }
+
+      const rows = list.map((pool) => {
+        const row = el("div", "key-rotate-pool-row");
+        const top = el("div", "key-rotate-pool-top");
+        const info = el("div", "key-rotate-pool-info");
+        info.append(
+          el("strong", "key-rotate-pool-name", `${pool.label} · ${pool.count} khóa${pool.count > 1 ? " · đang xoay" : ""}`),
+          el("span", "key-rotate-pool-url", pool.api_base || ""),
+        );
+        const rowActions = el("div", "key-rotate-actions");
+        const pickBtn = button("Chọn sửa", "ui-btn ui-btn-ghost ui-btn-compact");
+        pickBtn.addEventListener("click", () => {
+          rotateBaseInput.value = pool.api_base || "";
+          rotateTextarea.focus();
+        });
+        const delBtn = button("Xóa hết khóa", "ai-link-btn");
+        delBtn.addEventListener("click", async () => {
+          delBtn.disabled = true;
+          try {
+            const resp = await fetch(`/api/visual_qc/key-rotation/${encodeURIComponent(pool.id)}`, { method: "DELETE" });
+            const body = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(body.detail || `HTTP ${resp.status}`);
+            window.showToast?.(`Đã xóa toàn bộ khóa của ${pool.label}.`, "success");
+            await Promise.all([refresh(), refreshKeyRotation()]);
+          } catch (err) {
+            window.showToast?.("Không thể xóa khóa: " + err.message, "error");
+          } finally {
+            delBtn.disabled = false;
+          }
+        });
+        rowActions.append(pickBtn, delBtn);
+        top.append(info, rowActions);
+        row.append(top);
+
+        const hints = Array.isArray(pool.key_hints) ? pool.key_hints : [];
+        if (hints.length) {
+          const chips = el("div", "key-rotate-chips");
+          hints.forEach((hint, idx) => {
+            chips.append(el("span", "key-rotate-chip", `#${idx + 1} ${hint}`));
+          });
+          row.append(chips);
+        }
+        return row;
+      });
+      rotatePoolsList.replaceChildren(...rows);
+    };
+
+    refreshKeyRotation = async () => {
+      try {
+        const resp = await fetch("/api/visual_qc/key-rotation");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderKeyRotationPools(data.pools || []);
+      } catch (_) {}
+    };
+
+    const saveKeyRotation = async (append) => {
+      const baseUrl = rotateBaseInput.value.trim();
+      const { keys } = parseKeyLinesClient(rotateTextarea.value);
+      if (!baseUrl) {
+        return window.showToast?.("Vui lòng nhập URL gốc (Base URL) ở dòng đầu.", "error");
+      }
+      if (!keys.length) {
+        return window.showToast?.("Vui lòng nhập ít nhất 1 khóa API (mỗi dòng một khóa).", "error");
+      }
+      rotateSaveBtn.disabled = rotateAppendBtn.disabled = true;
+      try {
+        const resp = await fetch("/api/visual_qc/key-rotation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base_url: baseUrl,
+            keys_text: rotateTextarea.value,
+            append,
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        rotateBaseInput.value = data.api_base || baseUrl;
+        rotateTextarea.value = "";
+        updateRotateCounter();
+        window.showToast?.(
+          `Đã lưu ${data.count} khóa xoay vòng cho ${data.label} (${data.api_base}).`,
+          "success",
+        );
+        await Promise.all([refresh(), refreshKeyRotation()]);
+      } catch (err) {
+        window.showToast?.("Không thể lưu danh sách khóa: " + err.message, "error");
+      } finally {
+        rotateSaveBtn.disabled = rotateAppendBtn.disabled = false;
+      }
+    };
+    rotateSaveBtn.addEventListener("click", () => saveKeyRotation(false));
+    rotateAppendBtn.addEventListener("click", () => saveKeyRotation(true));
+
+    contentHost.append(generalPanel, modelsPanel, proxyPanel, rotatePanel);
     config.append(nav, contentHost);
 
     let selectedProviderId = "";

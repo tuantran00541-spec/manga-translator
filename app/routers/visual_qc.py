@@ -16,21 +16,27 @@ from app.ai_providers import (
     api_base_candidates,
     auth_headers,
     cloud_job_provider,
+    normalize_api_base,
     normalize_provider_id,
     resolve_provider,
+    validate_api_base,
     validate_provider_label,
 )
 from app.downloader.http import read_response_limited, safe_get
-from app.schemas import VisualQCKeyRequest
+from app.schemas import KeyRotationSaveRequest, VisualQCKeyRequest
 from app.secret_store import (
+    MAX_KEYS,
     SecretStoreUnavailable,
     delete_provider_api_key,
     delete_provider_config,
     get_provider_api_key,
     get_provider_config,
+    get_provider_key_hints,
     list_provider_configs,
+    parse_key_lines,
     provider_key_status,
     set_provider_api_key,
+    set_provider_api_keys,
     set_provider_config,
 )
 from app.security import validate_url
@@ -389,3 +395,186 @@ def list_provider_models(provider_id: str, refresh: bool = False) -> dict:
                 },
             )
     return result
+
+
+def _base_url_variants(raw_url: str) -> set[str]:
+    cleaned = (raw_url or "").strip().rstrip("/").lower()
+    if not cleaned:
+        return set()
+    variants = {cleaned}
+    norm = normalize_api_base(cleaned).rstrip("/").lower()
+    if norm:
+        variants.add(norm)
+    return variants
+
+
+def _find_provider_by_base_url(base_url: str):
+    target_variants = _base_url_variants(base_url)
+    for provider in PROVIDERS.values():
+        if target_variants & _base_url_variants(provider.api_base):
+            return provider
+    for cfg in list_provider_configs():
+        if not isinstance(cfg, dict):
+            continue
+        if target_variants & _base_url_variants(str(cfg.get("api_base") or "")):
+            try:
+                return resolve_provider(
+                    str(cfg.get("id") or ""),
+                    label=cfg.get("label"),
+                    protocol=cfg.get("protocol"),
+                    api_base=cfg.get("api_base"),
+                )
+            except ValueError:
+                continue
+    return None
+
+
+def _slug_provider_id_from_base(base_url: str) -> tuple[str, str]:
+    import re
+    from urllib.parse import urlparse
+
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "custom-provider").lower()
+    base_slug = re.sub(r"[^a-z0-9]+", "-", host).strip("-")[:52] or "custom-provider"
+    if base_slug in PROVIDERS:
+        base_slug = f"{base_slug}-pool"
+    existing_ids = {str(cfg.get("id") or "").lower() for cfg in list_provider_configs()} | set(PROVIDERS)
+    candidate = base_slug
+    idx = 2
+    while candidate in existing_ids:
+        candidate = f"{base_slug}-{idx}"
+        idx += 1
+    return candidate, host
+
+
+@router.get("/key-rotation")
+def get_key_rotation_pools() -> dict:
+    pools: list[dict] = []
+    seen: set[str] = set()
+
+    for provider in PROVIDERS.values():
+        status = provider_key_status(provider.id)
+        hints = get_provider_key_hints(provider.id)
+        if not status.get("configured") and not hints:
+            continue
+        seen.add(provider.id)
+        pools.append(
+            {
+                "id": provider.id,
+                "label": provider.label,
+                "api_base": provider.api_base,
+                "protocol": provider.protocol,
+                "builtin": True,
+                "configured": bool(status.get("configured")),
+                "source": status.get("source", "none"),
+                "count": len(hints) or int(status.get("count") or 0),
+                "key_hints": hints,
+            }
+        )
+
+    try:
+        custom_configs = list_provider_configs()
+    except SecretStoreUnavailable:
+        custom_configs = []
+
+    for cfg in custom_configs:
+        pid = str(cfg.get("id") or "").strip().lower()
+        if not pid or pid in seen:
+            continue
+        try:
+            provider = resolve_provider(
+                pid,
+                label=cfg.get("label"),
+                protocol=cfg.get("protocol"),
+                api_base=cfg.get("api_base"),
+            )
+        except ValueError:
+            continue
+        status = provider_key_status(provider.id, provider_label=provider.label)
+        hints = get_provider_key_hints(provider.id, provider_label=provider.label)
+        seen.add(provider.id)
+        pools.append(
+            {
+                "id": provider.id,
+                "label": provider.label,
+                "api_base": provider.api_base,
+                "protocol": provider.protocol,
+                "builtin": False,
+                "configured": bool(status.get("configured")),
+                "source": status.get("source", "none"),
+                "count": len(hints) or int(status.get("count") or 0),
+                "key_hints": hints,
+            }
+        )
+
+    return {"pools": pools, "max_keys": MAX_KEYS}
+
+
+@router.post("/key-rotation")
+def save_key_rotation_pool(req: KeyRotationSaveRequest) -> dict:
+    try:
+        keys = parse_key_lines(req.keys_text)
+        if not keys:
+            raise ValueError("Không tìm thấy khóa API hợp lệ nào (mỗi khóa nằm trên một dòng).")
+        normalized_base = validate_api_base(req.base_url)
+        provider = _find_provider_by_base_url(normalized_base)
+        created = False
+        if provider is None:
+            new_id, default_label = _slug_provider_id_from_base(normalized_base)
+            label = validate_provider_label(req.provider_label, default=default_label)
+            provider = resolve_provider(
+                new_id,
+                label=label,
+                protocol="openai",
+                api_base=normalized_base,
+            )
+            _validate_custom_remote(provider)
+            set_provider_config(
+                provider.id,
+                label=provider.label,
+                protocol=provider.protocol,
+                api_base=provider.api_base,
+            )
+            created = True
+        count = set_provider_api_keys(
+            provider.id,
+            keys,
+            provider_label=provider.label,
+            append=req.append,
+        )
+        hints = get_provider_key_hints(provider.id, provider_label=provider.label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+    clear_models_cache(provider.id)
+    return {
+        "provider_id": provider.id,
+        "label": provider.label,
+        "api_base": provider.api_base,
+        "count": count,
+        "parsed_count": len(keys),
+        "key_hints": hints,
+        "created": created,
+    }
+
+
+@router.delete("/key-rotation/{provider_id}")
+def clear_key_rotation_pool(provider_id: str) -> dict:
+    try:
+        normalized = normalize_provider_id(provider_id)
+        builtin = PROVIDERS.get(normalized)
+        cfg = get_provider_config(normalized)
+        label = (
+            builtin.label
+            if builtin is not None
+            else str((cfg or {}).get("label") or normalized)
+        )
+        delete_provider_api_key(normalized, provider_label=label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    clear_models_cache(normalized)
+    return {"cleared": True, "provider_id": normalized}

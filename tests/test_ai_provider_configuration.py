@@ -329,3 +329,93 @@ def test_models_cache_respects_clear_generation_and_handles_missing_names(monkey
     assert seen_kwargs[0]["max_redirects"] == 0
     # Because cache was invalidated mid-flight, stale result must NOT stay cached
     assert visual_qc_router._MODELS_CACHE == {}
+
+
+def test_parse_key_lines_and_round_robin_rotation(monkeypatch, tmp_path):
+    import keyring
+    from keyring.backends import fail
+    from app import secret_store
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(secret_store, "_os_store_works", None)
+    monkeypatch.setattr(keyring, "get_keyring", lambda: fail.Keyring())
+
+    raw = """
+    # comment line
+    sk-alpha-1111
+    "sk-beta-2222",
+    sk-alpha-1111
+
+    sk-gamma-3333;
+    """
+    parsed = secret_store.parse_key_lines(raw)
+    assert parsed == ["sk-alpha-1111", "sk-beta-2222", "sk-gamma-3333"]
+
+    assert secret_store.set_provider_api_keys("openai", parsed) == 3
+    assert secret_store.get_provider_api_key("openai") == "sk-alpha-1111"
+    assert secret_store.get_provider_api_key("openai") == "sk-beta-2222"
+    assert secret_store.get_provider_api_key("openai") == "sk-gamma-3333"
+    assert secret_store.get_provider_api_key("openai") == "sk-alpha-1111"
+
+    secret_store.mark_provider_key_rate_limited("openai", "sk-beta-2222", cooldown_seconds=120.0)
+    assert secret_store.get_provider_api_key("openai") == "sk-gamma-3333"
+    assert secret_store.get_provider_api_key("openai") == "sk-alpha-1111"
+
+
+def test_key_rotation_endpoints_create_match_append_and_clear(monkeypatch, tmp_path):
+    import keyring
+    from keyring.backends import fail
+    from fastapi.testclient import TestClient
+    from app import main as app_main
+    from app import secret_store
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(secret_store, "_os_store_works", None)
+    monkeypatch.setattr(keyring, "get_keyring", lambda: fail.Keyring())
+    monkeypatch.setattr(visual_qc_router, "_validate_custom_remote", lambda provider: None)
+
+    client = TestClient(app_main.app, base_url="http://127.0.0.1:8000")
+
+    res = client.post(
+        "/api/visual_qc/key-rotation",
+        json={
+            "base_url": "https://apihub.agnes-ai.com/v1",
+            "keys_text": "sk-agnes-0001\nsk-agnes-0002\nsk-agnes-0003\n",
+            "append": False,
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["created"] is True
+    assert body["count"] == 3
+    assert body["api_base"] == "https://apihub.agnes-ai.com/v1"
+    assert len(body["key_hints"]) == 3
+    pid = body["provider_id"]
+
+    # Append 2 more keys (1 duplicate, 1 new) matching by base_url
+    res2 = client.post(
+        "/api/visual_qc/key-rotation",
+        json={
+            "base_url": "apihub.agnes-ai.com",
+            "keys_text": "sk-agnes-0002\nsk-agnes-0004",
+            "append": True,
+        },
+    )
+    assert res2.status_code == 200, res2.text
+    body2 = res2.json()
+    assert body2["created"] is False
+    assert body2["provider_id"] == pid
+    assert body2["count"] == 4
+
+    listed = client.get("/api/visual_qc/key-rotation")
+    assert listed.status_code == 200
+    pools = listed.json()["pools"]
+    matched = [p for p in pools if p["id"] == pid]
+    assert len(matched) == 1
+    assert matched[0]["count"] == 4
+    assert len(matched[0]["key_hints"]) == 4
+
+    cleared = client.delete(f"/api/visual_qc/key-rotation/{pid}")
+    assert cleared.status_code == 200
+    assert secret_store.get_provider_api_keys(pid) == []
