@@ -11,6 +11,7 @@ from app.logging_config import logger
 from app.detector.bubble_mask import clip_bubble_mask, shift_bubble_mask
 from app.render.balloon_layout import anchor_coverage, balloon_chambers, box_bounds, owning_chamber, verified_outline
 from app.render.composition import _interior
+from app.render.display_lettering import render_source_sfx
 from app.render.font_metrics import parse_color
 from app.render.placement import (
     anchor_union, covers_source_ink, detector_anchors, detector_position, ink_window, source_ink_bounds,
@@ -281,7 +282,7 @@ def _rerender_non_colliding(
 
 
 def _stats_verdict_fields(stats: dict, frame, attempt: int) -> dict:
-    return {
+    fields = {
         "attempt": attempt,
         "size": stats.get("size"),
         "lines": stats.get("lines"),
@@ -298,6 +299,9 @@ def _stats_verdict_fields(stats: dict, frame, attempt: int) -> dict:
         "layout_score": stats.get("layout_score"),
         "preferred_size": stats.get("preferred_size"),
     }
+    if "sfx_angle" in stats:
+        fields.update(sfx_angle=stats["sfx_angle"], sfx_tapered=stats["sfx_tapered"], sfx_font=stats["sfx_font"])
+    return fields
 
 
 def _frame_iou(a, b) -> float:
@@ -560,6 +564,29 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
                 fx1, fy1, fx2, fy2 = stats[key]
                 stats[key] = (fx1, fy1 - top, fx2, fy2 - top)
     return canvas.crop((0, top, width, top + height))
+
+
+def _render_source_display(base, raw, text, box, obj, style, placed_mask, stats):
+    x1, y1, x2, y2 = box
+    lx1, ly1, lx2, ly2 = style["letters_box"]
+    letters = style["letters"]
+    if (raw is None or letters.shape != (ly2 - ly1, lx2 - lx1)
+            or not (lx1 <= x1 < x2 <= lx2 and ly1 <= y1 < y2 <= ly2)):
+        return None
+    result = render_source_sfx(
+        raw.crop(box), base.crop(box), letters[y1 - ly1:y2 - ly1, x1 - lx1:x2 - lx1], text,
+        source=str(obj.get("source_read") or obj.get("ocr_text") or ""), font=style["font_name"],
+        color_profile=style["color_profile"], blocked=placed_mask[y1:y2, x1:x2], bold=style["is_bold"],
+    )
+    if result is None:
+        return None
+    patch, metrics = result
+    left, top, right, bottom = metrics["ink_box"]
+    ink = (x1 + left, y1 + top, x1 + right, y1 + bottom)
+    stats.update(metrics, ink_box=ink, draw_box=ink, fit_box=box, frame=box, frame_source="source_sfx")
+    canvas = base.copy()
+    canvas.paste(patch, box[:2])
+    return canvas
 
 
 def cleanup_tmp(path: Path) -> None:
@@ -1114,6 +1141,13 @@ def render_text_objects(
         style["compose_layout"] = (compose_layout and h_align == "center" and v_align == "middle"
                                    and (core_y1 or 0) <= fit_y1 < fit_y2 <= (core_y2 or img_h))
         render_base = clean if style["compose_layout"] else image
+        source_display = bool(anchors and not has_outline and not original.get("seam_owner")
+                              and container == "free" and role_key == "sfx" and style["compose_layout"]
+                              and not style["enlarge"]
+                              and "letters_box" in style and source_image_loader is not None
+                              and str(obj.get("font_selection_mode") or "").lower() not in ("user", "legacy")
+                              and user_color_auto and _is_auto_style(stroke_w) and _is_auto_style(stroke_c)
+                              and str(bg_c or "").lower() in ("", "none", "transparent"))
         attempts = [coords] if authorized is not None or has_outline or moved_by_user else fit_attempts(obj, coords)
         render_text = translation.strip()
         if auto_text and container in ("bubble", "spiky"):
@@ -1139,8 +1173,11 @@ def render_text_objects(
             for attempt, box in enumerate(attempts):
                 attempt_stats: dict = {"attempt_box": box}
                 try:
-                    candidate = _render_in_region(render_base.copy(), render_text, box,
-                                                  stats=attempt_stats, **style)
+                    candidate = (_render_source_display(render_base, source_image_loader(), render_text, box,
+                                                        obj, style, placed_mask, attempt_stats) if source_display else None)
+                    if candidate is None:
+                        candidate = _render_in_region(render_base.copy(), render_text, box,
+                                                      stats=attempt_stats, **style)
                 except ValueError as exc:
                     if "minimum readable" not in str(exc):
                         floor_only = False

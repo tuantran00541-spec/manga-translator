@@ -129,6 +129,11 @@ def render_input_signature(manifest: dict, page_index: int, *, size_bands=None) 
                         if isinstance(box, dict) and str(box.get("id")) in referenced_sources],
             "size_bands": {role: band for role, band in (size_bands or {}).items() if role in roles},
         }
+        sfx_sources = {str(obj.get("id")): str(obj.get("source_read") or obj.get("ocr_text") or "")
+                       for obj in text_objects if obj.get("container") == "free"
+                       and obj.get("typography_role") == "sfx" and obj.get("letters_mask")}
+        if sfx_sources:
+            render_content["source_sfx"] = {"version": 1, "reading": sfx_sources}
     else:
         render_content = {
             "mode": "legacy_boxes",
