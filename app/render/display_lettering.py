@@ -29,10 +29,11 @@ def _stem_slope(ink: np.ndarray, height: float) -> float:
     contour = cv2.morphologyEx(ink.astype(np.uint8) * 255, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8))
     lines = cv2.HoughLinesP(contour, 1, np.pi / 180, max(12, round(.18 * height)),
                             minLineLength=max(12, round(.25 * height)), maxLineGap=3)
-    if lines is None:
+    if lines is None or lines.size == 0:
         return 0.0
-    dx = lines[:, 0, 2] - lines[:, 0, 0]
-    dy = lines[:, 0, 3] - lines[:, 0, 1]
+    segments = lines.reshape(-1, 4)
+    dx = segments[:, 2] - segments[:, 0]
+    dy = segments[:, 3] - segments[:, 1]
     stems = (np.abs(dy) >= .25 * height) & (np.abs(dx) <= .38 * np.abs(dy))
     slopes = dx[stems] / dy[stems]
     if slopes.size < 3:
