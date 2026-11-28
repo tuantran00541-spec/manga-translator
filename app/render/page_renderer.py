@@ -301,6 +301,8 @@ def _stats_verdict_fields(stats: dict, frame, attempt: int) -> dict:
     }
     if "sfx_angle" in stats:
         fields.update(sfx_angle=stats["sfx_angle"], sfx_tapered=stats["sfx_tapered"], sfx_font=stats["sfx_font"])
+    if "sfx_depth_ratio" in stats:
+        fields["sfx_depth_ratio"] = stats["sfx_depth_ratio"]
     return fields
 
 

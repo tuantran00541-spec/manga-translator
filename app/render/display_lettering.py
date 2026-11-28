@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.render.font_metrics import font_draws_text, get_font_object, get_font_path
+from app.render.lettering_plane import LetteringPlane, reconstruct_lettering_plane
 from app.render.text_renderer import _parse_color_profile
 
 
@@ -146,6 +147,36 @@ def _stroke_radius(raw, cleared, ink, color) -> int:
     return min(8, max(1, round(float(np.percentile(distance[samples], 75)))))
 
 
+def _project_glyphs(path, text, bold, frame, plane: LetteringPlane | None, image_size, radius):
+    fw, fh = plane.size if plane is not None else frame.size
+    brush = max(1, round(radius / plane.pixels_per_texel())) if radius and plane is not None else 0
+    raster = _text_alpha(path, text, max(48, round(fh * 1.4)), bold)
+    if not raster.getbbox():
+        return None
+    aspect = raster.width / raster.height
+    available_w = min(.96 * fw, fw - 2 * (brush + 1)) if brush else .96 * fw
+    available_h = min(.96 * fh, fh - 2 * (brush + 1)) if brush else .96 * fh
+    target_h = min(round(available_h), round(available_w / max(.1, .72 * aspect)))
+    target_w = min(round(available_w), round(1.35 * target_h * aspect))
+    if min(target_w, target_h) < 12:
+        return None
+    slab = Image.new("L", (fw, fh))
+    slab.paste(raster.resize((target_w, target_h), Image.Resampling.LANCZOS),
+               ((fw - target_w) // 2, (fh - target_h) // 2))
+    texture = np.asarray(slab)
+    matrix = plane.projection() if plane is not None else cv2.getPerspectiveTransform(_corners(fw, fh), frame.quad)
+    alpha = cv2.warpPerspective(texture, matrix, image_size, flags=cv2.INTER_LINEAR)
+    stroke = alpha
+    if radius:
+        diameter = 2 * (brush or radius) + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (diameter, diameter))
+        if brush:
+            stroke = cv2.warpPerspective(cv2.dilate(texture, kernel), matrix, image_size, flags=cv2.INTER_LINEAR)
+        else:
+            stroke = cv2.dilate(alpha, kernel)
+    return alpha, stroke, target_h
+
+
 def render_source_sfx(raw: Image.Image, clean: Image.Image, letters: np.ndarray, text: str, *,
                       source: str, font: str, color_profile: dict | None, blocked: np.ndarray,
                       bold: bool = False) -> tuple[Image.Image, dict] | None:
@@ -186,35 +217,29 @@ def render_source_sfx(raw: Image.Image, clean: Image.Image, letters: np.ndarray,
     chosen, path = selected
     if min(fw, fh) < 24:
         return None
-    raster = _text_alpha(path, text, max(48, round(fh * 1.4)), bold)
-    if not raster.getbbox():
-        return None
-    aspect = raster.width / raster.height
-    target_h = min(round(.96 * fh), round(.96 * fw / max(.1, .72 * aspect)))
-    target_w = min(round(.96 * fw), round(1.35 * target_h * aspect))
-    if min(target_w, target_h) < 12:
-        return None
-    slab = Image.new("L", (fw, fh))
-    slab.paste(raster.resize((target_w, target_h), Image.Resampling.LANCZOS),
-               ((fw - target_w) // 2, (fh - target_h) // 2))
-    matrix = cv2.getPerspectiveTransform(_corners(fw, fh), frame.quad)
-    alpha = cv2.warpPerspective(np.asarray(slab), matrix, (w, h), flags=cv2.INTER_LINEAR)
+    surface = reconstruct_lettering_plane(frame.quad, (w, h), (fw, fh)) if frame.tapered else None
     radius = _stroke_radius(original, cleared, frame.ink, outline)
-    stroke = cv2.dilate(alpha, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1,) * 2)) if radius else alpha
-    active = stroke > 0
-    if (not active.any() or active[0].any() or active[-1].any() or active[:, 0].any() or active[:, -1].any()
-            or np.any(active & blocked)):
-        return None
-    solid = alpha >= 128
-    if not solid.any():
-        return None
-    contrast = cv2.absdiff(background, tuple(float(c) for c in fill) + (0.0,)).max(axis=2)
-    if np.mean(contrast[solid] >= 80) < .80 and not radius:
-        return None
-    output = clean.copy()
-    if radius:
-        output.paste(outline, (0, 0, w, h), Image.fromarray(stroke))
-    output.paste(fill, (0, 0, w, h), Image.fromarray(alpha))
-    bounds = Image.fromarray(stroke).getbbox()
-    return output, {"size": target_h, "lines": 1, "ink_box": bounds, "draw_box": bounds,
-                    "sfx_angle": round(frame.angle, 1), "sfx_tapered": frame.tapered, "sfx_font": chosen}
+    contrast = None if radius else cv2.absdiff(background, (*map(float, fill), 0.0)).max(axis=2)
+    for plane in (surface, None) if surface is not None else (None,):
+        layers = _project_glyphs(path, text, bold, frame, plane, (w, h), radius)
+        if layers is None:
+            continue
+        alpha, stroke, target_h = layers
+        active = stroke > 0
+        if (not active.any() or active[0].any() or active[-1].any() or active[:, 0].any() or active[:, -1].any()
+                or np.any(active & blocked)):
+            continue
+        solid = alpha >= 128
+        if not solid.any() or (contrast is not None and np.mean(contrast[solid] >= 80) < .80):
+            continue
+        output = clean.copy()
+        if radius:
+            output.paste(outline, (0, 0, w, h), Image.fromarray(stroke))
+        output.paste(fill, (0, 0, w, h), Image.fromarray(alpha))
+        bounds = Image.fromarray(stroke).getbbox()
+        stats = {"size": target_h, "lines": 1, "ink_box": bounds, "draw_box": bounds,
+                 "sfx_angle": round(frame.angle, 1), "sfx_tapered": frame.tapered, "sfx_font": chosen}
+        if plane is not None:
+            stats["sfx_depth_ratio"] = round(plane.depth_ratio, 3)
+        return output, stats
+    return None
