@@ -2078,7 +2078,20 @@ class KiuyhaTextDetector:
             for piece in _split_blocks(box, image=image)
             for part in _split_sideways(piece, image=image)
         ]
-        kept.extend(paper_boxes)
+        if paper_boxes:
+            def _paper_overlap_share(a: BubbleBox, b: BubbleBox) -> float:
+                ix1, iy1 = max(a.x1, b.x1), max(a.y1, b.y1)
+                ix2, iy2 = min(a.x2, b.x2), min(a.y2, b.y2)
+                if ix2 <= ix1 or iy2 <= iy1:
+                    return 0.0
+                inter = (ix2 - ix1) * (iy2 - iy1)
+                min_area = min(max(1, (a.x2 - a.x1) * (a.y2 - a.y1)), max(1, (b.x2 - b.x1) * (b.y2 - b.y1)))
+                return inter / min_area
+
+            for pb in apply_final_nms(paper_boxes):
+                if any(_paper_overlap_share(pb, kb) >= 0.5 for kb in kept):
+                    continue
+                kept.append(pb)
         final = kept + self._rescue_boxes(image, kept)
         _attach_bubble_masks(image, final)
         return final + apply_final_nms(proposals)

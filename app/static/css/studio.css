@@ -163,8 +163,8 @@
   .settings-inpaint-switch.is-on .settings-inpaint-switch-thumb { transform: translateX(14px); background: var(--accent); }
   .settings-inpaint-details { display: grid; gap: 10px; }
   .settings-inpaint-details[hidden] { display: none; }
-  .settings-inpaint-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .settings-inpaint-field { display: grid; gap: 5px; }
+  .settings-inpaint-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; }
+  .settings-inpaint-field { display: grid; align-content: start; gap: 5px; }
   .settings-inpaint-check { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12.5px; cursor: pointer; }
   .settings-inpaint-check input { accent-color: var(--accent); cursor: pointer; }
   .settings-theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

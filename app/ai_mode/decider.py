@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
@@ -12,8 +13,10 @@ from app.ai_mode.vision_json import request_vision_json
 from app.logging_config import logger
 
 
-WORKERS = 8
+WORKERS = 2
 MAX_SIDE = 768
+_VISION_SEMAPHORE = threading.Semaphore(WORKERS)
+_BUBBLE_SKIP_CONFIDENCE = 0.80
 LETTERING = (
     'Classify the candidate inside the marked rectangle. Ignore lettering outside it. '
     'Return a JSON object with one field "kind", one of "text", "art", "uncertain". Count letters, words and parts of letters, '
@@ -43,14 +46,35 @@ def _classify(provider, model, api_key, image, prompt, stage, add_cost):
         height, width = image.shape[:2]
         image = cv2.resize(image, (max(1, round(width * scale)), max(1, round(height * scale))),
                            interpolation=cv2.INTER_AREA)
-    try:
-        reply = request_vision_json(provider, model, api_key, prompt, [("Candidate", image)],
-                                    stage=stage, max_tokens=512)
-    except (RuntimeError, ValueError, OSError, HTTPException, requests.RequestException):
-        return None
+    for attempt in range(2):
+        try:
+            with _VISION_SEMAPHORE:
+                reply = request_vision_json(provider, model, api_key, prompt, [("Candidate", image)],
+                                            stage=stage, max_tokens=512)
+            break
+        except (RuntimeError, ValueError, OSError, HTTPException, requests.RequestException) as exc:
+            msg = str(exc).lower()
+            if attempt == 0 and ("429" in msg or "rate limit" in msg or "too many requests" in msg):
+                import time
+
+                time.sleep(2.0)
+                continue
+            return None
     if add_cost is not None:
         add_cost(reply.estimated_cost_usd)
     return reply.data.get("kind")
+
+
+def _is_confident_speech_bubble(box) -> bool:
+    if not getattr(box, "safe_to_inpaint", True):
+        return False
+    conf = float(getattr(box, "confidence", 0.0) or 0.0)
+    if conf < _BUBBLE_SKIP_CONFIDENCE:
+        return False
+    bmask = getattr(box, "bubble_mask", None)
+    if isinstance(bmask, dict) and bmask.get("kind") == "bubble":
+        return True
+    return False
 
 
 def screen_for(provider, api_key: str, model: str, add_cost=None):
@@ -63,6 +87,8 @@ def art_boxes(provider, model, api_key, image, boxes, *, add_cost=None) -> set[i
     height, width = image.shape[:2]
 
     def classify(box):
+        if _is_confident_speech_bubble(box):
+            return "text"
         pad = max(16, min(96, int(0.3 * max(box.x2 - box.x1, box.y2 - box.y1))))
         x, y = max(0, box.x1 - pad), max(0, box.y1 - pad)
         crop = image[y:min(height, box.y2 + pad), x:min(width, box.x2 + pad)].copy()
@@ -86,6 +112,9 @@ def art_boxes(provider, model, api_key, image, boxes, *, add_cost=None) -> set[i
 
 
 def storyless_slices(provider, api_key, indices, load, model, add_cost=None):
+    if not indices:
+        return [], {}
+
     def judge(index):
         try:
             image = load(index)

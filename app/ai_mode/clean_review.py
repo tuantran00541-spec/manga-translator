@@ -37,10 +37,35 @@ class Crop:
     image: np.ndarray
 
 
+def _is_spotless_flat_clean(
+    original: np.ndarray,
+    clean: np.ndarray,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+) -> bool:
+    """Return True when `original` had lettering inside the box and `clean` is a completely uniform flat fill."""
+    h, w = clean.shape[:2]
+    ix1, iy1 = max(0, x1 + 2), max(0, y1 + 2)
+    ix2, iy2 = min(w, x2 - 2), min(h, y2 - 2)
+    if ix2 - ix1 < 6 or iy2 - iy1 < 6:
+        return False
+    orig_patch = original[iy1:iy2, ix1:ix2]
+    clean_patch = clean[iy1:iy2, ix1:ix2]
+    if orig_patch.size == 0 or clean_patch.size == 0:
+        return False
+    if float(np.std(orig_patch)) < 8.0:
+        return False
+    return float(np.std(clean_patch)) < 3.5 and (int(clean_patch.max()) - int(clean_patch.min())) <= 18
+
+
 def crops_for(page_index: int, original: np.ndarray, clean: np.ndarray, boxes) -> list[Crop]:
     h, w = clean.shape[:2]
     out = []
     for n, (x1, y1, x2, y2) in enumerate(boxes):
+        if _is_spotless_flat_clean(original, clean, x1, y1, x2, y2):
+            continue
         cx1, cy1 = max(0, x1 - CROP_PAD_PX), max(0, y1 - CROP_PAD_PX)
         cx2, cy2 = min(w, x2 + CROP_PAD_PX), min(h, y2 + CROP_PAD_PX)
         if cx2 - cx1 < MIN_SIDE_PX or cy2 - cy1 < MIN_SIDE_PX:

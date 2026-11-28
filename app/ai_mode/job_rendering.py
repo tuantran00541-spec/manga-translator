@@ -36,18 +36,30 @@ class AIModeRenderingMixin:
         chapter_id = self.job.chapter_id
         self.report["blanks_settled"] = await asyncio.to_thread(self._settle_blanks)
         indices = self._active_pages()
-        for done, page_index in enumerate(indices):
-            self._check_cancel()
-            self._progress(done, len(indices))
-            manifest = self._manifest()
-            page = manifest["pages"][page_index]
-            if page.get("skipped") or (
-                not page.get("render_skipped_objects")
-                and _current_rendered_path(chapter_id, page_index, manifest) is not None
-            ):
-                continue
-            await self._render_one(page_index)
-        self._progress(len(indices), len(indices))
+        total = len(indices)
+        self._progress(0, total)
+        gate = asyncio.Semaphore(min(4, max(1, int(getattr(self.settings, "workers", 2) or 2))))
+        done = 0
+
+        async def _run_page(page_index: int) -> None:
+            nonlocal done
+            async with gate:
+                self._check_cancel()
+                manifest = self._manifest()
+                page = manifest["pages"][page_index]
+                if not (
+                    page.get("skipped")
+                    or (
+                        not page.get("render_skipped_objects")
+                        and _current_rendered_path(chapter_id, page_index, manifest) is not None
+                    )
+                ):
+                    await self._render_one(page_index)
+            done += 1
+            self._progress(done, total)
+
+        await asyncio.gather(*(_run_page(page_index) for page_index in indices))
+        self._progress(total, total)
 
     def _clear_restored_translations(self, page_index: int, object_ids: set[str]) -> None:
         if not object_ids:

@@ -83,6 +83,13 @@ def isolated_paper_ink(gray: np.ndarray, grown: np.ndarray, letters: np.ndarray)
     if np.mean(face[grown]) < .65 or np.mean(paper[face]) < .48:
         return None
 
+    # Raw bright pixels before MORPH_CLOSE must form a continuous light surface,
+    # not separate white letters fused across dark/colored gaps.
+    raw_paper = paper & face
+    _, _, raw_stats, _ = cv2.connectedComponentsWithStats(raw_paper.astype(np.uint8))
+    if len(raw_stats) <= 1 or int(raw_stats[1:, cv2.CC_STAT_AREA].max()) < .35 * np.count_nonzero(raw_paper):
+        return None
+
     outside = (cv2.dilate(face.astype(np.uint8), _ellipse(7)) > 0) & ~face
     if not outside.any() or np.mean(gray[outside] < 180) < .76:
         return None
@@ -91,6 +98,17 @@ def isolated_paper_ink(gray: np.ndarray, grown: np.ndarray, letters: np.ndarray)
     ink = letters & interior & (gray < 145)
     if np.count_nonzero(ink) < max(40, .08 * np.count_nonzero(face)):
         return None
+
+    # Dark ink on isolated paper is enclosed by paper and disconnected from `outside`.
+    # White text on a colored/dark panel has dark inter-letter gaps continuous with `outside`.
+    non_paper = (gray < 180).astype(np.uint8)
+    dark_count, dark_labels = cv2.connectedComponents(non_paper)
+    touches_outside = np.zeros(dark_count, dtype=bool)
+    touches_outside[dark_labels[outside & (non_paper > 0)]] = True
+    touches_outside[0] = False
+    if np.mean(touches_outside[dark_labels[ink]]) > .25:
+        return None
+
     near = cv2.dilate(ink.astype(np.uint8), _ellipse(8)) > 0
     enclosed = cv2.erode(interior.astype(np.uint8), _ellipse(6)) > 0
     paper_level = np.percentile(gray[paper & face], 80)
@@ -103,6 +121,13 @@ def protect_free_text_art(gray: np.ndarray, grown: np.ndarray, letters: np.ndarr
     """Reject seeds continuing into line art and bound expansion by the detected stroke widths."""
     ink_area = np.count_nonzero(letters)
     if ink_area < 40:
+        return None
+    # Dark-line-art continuation (`gray < 80`) only applies to dark lettering on a lighter
+    # background. Light lettering on a dark/black bubble sits on top of `gray < 80`, so
+    # running dark-component discard would erase the bubble's white text.
+    letter_med = float(np.median(gray[letters]))
+    local_ring = (cv2.dilate(letters.astype(np.uint8), _ellipse(3)) > 0) & ~letters
+    if letter_med >= 120.0 or (local_ring.any() and letter_med > float(np.median(gray[local_ring])) + 15.0):
         return None
     # A varied surround indicates that expansion can cross an artwork boundary.
     surround = gray[~grown]

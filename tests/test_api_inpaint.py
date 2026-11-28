@@ -668,3 +668,159 @@ def test_ai_rescue_skips_clean_lama_and_only_rescues_smudged_regions(monkeypatch
     assert len(api_seen) == 1
     assert inp_bpd.last_metrics()["api_inpaint_regions"] == 1
     assert np.count_nonzero(api_masks[-1]) == np.count_nonzero(ink)
+
+
+def test_universal_image_endpoint_fallback_generations_json_and_cache(monkeypatch):
+    api_inpaint._LEARNED_IMAGE_ROUTES.clear()
+    fake_provider = SimpleNamespace(
+        id="agnes",
+        label="Agnes AI",
+        api_base="https://apihub.agnes-ai.com/v1",
+        protocol="openai",
+    )
+    monkeypatch.setattr(api_inpaint, "validate_url", lambda url: url)
+
+    calls = []
+    sample = Image.new("RGB", (64, 64), (12, 34, 56))
+    b64 = _encode_png_b64(sample)
+
+    class _Resp:
+        def __init__(self, status_code, payload=None, text=""):
+            self.status_code = status_code
+            self.ok = 200 <= status_code < 300
+            self._payload = payload
+            self.text = text
+            self.headers = {"content-type": "application/json"}
+
+        def json(self):
+            return self._payload
+
+    def fake_request(_method, url, **kw):
+        calls.append((url, "json" in kw))
+        if url.endswith("/images/edits"):
+            return _Resp(503, {"error": {"message": "no available server"}})
+        if url.endswith("/images/generations") and "json" in kw:
+            assert kw["json"]["image"].startswith("data:image/png;base64,")
+            return _Resp(200, {"data": [{"b64_json": b64}]})
+        return _Resp(404, {"error": {"message": "not found"}})
+
+    monkeypatch.setattr(api_inpaint, "public_request", fake_request)
+
+    out1 = api_inpaint._call_images_edit_endpoint(
+        fake_provider, "sk-1", "agnes-image-2.5-flash", "low", sample, grid_dim=1
+    )
+    assert out1.size == (64, 64)
+    assert calls == [
+        ("https://apihub.agnes-ai.com/v1/images/edits", False),
+        ("https://apihub.agnes-ai.com/v1/images/generations", True),
+    ]
+
+    # Second call must hit the learned /images/generations route directly on attempt 1
+    calls.clear()
+    out2 = api_inpaint._call_images_edit_endpoint(
+        fake_provider, "sk-1", "agnes-image-2.5-flash", "low", sample, grid_dim=1
+    )
+    assert out2.size == (64, 64)
+    assert calls == [("https://apihub.agnes-ai.com/v1/images/generations", True)]
+
+
+def test_universal_image_endpoint_fallback_chat_multimodal(monkeypatch):
+    api_inpaint._LEARNED_IMAGE_ROUTES.clear()
+    fake_provider = SimpleNamespace(
+        id="openrouter",
+        label="OpenRouter",
+        api_base="https://openrouter.ai/api/v1",
+        protocol="openai",
+    )
+    monkeypatch.setattr(api_inpaint, "validate_url", lambda url: url)
+
+    sample = Image.new("RGB", (48, 48), (90, 80, 70))
+    b64 = _encode_png_b64(sample)
+
+    class _Resp:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self.ok = 200 <= status_code < 300
+            self._payload = payload
+            self.text = ""
+            self.headers = {"content-type": "application/json"}
+
+        def json(self):
+            return self._payload
+
+    def fake_request(_method, url, **kw):
+        if url.endswith("/chat/completions"):
+            assert kw["json"]["modalities"] == ["image", "text"]
+            return _Resp(
+                200,
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "images": [{"image_url": {"url": f"data:image/png;base64,{b64}"}}]
+                            }
+                        }
+                    ]
+                },
+            )
+        return _Resp(404, {"error": {"message": "not found"}})
+
+    monkeypatch.setattr(api_inpaint, "public_request", fake_request)
+
+    out = api_inpaint._call_images_edit_endpoint(
+        fake_provider, "sk-or", "google/gemini-2.5-flash-image-preview", "low", sample, grid_dim=1
+    )
+    assert out.size == (48, 48)
+
+
+def test_universal_image_endpoint_fallback_edits_json_array_together_and_openrouter(monkeypatch):
+    monkeypatch.setattr(api_inpaint, "validate_url", lambda url: url)
+    sample = Image.new("RGB", (32, 32), (20, 40, 60))
+    b64 = _encode_png_b64(sample)
+
+    class _Resp:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self.ok = 200 <= status_code < 300
+            self._payload = payload
+            self.text = ""
+            self.headers = {"content-type": "application/json"}
+
+        def json(self):
+            return self._payload
+
+    # 1. OpenAI JSON / ZenMux: POST /images/edits with images=[{"image_url": ...}]
+    api_inpaint._LEARNED_IMAGE_ROUTES.clear()
+    p_zen = SimpleNamespace(id="zen", label="ZenMux", api_base="https://zen.example/v1", protocol="openai")
+    monkeypatch.setattr(
+        api_inpaint,
+        "public_request",
+        lambda _m, url, **kw: _Resp(200, {"data": [{"b64_json": b64}]})
+        if url.endswith("/images/edits") and isinstance((kw.get("json") or {}).get("images"), list)
+        else _Resp(400, {"error": {"message": "bad"}}),
+    )
+    assert api_inpaint._call_images_edit_endpoint(p_zen, "k", "m", "low", sample).size == (32, 32)
+
+    # 2. Together AI: POST /images/generations with image_url + reference_images
+    api_inpaint._LEARNED_IMAGE_ROUTES.clear()
+    p_tog = SimpleNamespace(id="tog", label="Together", api_base="https://api.together.xyz/v1", protocol="openai")
+    monkeypatch.setattr(
+        api_inpaint,
+        "public_request",
+        lambda _m, url, **kw: _Resp(200, {"data": [{"b64_json": b64}]})
+        if url.endswith("/images/generations") and "image_url" in (kw.get("json") or {})
+        else _Resp(404, {"error": {"message": "nope"}}),
+    )
+    assert api_inpaint._call_images_edit_endpoint(p_tog, "k", "flux-kontext", "low", sample).size == (32, 32)
+
+    # 3. OpenRouter Unified Media: POST /api/v1/images with input_references
+    api_inpaint._LEARNED_IMAGE_ROUTES.clear()
+    p_or = SimpleNamespace(id="or", label="OpenRouter", api_base="https://openrouter.ai/api/v1", protocol="openai")
+    monkeypatch.setattr(
+        api_inpaint,
+        "public_request",
+        lambda _m, url, **kw: _Resp(200, {"data": [{"b64_json": b64}]})
+        if url.endswith("/api/v1/images") and "input_references" in (kw.get("json") or {})
+        else _Resp(404, {"error": {"message": "nope"}}),
+    )
+    assert api_inpaint._call_images_edit_endpoint(p_or, "k", "img-model", "low", sample).size == (32, 32)

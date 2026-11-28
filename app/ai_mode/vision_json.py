@@ -122,6 +122,17 @@ def request_vision_json(
     stage: str | None = None,
 ) -> VisionJSONResult:
     key = str(api_key or "").strip()
+    if provider.id != CLOUD_PROVIDER_ID and key:
+        try:
+            from app.secret_store import get_provider_api_key, get_provider_api_keys
+
+            pool = get_provider_api_keys(provider.id, provider_label=provider.label)
+            if len(pool) > 1 and key in pool:
+                rotated = get_provider_api_key(provider.id, provider_label=provider.label)
+                if rotated:
+                    key = rotated.strip()
+        except Exception:
+            pass
     if not key:
         raise ValueError(f"{provider.label} API key is not configured")
     wrapped_cap = api_proxy.get_wrapped_image_cap(str(provider.api_base or "").rstrip("/"), model)

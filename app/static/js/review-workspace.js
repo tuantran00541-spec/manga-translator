@@ -233,11 +233,9 @@
 
     const inpaintProvider = el("select", "ui-select");
     inpaintProvider.setAttribute("aria-label", "Nhà cung cấp tẩy nền AI");
-    const inpaintModelListId = `inpaint-models-${Math.random().toString(36).slice(2, 8)}`;
-    const inpaintModelList = document.createElement("datalist");
-    inpaintModelList.id = inpaintModelListId;
-    const inpaintModel = input("openai/gpt-image-2.5-flare", "Mô hình tẩy nền AI");
-    inpaintModel.setAttribute("list", inpaintModelListId);
+    const inpaintModelSelect = el("select", "ui-select");
+    inpaintModelSelect.setAttribute("aria-label", "Mô hình tẩy nền AI");
+    const inpaintModel = input("Nhập ID mô hình ảnh…", "Mô hình tẩy nền AI tùy chỉnh");
     const inpaintQuality = el("select", "ui-select");
     inpaintQuality.setAttribute("aria-label", "Chất lượng tẩy nền AI");
     [
@@ -269,11 +267,13 @@
     };
     inpaintGrid.append(
       miniField("Nhà cung cấp AI", inpaintProvider),
-      miniField("Mô hình ảnh", inpaintModel),
+      miniField("Mô hình ảnh", inpaintModelSelect),
       miniField("Chất lượng", inpaintQuality),
       miniField("Tối đa lượt API / chương", inpaintMaxCalls),
     );
-    inpaintDetails.append(inpaintGrid, inpaintModelList, rescueToggle.wrap, atlasToggle.wrap);
+    const inpaintCustomModelRow = miniField("ID mô hình ảnh tùy chỉnh", inpaintModel);
+    inpaintCustomModelRow.hidden = true;
+    inpaintDetails.append(inpaintGrid, inpaintCustomModelRow, rescueToggle.wrap, atlasToggle.wrap);
     inpaintSection.append(inpaintHead, inpaintDesc, inpaintMasterRow, inpaintDetails);
 
     let inpaintHybridOn = false;
@@ -290,21 +290,55 @@
     syncInpaintMasterUI(false);
 
     let inpaintReady = false;
-    const refreshInpaintModelHints = async (pid) => {
-      inpaintModelList.replaceChildren();
-      if (!pid) return;
+    let inpaintModelFetchSeq = 0;
+    const CUSTOM_MODEL_OPT = "__custom__";
+    const DEFAULT_INPAINT_MODEL = "openai/gpt-image-2.5-flare";
+    const getEffectiveInpaintModel = () => (
+      inpaintModelSelect.value === CUSTOM_MODEL_OPT
+        ? inpaintModel.value.trim()
+        : inpaintModelSelect.value.trim()
+    );
+    const syncInpaintModelOptions = (models, preferredModel, autoSwitch = false) => {
+      const unique = [...new Set((Array.isArray(models) ? models : []).map((m) => String(m || "").trim()).filter(Boolean))];
+      const wanted = String(preferredModel || "").trim();
+      const shouldAutoPick = Boolean(unique.length && (autoSwitch || !wanted || (wanted === DEFAULT_INPAINT_MODEL && !unique.includes(wanted))));
+      const effectiveList = (!shouldAutoPick && wanted && !unique.includes(wanted)) ? [wanted, ...unique] : unique;
+
+      inpaintModelSelect.replaceChildren();
+      effectiveList.forEach((m) => inpaintModelSelect.add(new Option(m, m)));
+      inpaintModelSelect.add(new Option("Nhập ID mô hình khác…", CUSTOM_MODEL_OPT));
+
+      if (effectiveList.length) {
+        const chosen = (!shouldAutoPick && wanted && effectiveList.includes(wanted)) ? wanted : effectiveList[0];
+        inpaintModelSelect.value = chosen;
+        inpaintModel.value = chosen;
+        inpaintCustomModelRow.hidden = true;
+      } else {
+        inpaintModelSelect.value = CUSTOM_MODEL_OPT;
+        inpaintModel.value = wanted || DEFAULT_INPAINT_MODEL;
+        inpaintCustomModelRow.hidden = false;
+      }
+    };
+    const refreshInpaintModelHints = async (pid, { autoSwitch = false } = {}) => {
+      const seq = ++inpaintModelFetchSeq;
+      const currentVal = getEffectiveInpaintModel() || inpaintModel.value.trim();
+      if (!pid) {
+        syncInpaintModelOptions([], currentVal, false);
+        return;
+      }
       try {
         const res = await fetch(`/api/visual_qc/providers/${encodeURIComponent(pid)}/models`);
         const data = await res.json().catch(() => ({}));
+        if (seq !== inpaintModelFetchSeq) return;
         const all = Array.isArray(data.models) ? data.models : [];
         const imgModels = all.filter((m) => /image|imagen|flux|kontext|dall-e|gpt-image/i.test(String(m)));
-        (imgModels.length ? imgModels : all.slice(0, 30)).slice(0, 40).forEach((m) => {
-          const opt = document.createElement("option");
-          opt.value = m;
-          inpaintModelList.append(opt);
-        });
+        const list = (imgModels.length ? imgModels : all.slice(0, 30)).slice(0, 40).reverse();
+        const prev = currentVal;
+        syncInpaintModelOptions(list, currentVal, autoSwitch);
+        if (inpaintReady && getEffectiveInpaintModel() !== prev) void persistInpaintSettings();
       } catch (_err) {
-        // Ignore model-hint fetch errors.
+        if (seq !== inpaintModelFetchSeq) return;
+        syncInpaintModelOptions([], currentVal, false);
       }
     };
 
@@ -326,14 +360,15 @@
             inpaintProvider.value = data.provider_id;
           }
         }
-        inpaintModel.value = data.model || "openai/gpt-image-2.5-flare";
+        const savedModel = data.model || DEFAULT_INPAINT_MODEL;
+        syncInpaintModelOptions([savedModel], savedModel, false);
         inpaintQuality.value = ["low", "medium", "high"].includes(data.quality) ? data.quality : "low";
         inpaintMaxCalls.value = String(data.max_api_calls_per_chapter ?? 3);
         syncInpaintMasterUI(Boolean(data.enabled && data.hybrid_auto));
         rescueToggle.box.checked = data.rescue_only !== false;
         atlasToggle.box.checked = data.pack_atlas !== false;
         inpaintReady = true;
-        void refreshInpaintModelHints(inpaintProvider.value || providers[0]?.id || "");
+        void refreshInpaintModelHints(inpaintProvider.value || providers[0]?.id || "", { autoSwitch: false });
       } catch (_err) {
         // Leave defaults if unavailable.
       }
@@ -355,7 +390,7 @@
             hybrid_auto: hybridOn,
             rescue_only: Boolean(rescueToggle.box.checked),
             provider_id: inpaintProvider.value || "",
-            model: inpaintModel.value.trim() || "openai/gpt-image-2.5-flare",
+            model: getEffectiveInpaintModel() || DEFAULT_INPAINT_MODEL,
             quality: ["low", "medium", "high"].includes(inpaintQuality.value) ? inpaintQuality.value : "low",
             max_api_calls_per_chapter: cap,
             pack_atlas: Boolean(atlasToggle.box.checked),
@@ -375,8 +410,18 @@
       void persistInpaintSettings();
     });
     inpaintProvider.addEventListener("change", () => {
-      void refreshInpaintModelHints(inpaintProvider.value);
+      void refreshInpaintModelHints(inpaintProvider.value, { autoSwitch: true });
       void persistInpaintSettings();
+    });
+    inpaintModelSelect.addEventListener("change", () => {
+      const isCustom = inpaintModelSelect.value === CUSTOM_MODEL_OPT;
+      inpaintCustomModelRow.hidden = !isCustom;
+      if (!isCustom) {
+        inpaintModel.value = inpaintModelSelect.value;
+        void persistInpaintSettings();
+      } else {
+        inpaintModel.focus();
+      }
     });
     inpaintQuality.addEventListener("change", () => { void persistInpaintSettings(); });
     rescueToggle.box.addEventListener("change", () => { void persistInpaintSettings(); });

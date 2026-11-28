@@ -1,7 +1,7 @@
 @layer tokens, foundation, studio;
 @import url("./tokens.css") layer(tokens);
 @import url("./foundation.css") layer(foundation);
-@import url("./studio.css?v=2") layer(studio);
+@import url("./studio.css?v=3") layer(studio);
 
 @layer studio {
   .app-shell { grid-template-columns: var(--ps-tool-rail) minmax(0, 1fr); }

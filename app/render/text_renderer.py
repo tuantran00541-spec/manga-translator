@@ -269,6 +269,29 @@ def _local_contrast(color, backgrounds):
     return (np.maximum(luma, backgrounds) + 0.05) / (np.minimum(luma, backgrounds) + 0.05)
 
 
+def _is_invisible_measured_fill(
+    image: Image.Image,
+    glyph_boxes: list[tuple[int, int, int, int]],
+    text_color: tuple[int, int, int],
+) -> bool:
+    """Return True only when an auto-sampled raw solid fill blends invisibly into its background."""
+    backgrounds = _background_luminances(image, glyph_boxes)
+    if not backgrounds.size or float(_local_contrast(text_color, backgrounds).min()) >= 1.35:
+        return False
+    rgb_samples = []
+    for gx1, gy1, gx2, gy2 in glyph_boxes:
+        bounds = (max(0, gx1), max(0, gy1), min(image.width, gx2), min(image.height, gy2))
+        if bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
+            continue
+        crop = np.asarray(image.crop(bounds).convert("RGB"))[::4, ::4].reshape(-1, 3)
+        if crop.size:
+            rgb_samples.append(crop)
+    if not rgb_samples:
+        return False
+    bg_rgb = np.median(np.concatenate(rgb_samples, axis=0), axis=0)
+    return max(abs(float(text_color[c]) - float(bg_rgb[c])) for c in range(3)) < 45.0
+
+
 def _adapt_palette(palette, backgrounds, threshold, outline, *, prefer_black_or_white=False):
     if not backgrounds.size:
         return palette
@@ -798,6 +821,16 @@ def render_text_in_box(
             glyph_boxes = [(gx0 + nudge_x, gy0 + nudge_y, gx1 + nudge_x, gy1 + nudge_y)
                            for gx0, gy0, gx1, gy1 in glyph_boxes]
             ink_box = (ix1 + nudge_x, iy1 + nudge_y, ix2 + nudge_x, iy2 + nudge_y)
+
+    if (
+        saved_palette
+        and measured_palette
+        and not has_manual_color_profile(color_profile)
+        and profile_grad_stops is None
+        and stroke_w == 0
+        and _is_invisible_measured_fill(image, glyph_boxes, text_color)
+    ):
+        saved_palette = False
 
     if not saved_palette and (adapt_contrast is True or (adapt_contrast is None and explicit_fill)):
         if art_auto_ink:

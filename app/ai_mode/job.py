@@ -37,18 +37,21 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("render", "Kết xuất ảnh"),
     ("finish", "Hoàn tất"),
 )
-SCAN_CONCURRENCY = 4
+SCAN_CONCURRENCY = 1
+SCAN_MIN_INTERVAL_SECONDS = 4.0
 GLOSSARY_TEXT_SLICES = 40
 CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3
 TEXTLESS_MAX_SHARE = 0.5
-REVIEW_CONCURRENCY = 8
-TRANSLATE_CONCURRENCY = 3
+REVIEW_CONCURRENCY = 3
+TRANSLATE_CONCURRENCY = 2
+TRANSLATE_BATCH_MAX_PAGES = 3
+TRANSLATE_BATCH_MAX_BOXES = 8
 RETRY_BATCH = 4
 RETRY_ROUNDS = 3
 RENDER_RESTORE_ATTEMPTS = 3
 POLISH_ROUNDS = 2
-POLISH_CONCURRENCY = 8
+POLISH_CONCURRENCY = 3
 MAX_GRADED_KEPT = 400
 RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([^\s)]+)\)")
 POLL_SECONDS = 1.0
@@ -293,11 +296,25 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         gate = asyncio.Semaphore(SCAN_CONCURRENCY)
         finished = 0
 
+        last_scan_started = 0.0
+
+        async def _pace_scan() -> None:
+            nonlocal last_scan_started
+            import os
+
+            if SCAN_MIN_INTERVAL_SECONDS > 0 and not os.getenv("PYTEST_CURRENT_TEST"):
+                now = time.monotonic()
+                wait = SCAN_MIN_INTERVAL_SECONDS - (now - last_scan_started)
+                if last_scan_started > 0 and wait > 0:
+                    await asyncio.sleep(wait)
+                last_scan_started = time.monotonic()
+
         async def scan_one(index: int) -> None:
             nonlocal finished
             async with gate:
                 if self.job.cancel_requested:
                     return
+                await _pace_scan()
                 try:
                     await scan_images([index])
                 except (RuntimeError, ValueError, OSError) as exc:
@@ -305,17 +322,29 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
             finished += 1
             self._progress(finished, len(active))
 
+        def _is_rate_limit_err(exc: BaseException) -> bool:
+            msg = _detail(exc).lower()
+            return "429" in msg or "rate limit" in msg or "too many requests" in msg or "quota" in msg
+
         async def scan_batch(batch: list[int]) -> bool:
             nonlocal finished
             async with gate:
                 if self.job.cancel_requested:
                     return True
+                await _pace_scan()
                 try:
                     await scan_images(batch)
                 except (RuntimeError, ValueError, OSError) as exc:
-                    if len(batch) > 1:
+                    if _is_rate_limit_err(exc):
+                        await asyncio.sleep(max(4.0, SCAN_MIN_INTERVAL_SECONDS))
+                        try:
+                            await scan_images(batch)
+                        except (RuntimeError, ValueError, OSError) as exc2:
+                            _append(self.report["scan_errors"], {"pages": _one_based(batch), "error": _detail(exc2)[:300]})
+                    elif len(batch) > 1:
                         return False
-                    _append(self.report["scan_errors"], {"pages": _one_based(batch), "error": _detail(exc)[:300]})
+                    else:
+                        _append(self.report["scan_errors"], {"pages": _one_based(batch), "error": _detail(exc)[:300]})
             finished += len(batch)
             self._progress(finished, len(active))
             return True
@@ -324,34 +353,35 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
             return read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id))
 
         judge_status = decider.judge_status(self.provider, self.api_key)
-        judge = None
-        if judge_status["available"]:
-            judge = asyncio.create_task(asyncio.to_thread(
-                decider.storyless_slices, self.provider, self.api_key, active, load,
+        self._progress(0, len(active))
+        if batches and not await scan_batch(batches[0]):
+            await asyncio.gather(*(scan_one(index) for index in active))
+        elif batches:
+            results = await asyncio.gather(*(scan_batch(batch) for batch in batches[1:]))
+            rejected = [index for batch, ok in zip(batches[1:], results) if not ok for index in batch]
+            await asyncio.gather(*(scan_one(index) for index in rejected))
+        self._check_cancel()
+
+        scan_credits = {scan.page_index for scan in scans if scan.is_credit}
+        scan_textless = {scan.page_index for scan in scans if scan.no_text}
+        skip_candidates = sorted(scan_credits | scan_textless)
+        storyless = None
+        if judge_status["available"] and skip_candidates:
+            storyless = await asyncio.to_thread(
+                decider.storyless_slices, self.provider, self.api_key, skip_candidates, load,
                 self.settings.model, self._add_cost,
-            ))
+            )
+        elif judge_status["available"]:
+            storyless = ([], {})
         else:
             logger.warning("Decider judge unavailable (provider {}: {}); the scan alone decides skips",
                            judge_status["provider"], judge_status["reason"])
-
-        self._progress(0, len(active))
-        try:
-            if batches and not await scan_batch(batches[0]):
-                await asyncio.gather(*(scan_one(index) for index in active))
-            elif batches:
-                results = await asyncio.gather(*(scan_batch(batch) for batch in batches[1:]))
-                rejected = [index for batch, ok in zip(batches[1:], results) if not ok for index in batch]
-                await asyncio.gather(*(scan_one(index) for index in rejected))
-            storyless = await judge if judge is not None else None
-        except BaseException:
-            await _cancel_and_wait(judge)
-            raise
         self._check_cancel()
 
         storyless_set, chances = storyless if storyless is not None else (None, None)
         decision = decide_skips(
-            {scan.page_index for scan in scans if scan.is_credit},
-            {scan.page_index for scan in scans if scan.no_text},
+            scan_credits,
+            scan_textless,
             storyless_set, chances, len(active),
         )
         self.report["judge"] = {**judge_status, "single_judge_skips": _one_based(decision["single_judge_skips"])}
@@ -616,7 +646,8 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
 
     async def translate(self) -> None:
         from app.ocr.language_detect import site_language_hint
-        from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
+        from app.routers import translation as translation_router
+        from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context, translate_pages_batch_in_context
         from app.translation.context import ChapterMemory
 
         manifest = self._manifest()
@@ -711,8 +742,96 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
 
         await asyncio.to_thread(self._join_stacked_lines, indices)
         await self._create_seam_mirrors()
-        self._progress(0, len(indices))
-        await asyncio.gather(*(translate_one(page_index) for page_index in indices))
+        pages_now = self._manifest().get("pages") or []
+
+        def _page_box_count(pidx: int) -> int | None:
+            if pidx >= len(pages_now):
+                return None
+            p = pages_now[pidx]
+            if not isinstance(p, dict) or ("boxes" not in p and "text_objects" not in p):
+                return None
+            objs = [o for o in (p.get("text_objects") or []) if isinstance(o, dict) and not o.get("source_missing")]
+            if objs:
+                return len(objs)
+            return len([b for b in (p.get("boxes") or []) if isinstance(b, dict) and not b.get("removed") and not b.get("deferred_reason")])
+
+        non_empty = [idx for idx in indices if (_page_box_count(idx) is None or (_page_box_count(idx) or 0) > 0)]
+        finished = len(indices) - len(non_empty)
+        self._progress(finished, len(indices))
+
+        use_batch = (
+            getattr(translation_router.translate_page_in_context, "__module__", "") == "app.routers.translation"
+            and not (self.settings.translate_provider and self.settings.translate_model)
+        )
+        if not use_batch:
+            await asyncio.gather(*(translate_one(page_index) for page_index in non_empty))
+        else:
+            max_pages = max(1, min(TRANSLATE_BATCH_MAX_PAGES, int(self.settings.images_per_request or 2)))
+            t_batches: list[list[int]] = []
+            cur_batch: list[int] = []
+            cur_boxes = 0
+            for pidx in non_empty:
+                bc = _page_box_count(pidx) or 1
+                if cur_batch and (len(cur_batch) >= max_pages or cur_boxes + bc > TRANSLATE_BATCH_MAX_BOXES):
+                    t_batches.append(cur_batch)
+                    cur_batch = []
+                    cur_boxes = 0
+                cur_batch.append(pidx)
+                cur_boxes += bc
+            if cur_batch:
+                t_batches.append(cur_batch)
+
+            async def translate_batch_group(batch: list[int]) -> None:
+                nonlocal finished, out_of_budget
+                if len(batch) == 1:
+                    await translate_one(batch[0])
+                    return
+                async with gate:
+                    if self.job.cancel_requested or out_of_budget:
+                        return
+                    remaining = self._remaining_budget()
+                    if remaining is not None and remaining < 0.001:
+                        out_of_budget = True
+                        return
+                    reqs = [
+                        TranslateVisionPageRequest(
+                            chapter_id=self.job.chapter_id, page_index=pidx,
+                            source_lang=source_lang, target_lang=self.settings.target_lang,
+                            budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
+                            provider=self.provider.id, model=self.settings.model,
+                            translate_provider=self.settings.translate_provider,
+                            translate_model=self.settings.translate_model,
+                        )
+                        for pidx in batch
+                    ]
+                    try:
+                        results_map = await translate_pages_batch_in_context(
+                            reqs, memory=memory, slice_total=slice_total, skip_seam_mirrors=True,
+                        )
+                    except HTTPException as exc:
+                        for pidx in batch:
+                            _append(self.report["translate_errors"], f"Lát {pidx + 1}: {_detail(exc)[:200]}")
+                        results_map = {}
+                    for pidx in batch:
+                        data = results_map.get(pidx) or {}
+                        run = data.get("translation_run")
+                        if run is not None:
+                            await self._keep_art(pidx, run)
+                            self.report["translated"] += int(run.get("translated") or 0)
+                            self.report["unreadable"] += max(
+                                0, int(run.get("unreadable") or 0) - len(run.get("blank_ids") or []))
+                            self.report["review_flags"] += int(run.get("review") or 0)
+                            self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
+                            if run.get("render_error"):
+                                _append(self.report["render_errors"], f"Lát {pidx + 1}: {run['render_error']}")
+                        if run is None or run.get("remaining") or run.get("missing_ids") or run.get("story_blank_ids") or run.get("stale"):
+                            only = None if run is None or run.get("remaining") or run.get("stale") else (
+                                set(run.get("missing_ids") or []) | set(run.get("story_blank_ids") or []))
+                            await self._retry_untranslated(pidx, source_lang, only)
+                        finished += 1
+                        self._progress(finished, len(indices))
+
+            await asyncio.gather(*(translate_batch_group(b) for b in t_batches))
         self._check_cancel()
         if out_of_budget:
             self.report["translate_out_of_budget"] = True

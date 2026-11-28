@@ -683,3 +683,269 @@ async def translate_page_in_context(
         "remaining": max(0, total_candidates - len(candidates)),
     }
     return result
+
+
+async def translate_pages_batch_in_context(
+    reqs: list[TranslateVisionPageRequest],
+    *,
+    memory: ChapterMemory | None = None,
+    slice_total: int | None = None,
+    skip_seam_mirrors: bool = False,
+) -> dict[int, dict]:
+    """Translate 2..3 consecutive light slices in ONE multi-image Vision LLM call, then commit & render each."""
+    if not reqs:
+        return {}
+    if len(reqs) == 1:
+        r = reqs[0]
+        return {
+            r.page_index: await translate_page_in_context(
+                r, memory=memory, slice_total=slice_total, skip_seam_mirrors=skip_seam_mirrors,
+            )
+        }
+
+    first = reqs[0]
+    validate_chapter_id(first.chapter_id)
+    try:
+        provider = _resolve_vision_provider(first.provider)
+        model = validate_model_name(first.model, default=str(provider.default_qc_model or ""))
+        api_key = get_provider_api_key(provider.id, provider_label=provider.label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if not api_key:
+        raise HTTPException(409, f"{provider.label} API key is not configured")
+
+    for r in reqs:
+        await run_in_threadpool(prepare_page_balloons, r.chapter_id, r.page_index)
+
+    prepared: list[dict] = []
+    empty_results: dict[int, dict] = {}
+    setting = None
+    with get_manifest_lock(first.chapter_id):
+        manifest = load_manifest_raw(first.chapter_id)
+        setting = manifest.get("setting")
+        pages = manifest.get("pages", [])
+        changed_any: list[int] = []
+        for r in reqs:
+            if r.page_index >= len(pages):
+                continue
+            page = pages[r.page_index]
+            if page.get("skipped") or page.get("process_required") or not page.get("clean") or not page.get("original"):
+                continue
+            _, ensured = ensure_page_text_objects(page)
+            if ensured:
+                invalidate_page_render(manifest, r.page_index)
+                changed_any.append(r.page_index)
+            candidates = _vision_candidates(page, force=r.force)
+            elsewhere: list[list[int]] = []
+            if skip_seam_mirrors:
+                from app.ai_mode.seams import seam_mirror_ids
+
+                mirrors = seam_mirror_ids(manifest, r.page_index)
+                elsewhere = [c["region"] for c in candidates if c["id"] in mirrors]
+                candidates = [c for c in candidates if c["id"] not in mirrors]
+            if not candidates:
+                empty_results[r.page_index] = {
+                    "translation_run": {
+                        "translated": 0, "unreadable": 0, "stale": 0, "model": model,
+                        "rendered_pages": [], "estimated_cost_usd": 0.0 if provider.tracks_cost else None,
+                    }
+                }
+                continue
+            orig_path = validate_managed_path(page["original"], RAW_DIR / r.chapter_id)
+            clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / r.chapter_id)
+            if not orig_path.is_file() or not clean_path.is_file():
+                continue
+            snapshot = {
+                key: copy.deepcopy(page.get(key))
+                for key in ("original", "clean", "source_revision", "clean_revision",
+                            "skipped", "process_required")
+            }
+            prepared.append({
+                "req": r,
+                "page_index": r.page_index,
+                "candidates": candidates,
+                "elsewhere": elsewhere,
+                "original_path": orig_path,
+                "cleaned_path": clean_path,
+                "snapshot": snapshot,
+            })
+        if changed_any:
+            save_manifest_raw(first.chapter_id, manifest)
+    if changed_any:
+        from app.dependencies import pipeline
+        pipeline._sync_output_dir(first.chapter_id, manifest, changed_any)
+
+    if len(prepared) <= 1:
+        out = dict(empty_results)
+        for item in prepared:
+            r = item["req"]
+            out[r.page_index] = await translate_page_in_context(
+                r, memory=memory, slice_total=slice_total, skip_seam_mirrors=skip_seam_mirrors,
+            )
+        return out
+
+    for item in prepared:
+        await run_in_threadpool(_add_fit_budgets, item["original_path"], item["candidates"])
+
+    translator = VisionPageTranslator(provider, model)
+    pages_spec = [
+        {
+            "page_index": item["page_index"],
+            "original_path": item["original_path"],
+            "cleaned_path": item["cleaned_path"],
+            "items": item["candidates"],
+            "elsewhere": item["elsewhere"],
+        }
+        for item in prepared
+    ]
+    try:
+        batch_results = await run_in_threadpool(
+            translator.translate_pages_batch,
+            pages_spec,
+            api_key=api_key,
+            source_lang=first.source_lang,
+            target_lang=first.target_lang,
+            memory=memory,
+            slice_total=slice_total,
+            setting=setting,
+        )
+    except Exception:
+        out = dict(empty_results)
+        for item in prepared:
+            r = item["req"]
+            out[r.page_index] = await translate_page_in_context(
+                r, memory=memory, slice_total=slice_total, skip_seam_mirrors=skip_seam_mirrors,
+            )
+        return out
+
+    out = dict(empty_results)
+    for item in prepared:
+        r = item["req"]
+        pidx = item["page_index"]
+        candidates = item["candidates"]
+        translated = batch_results.get(pidx)
+        if translated is None:
+            out[pidx] = await translate_page_in_context(
+                r, memory=memory, slice_total=slice_total, skip_seam_mirrors=skip_seam_mirrors,
+            )
+            continue
+
+        committed = stale = unreadable = review = 0
+        blank_ids: list[str] = []
+        story_blank_ids: list[str] = []
+        art_regions: list[dict] = []
+        duplicate_ids = _duplicate_translation_ids(candidates, translated)
+        with get_manifest_lock(r.chapter_id):
+            latest = load_manifest_raw(r.chapter_id)
+            pages = latest.get("pages", [])
+            if pidx >= len(pages) or any(
+                pages[pidx].get(key) != value for key, value in item["snapshot"].items()
+            ):
+                stale = len(candidates)
+                changed = False
+            else:
+                page = pages[pidx]
+                changed = False
+                for candidate in candidates:
+                    obj = _find_object(page, candidate["id"])
+                    if (
+                        obj is None or obj.get("source_missing")
+                        or text_object_in_preserve_region(page, obj)
+                        or str(obj.get("ocr_text") or "").strip() != candidate["text"]
+                        or str(obj.get("translation") or "") != candidate["initial_translation"]
+                    ):
+                        stale += 1
+                        continue
+                    value = collapse_repeated_lines(translated.translations.get(candidate["id"], ""))
+                    if isinstance(value, str):
+                        value = value.strip()
+                    role = getattr(translated, "roles", {}).get(candidate["id"])
+                    source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
+                    if role == "sfx" and not obj.get("verified_balloon") and drawn_in_art(source):
+                        value = ""
+                    duplicate_reason = duplicate_ids.get(candidate["id"])
+                    if duplicate_reason is not None:
+                        value = ""
+                    elif value:
+                        duplicate_reason = _committed_duplicate(page, candidate, value, source)
+                        if duplicate_reason is not None:
+                            value = ""
+                    if not value:
+                        unreadable += 1
+                        if candidate["id"] not in getattr(translated, "missing_ids", ()):
+                            blank_ids.append(candidate["id"])
+                            obj["translation_attempted"] = True
+                            if role != "sfx" and duplicate_reason is None:
+                                story_blank_ids.append(candidate["id"])
+                        continue
+                    obj["translation"] = value
+                    obj["translation_source"] = provider.id
+                    if candidate.get("source_cap_px"):
+                        obj["source_cap_px"] = candidate["source_cap_px"]
+                    obj["translation_model"] = translated.model
+                    obj["translation_input_text"] = candidate["text"]
+                    source_read = getattr(translated, "sources", {}).get(candidate["id"])
+                    if source_read:
+                        obj["source_read"] = source_read
+                    speaker = getattr(translated, "speakers", {}).get(candidate["id"])
+                    if speaker:
+                        obj["speaker"] = speaker
+                    obj["auto_translation"] = value
+                    if role:
+                        obj["typography_role"] = role
+                    container = getattr(translated, "containers", {}).get(candidate["id"])
+                    if container and (not obj.get("verified_balloon") or container in ("bubble", "spiky", "box", "screen")):
+                        obj["container"] = container
+                    _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
+                    if candidate["id"] in getattr(translated, "review_ids", ()):
+                        obj["needs_review"] = True
+                        review += 1
+                    color = candidate.get("source_ink") or getattr(translated, "colors", {}).get(candidate["id"])
+                    if color:
+                        obj["lettering_color"] = color
+                    if candidate["id"] in getattr(translated, "enlarge_ids", ()):
+                        obj["enlarge"] = True
+                    else:
+                        obj.pop("enlarge", None)
+                    committed += 1
+                    changed = True
+                if changed:
+                    invalidate_page_render(latest, pidx)
+                    save_manifest_raw(r.chapter_id, latest)
+                elif blank_ids:
+                    save_manifest_raw(r.chapter_id, latest)
+
+        if changed:
+            from app.dependencies import pipeline
+            pipeline._sync_output_dir(r.chapter_id, latest, [pidx])
+
+        rendered_pages: list[int] = []
+        render_error = None
+        if committed:
+            try:
+                await run_in_threadpool(
+                    render_page, RenderRequest(chapter_id=r.chapter_id, page_index=pidx, translations={})
+                )
+                rendered_pages.append(pidx)
+            except HTTPException as exc:
+                render_error = str(exc.detail)
+            except Exception:
+                render_error = "Automatic rendering failed; translations were saved"
+
+        out[pidx] = {
+            "translation_run": {
+                "translated": committed, "unreadable": unreadable, "stale": stale, "review": review,
+                "model": translated.model, "usage": translated.usage,
+                "estimated_cost_usd": translated.estimated_cost_usd,
+                "rendered_pages": rendered_pages, "render_error": render_error,
+                "missing_ids": sorted(getattr(translated, "missing_ids", ())),
+                "blank_ids": blank_ids,
+                "story_blank_ids": story_blank_ids,
+                "art_regions": art_regions,
+                "unboxed": [],
+                "remaining": 0,
+            }
+        }
+    return out

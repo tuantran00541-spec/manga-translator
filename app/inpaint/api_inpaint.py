@@ -4,6 +4,7 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 import io
 import json
+import re
 import threading
 import time
 from typing import Any
@@ -12,7 +13,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from app.ai_providers import PROVIDERS, auth_headers, normalize_provider_id
+from app.ai_providers import PROVIDERS, api_base_candidates, auth_headers, normalize_provider_id
 from app.config import BASE_DIR
 from app.downloader.http import public_request
 from app.inpaint.smart_fill import (
@@ -23,7 +24,11 @@ from app.inpaint.smart_fill import (
     smart_fill_color,
 )
 from app.logging_config import logger
-from app.secret_store import get_provider_api_key, list_provider_configs
+from app.secret_store import (
+    get_provider_api_key,
+    list_provider_configs,
+    mark_provider_key_rate_limited,
+)
 from app.security import validate_url
 
 INPAINT_SETTINGS_PATH = BASE_DIR / "data" / "inpaint_settings.json"
@@ -61,9 +66,11 @@ DEFAULT_INPAINT_SETTINGS: dict[str, Any] = {
 
 _SINGLE_PROMPT = (
     "Remove all text, letters, and SFX from this manga/manhwa crop. "
-    "CRITICAL: NEVER erase or alter speech bubbles, jagged shout bubbles, thought clouds, or narration boxes—"
-    "keep every bubble border 100% intact with exact original spikes, rebuild broken border ink where letters overlapped, "
-    "and make bubble interiors clean white. Redraw underlying art/speedlines behind floating SFX only. "
+    "CRITICAL: NEVER erase or alter speech bubbles, jagged shout bubbles, thought clouds, narration boxes, or RPG system windows—"
+    "keep every border 100% intact with exact original spikes/frames, rebuild broken border ink where letters overlapped, "
+    "and preserve each interior's EXACT original color, gradient, or pattern (white for white bubbles, black for black bubbles, "
+    "blue/red/hex/textured for colored windows—NEVER turn colored or dark interiors white). "
+    "Redraw underlying art/speedlines behind floating SFX only. "
     "Keep faces, colors, and framing identical. Add no text."
 )
 
@@ -73,7 +80,9 @@ def _atlas_prompt_for_grid(cols: int, rows: int) -> str:
     return (
         f"This 1024x1024 image is a {label} grid ({cols} columns x {rows} rows) of separate manga/manhwa crops divided by dark gray borders. "
         "In EVERY non-blank cell independently: remove all text, letters, and SFX. "
-        "CRITICAL: NEVER erase or alter speech bubbles, jagged shout bubbles, or narration boxes—keep exact original bubble borders intact with clean white interiors; "
+        "CRITICAL: NEVER erase or alter speech bubbles, jagged shout bubbles, narration boxes, or RPG system windows—"
+        "keep exact original borders intact and preserve each interior's exact original color, gradient, or pattern "
+        "(NEVER turn colored or dark interiors white); "
         "only redraw underlying art behind floating SFX. "
         f"Keep exact {label} dividers, framing, scale, faces, and line art identical. Add no text."
     )
@@ -609,6 +618,33 @@ def align_ai_crop(
     )
 
 
+def _is_false_white_wash(
+    orig_crop: np.ndarray,
+    ai_crop: np.ndarray,
+    local_mask: np.ndarray,
+) -> bool:
+    """Detect when an AI image model erroneously paints solid white over a colored/dark interior."""
+    mask_bool = local_mask > 127
+    if not np.any(mask_bool) or orig_crop.ndim != 3 or ai_crop.ndim != 3:
+        return False
+    ai_inside = ai_crop[mask_bool]
+    if ai_inside.size == 0:
+        return False
+    ai_min_ch = float(np.median(ai_inside.min(axis=1)))
+    if ai_min_ch < 235.0:
+        return False
+    ai_gray_std = float(cv2.cvtColor(ai_crop, cv2.COLOR_BGR2GRAY)[mask_bool].std())
+    if ai_gray_std > 20.0:
+        return False
+    ring = (
+        cv2.dilate(mask_bool.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))) > 0
+    ) & ~mask_bool
+    if int(np.count_nonzero(ring)) < 32:
+        return False
+    ring_min_ch = float(np.median(orig_crop[ring].min(axis=1)))
+    return ring_min_ch <= 185.0
+
+
 def composite_api_region(
     image: np.ndarray,
     ai_crop: np.ndarray,
@@ -621,9 +657,233 @@ def composite_api_region(
     cx1, cy1, cx2, cy2 = crop_box
     orig_crop = image[cy1:cy2, cx1:cx2]
     aligned = align_ai_crop(orig_crop, ai_crop, local_mask)
+    if _is_false_white_wash(orig_crop, aligned, local_mask):
+        logger.warning(
+            "Rejecting AI inpaint crop at {}: solid white wash detected over colored/dark surround",
+            crop_box,
+        )
+        return image
     harmonized = match_boundary_tone(orig_crop, aligned, local_mask)
     harmonized = restore_ambient_grain(orig_crop, harmonized, local_mask, crop_box)
     return blend_painted(image, harmonized, local_mask, crop_box, feather=feather)
+
+
+_LEARNED_IMAGE_ROUTES: dict[tuple[str, str], tuple[str, str]] = {}
+_ROUTE_FALLBACK_STATUSES = frozenset({400, 404, 405, 415, 422, 500, 501, 502, 503, 504})
+_DATA_URL_RE = re.compile(r"data:image/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=\s]+)")
+_HTTP_IMG_URL_RE = re.compile(r"https?://[^\s)\"'<>]+", re.I)
+
+
+def _decode_base64_image(raw_b64: str) -> Image.Image:
+    cleaned = str(raw_b64 or "").strip()
+    if "," in cleaned and cleaned.lower().startswith("data:image"):
+        cleaned = cleaned.split(",", 1)[1]
+    return Image.open(io.BytesIO(base64.b64decode(cleaned))).convert("RGB")
+
+
+def _fetch_remote_image(img_url: str) -> Image.Image:
+    validate_url(img_url)
+    r2 = public_request("GET", img_url, timeout=(10, 60), allow_redirects=False)
+    r2.raise_for_status()
+    return Image.open(io.BytesIO(r2.content)).convert("RGB")
+
+
+def _extract_image_from_response(resp: Any, provider_label: str, model: str) -> Image.Image:
+    headers = getattr(resp, "headers", None) or {}
+    ctype = (headers.get("content-type") or "").lower() if hasattr(headers, "get") else ""
+    if ctype.startswith("image/"):
+        return Image.open(io.BytesIO(resp.content)).convert("RGB")
+
+    payload = resp.json()
+    if isinstance(payload, dict):
+        # 1. Standard /images/edits & /images/generations: {"data": [{"b64_json" | "url"}]}
+        data_rows = payload.get("data")
+        if isinstance(data_rows, list) and data_rows:
+            item = data_rows[0] if isinstance(data_rows[0], dict) else {}
+            if item.get("b64_json"):
+                return _decode_base64_image(item["b64_json"])
+            if item.get("url"):
+                url_val = str(item["url"]).strip()
+                if url_val.lower().startswith("data:image"):
+                    return _decode_base64_image(url_val)
+                return _fetch_remote_image(url_val)
+
+        # 2. Multimodal /chat/completions (OpenRouter / Gemini-via-OpenAI / relays)
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            msg = (choices[0] or {}).get("message") or {}
+            images = msg.get("images")
+            if isinstance(images, list):
+                for img_item in images:
+                    if not isinstance(img_item, dict):
+                        continue
+                    url_val = (
+                        (img_item.get("image_url") or {}).get("url")
+                        if isinstance(img_item.get("image_url"), dict)
+                        else img_item.get("url") or img_item.get("b64_json")
+                    )
+                    if url_val:
+                        url_str = str(url_val).strip()
+                        if url_str.lower().startswith("data:image") or not url_str.startswith("http"):
+                            return _decode_base64_image(url_str)
+                        return _fetch_remote_image(url_str)
+
+            content = msg.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    url_val = (
+                        (part.get("image_url") or {}).get("url")
+                        if isinstance(part.get("image_url"), dict)
+                        else part.get("url") or part.get("b64_json")
+                    )
+                    if url_val:
+                        url_str = str(url_val).strip()
+                        if url_str.lower().startswith("data:image") or not url_str.startswith("http"):
+                            return _decode_base64_image(url_str)
+                        return _fetch_remote_image(url_str)
+            elif isinstance(content, str) and content:
+                m_data = _DATA_URL_RE.search(content)
+                if m_data:
+                    return _decode_base64_image(m_data.group(1))
+                m_http = _HTTP_IMG_URL_RE.search(content)
+                if m_http:
+                    return _fetch_remote_image(m_http.group(0))
+
+    raise RuntimeError(f"{provider_label} ({model}) returned no image data")
+
+
+def _candidate_image_routes(api_base: str, model: str) -> list[tuple[str, str]]:
+    """Build ordered (url, mode) candidates covering all OpenAI-compatible image edit APIs."""
+    bases = api_base_candidates(str(api_base or "").rstrip("/"))
+    routes: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add(url: str, mode: str) -> None:
+        key = (url, mode)
+        if key not in seen:
+            seen.add(key)
+            routes.append(key)
+
+    learned_key = (str(api_base or "").rstrip("/").lower(), str(model or "").strip().lower())
+    with _SETTINGS_LOCK:
+        learned = _LEARNED_IMAGE_ROUTES.get(learned_key)
+    if learned:
+        _add(learned[0], learned[1])
+
+    for b in bases:
+        _add(f"{b}/images/edits", "edits_multipart")
+        _add(f"{b}/images/generations", "generations_json")
+        _add(f"{b}/images/edits", "edits_json_array")
+        _add(f"{b}/images/edits", "edits_json")
+        _add(f"{b}/images/generations", "generations_image_url")
+        _add(f"{b}/images", "openrouter_images")
+        _add(f"{b}/images/edits", "edits_multipart_minimal")
+        _add(f"{b}/chat/completions", "chat_multimodal")
+    return routes
+
+
+def _send_image_route(
+    url: str,
+    mode: str,
+    *,
+    provider: Any,
+    api_key: str,
+    model: str,
+    quality: str,
+    prompt: str,
+    png_bytes: bytes,
+    size_str: str,
+    timeout: float,
+) -> Any:
+    validate_url(url)
+    headers = auth_headers(provider, api_key)
+    if mode == "edits_multipart":
+        data = {
+            "model": model,
+            "prompt": prompt,
+            "n": "1",
+            "size": size_str,
+            "quality": quality,
+            "output_format": "png",
+        }
+        files = {"image": ("panel.png", png_bytes, "image/png")}
+        return public_request(
+            "POST", url, headers=headers, data=data, files=files,
+            timeout=(15, timeout), allow_redirects=False,
+        )
+    if mode == "edits_multipart_minimal":
+        data = {"model": model, "prompt": prompt, "n": "1"}
+        files = {"image": ("panel.png", png_bytes, "image/png")}
+        return public_request(
+            "POST", url, headers=headers, data=data, files=files,
+            timeout=(15, timeout), allow_redirects=False,
+        )
+    img_data_url = f"data:image/png;base64,{base64.b64encode(png_bytes).decode('ascii')}"
+    if mode in ("generations_json", "edits_json"):
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "image": img_data_url,
+            "n": 1,
+        }
+        return public_request(
+            "POST", url, headers={**headers, "Content-Type": "application/json"},
+            json=payload, timeout=(15, timeout), allow_redirects=False,
+        )
+    if mode == "edits_json_array":
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "images": [{"image_url": img_data_url}],
+            "n": 1,
+        }
+        return public_request(
+            "POST", url, headers={**headers, "Content-Type": "application/json"},
+            json=payload, timeout=(15, timeout), allow_redirects=False,
+        )
+    if mode == "generations_image_url":
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "image_url": img_data_url,
+            "reference_images": [img_data_url],
+            "n": 1,
+        }
+        return public_request(
+            "POST", url, headers={**headers, "Content-Type": "application/json"},
+            json=payload, timeout=(15, timeout), allow_redirects=False,
+        )
+    if mode == "openrouter_images":
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "input_references": [img_data_url],
+        }
+        return public_request(
+            "POST", url, headers={**headers, "Content-Type": "application/json"},
+            json=payload, timeout=(15, timeout), allow_redirects=False,
+        )
+    if mode == "chat_multimodal":
+        payload = {
+            "model": model,
+            "modalities": ["image", "text"],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": img_data_url}},
+                    ],
+                }
+            ],
+        }
+        return public_request(
+            "POST", url, headers={**headers, "Content-Type": "application/json"},
+            json=payload, timeout=(15, timeout), allow_redirects=False,
+        )
+    raise ValueError(f"Unsupported image route mode: {mode}")
 
 
 def _call_images_edit_endpoint(
@@ -636,9 +896,9 @@ def _call_images_edit_endpoint(
     grid_dim: int | tuple[int, int] = 1,
     timeout: float = 150.0,
 ) -> Image.Image:
-    base = str(provider.api_base or "").rstrip("/")
-    url = f"{base}/images/edits"
-    validate_url(url)
+    base = str(getattr(provider, "api_base", "") or "").rstrip("/")
+    provider_id = str(getattr(provider, "id", "") or "").strip().lower()
+    provider_label = str(getattr(provider, "label", "") or provider_id or "AI Provider")
 
     buf = io.BytesIO()
     atlas_image.save(buf, format="PNG")
@@ -649,53 +909,72 @@ def _call_images_edit_endpoint(
     else:
         cols = rows = int(grid_dim)
     prompt = _SINGLE_PROMPT if cols * rows <= 1 else _atlas_prompt_for_grid(cols, rows)
-    data = {
-        "model": model,
-        "prompt": prompt,
-        "n": "1",
-        "size": f"{atlas_image.width}x{atlas_image.height}",
-        "quality": quality,
-        "output_format": "png",
-    }
-    files = {"image": ("panel.png", png_bytes, "image/png")}
-    headers = auth_headers(provider, api_key)
+    size_str = f"{atlas_image.width}x{atlas_image.height}"
 
-    resp = None
-    for attempt in range(2):
-        resp = public_request(
-            "POST",
-            url,
-            headers=headers,
-            data=data,
-            files=files,
-            timeout=(15, timeout),
-            allow_redirects=False,
-        )
-        if resp.ok or resp.status_code not in {429, 502, 503, 504} or attempt == 1:
+    routes = _candidate_image_routes(base, model)
+    learned_key = (base.lower(), str(model or "").strip().lower())
+    current_key = api_key
+    last_error: Exception | None = None
+
+    for url, mode in routes:
+        resp = None
+        for attempt in range(2):
+            resp = _send_image_route(
+                url,
+                mode,
+                provider=provider,
+                api_key=current_key,
+                model=model,
+                quality=quality,
+                prompt=prompt,
+                png_bytes=png_bytes,
+                size_str=size_str,
+                timeout=timeout,
+            )
+            if resp.ok:
+                break
+            if resp.status_code == 429 and attempt == 0:
+                if provider_id:
+                    try:
+                        mark_provider_key_rate_limited(provider_id, current_key)
+                        rotated = get_provider_api_key(provider_id)
+                        if rotated:
+                            current_key = rotated
+                    except Exception:
+                        pass
+                time.sleep(2.0)
+                continue
             break
-        time.sleep(2.0)
 
-    if not resp.ok:
+        if resp is not None and resp.ok:
+            try:
+                img = _extract_image_from_response(resp, provider_label, model)
+            except Exception as exc:
+                last_error = exc
+                continue
+            with _SETTINGS_LOCK:
+                if len(_LEARNED_IMAGE_ROUTES) >= 128 and learned_key not in _LEARNED_IMAGE_ROUTES:
+                    _LEARNED_IMAGE_ROUTES.pop(next(iter(_LEARNED_IMAGE_ROUTES)))
+                _LEARNED_IMAGE_ROUTES[learned_key] = (url, mode)
+            return img
+
+        status = getattr(resp, "status_code", 0) if resp is not None else 0
         detail = ""
-        try:
-            err_json = resp.json()
-            detail = str(err_json.get("error", {}).get("message") or err_json.get("detail") or "")[:240]
-        except Exception:
-            detail = (resp.text or "")[:240]
-        raise RuntimeError(f"{provider.label} ({model}) HTTP {resp.status_code}: {detail}")
+        if resp is not None:
+            try:
+                err_json = resp.json()
+                detail = str(err_json.get("error", {}).get("message") or err_json.get("detail") or "")[:240]
+            except Exception:
+                detail = (resp.text or "")[:240]
+        last_error = RuntimeError(f"{provider_label} ({model}) HTTP {status}: {detail}")
 
-    payload = resp.json()
-    item = (payload.get("data") or [{}])[0]
-    b64 = item.get("b64_json")
-    if b64:
-        return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-    img_url = item.get("url")
-    if img_url:
-        validate_url(img_url)
-        r2 = public_request("GET", img_url, timeout=(10, 60), allow_redirects=False)
-        r2.raise_for_status()
-        return Image.open(io.BytesIO(r2.content)).convert("RGB")
-    raise RuntimeError(f"{provider.label} ({model}) returned no image data")
+        # Auth or rate-limit errors are terminal for this provider — don't probe other endpoints.
+        if status in {401, 403, 429} or status not in _ROUTE_FALLBACK_STATUSES:
+            raise last_error
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"{provider_label} ({model}) failed on all image endpoints")
 
 
 def inpaint_regions_via_api(
@@ -732,9 +1011,11 @@ def inpaint_regions_via_api(
             atlas_pil, slots, grid_shape = pack_regions_to_atlas(crops)
             cols, rows = grid_shape
             grid_arg: int | tuple[int, int] = cols if cols == rows else (cols, rows)
+            pid = str(getattr(provider, "id", "") or "").strip().lower()
+            batch_key = (get_provider_api_key(pid) if pid else None) or api_key
             edited_pil = _call_images_edit_endpoint(
                 provider,
-                api_key,
+                batch_key,
                 effective_model,
                 effective_quality,
                 atlas_pil,
