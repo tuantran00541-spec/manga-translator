@@ -102,7 +102,7 @@ function _bulkUpdates(items) {
     font_selection_mode: p.font_selection_mode,
     font_match: p.font_match,
     font_ai_id: p.font_ai_id,
-    ocr_color_profile: p.ocr_color_profile,
+    ocr_color_profile: p.ocr_color_profile?.source === "manual" ? p.ocr_color_profile : undefined,
   }));
 }
 
@@ -135,7 +135,7 @@ async function _persistTextObjectsIndividually(chapterId, items) {
         font_selection_mode: p.font_selection_mode,
         font_match: p.font_match,
         font_ai_id: p.font_ai_id,
-        ocr_color_profile: p.ocr_color_profile,
+        ocr_color_profile: p.ocr_color_profile?.source === "manual" ? p.ocr_color_profile : undefined,
       });
     } catch (err) {
       failures.push(err);

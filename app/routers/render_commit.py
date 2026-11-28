@@ -5,6 +5,7 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 from fastapi import APIRouter, HTTPException
 from PIL import Image
 
@@ -15,6 +16,7 @@ from app.manifest_utils import (
     bump_page_revision, get_manifest_lock, load_manifest_raw,
     publish_then_commit, save_manifest_raw,
 )
+from app.ocr.visual_metadata import refresh_page_source_colors, set_source_color
 from app.render.identity import render_input_signature, stamp_render_artifact
 from app.render.font_selection import resolve_object_font
 from app.render.page_renderer import cleanup_tmp, render_boxes_legacy, render_text_objects, style_get
@@ -104,6 +106,12 @@ def _render_snapshot(
         except (HTTPException, OSError):
             return None
 
+    @lru_cache(maxsize=1)
+    def load_raw_bgr():
+        raw = load_source_image()
+        return np.asarray(raw)[:, :, ::-1] if raw is not None else None
+
+    styles["source_colors"] = refresh_page_source_colors(page, load_raw_bgr)
     text_objects = page.get("text_objects") or []
     if text_objects:
         _resolve_snapshot_fonts(page, styles)
@@ -288,6 +296,10 @@ def _commit_render(
             return False, None
 
         page = manifest["pages"][req.page_index]
+        for collection, profiles in (styles.get("source_colors") or {}).items():
+            for record in page.get(collection) or []:
+                if isinstance(record, dict) and (profile := profiles.get(str(record.get("id")))) is not None:
+                    set_source_color(record, profile)
         if page.get("text_objects"):
             _persist_text_object_state(page, req, styles)
         else:

@@ -10,7 +10,7 @@ from app.render.size_bands import chapter_size_bands, uses_dialogue_size
 from app.text_objects import source_box_ids
 
 
-RENDER_IDENTITY_VERSION = "phase45-v10"
+RENDER_IDENTITY_VERSION = "phase45-v11-source-color"
 
 
 def file_revision(path: Path) -> tuple[int, int, int]:
@@ -30,6 +30,11 @@ def _normalized_box(box: dict) -> dict:
         "manual": bool(box.get("manual")),
         "geometry_overridden": bool(box.get("geometry_overridden")),
         "ocr_eligible": box.get("ocr_eligible"),
+        "source_role": box.get("source_role"),
+        "ocr_text_color": box.get("ocr_text_color"),
+        "ocr_color_profile": copy.deepcopy(box.get("ocr_color_profile")),
+        "ocr_text_region": _normalized_optional_region(box.get("ocr_text_region")),
+        "mask": copy.deepcopy(box.get("mask")),
         "letters_mask": copy.deepcopy(box.get("letters_mask")),
         "bubble_mask": copy.deepcopy(box.get("bubble_mask"))
         if isinstance(box.get("bubble_mask"), dict) else None,

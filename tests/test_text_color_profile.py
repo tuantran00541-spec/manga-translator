@@ -437,3 +437,77 @@ def test_kiuyha_process_page_automatically_captures_color_profile_without_ocr(tm
     assert saved_box["ocr_color_profile"] == prof
 
 
+
+
+def test_render_commit_upgrades_raw_ink_and_reuses_exact_color(tmp_path, monkeypatch):
+    import json
+
+    import app.config
+    import app.manifest_utils as manifests
+    from app.image_io import encode_mask
+    from app.routers import render_commit
+    from app.routers.translation import _vision_candidates
+
+    chapter_id = "d1234567"
+    raw_root, processed_root = tmp_path / "raw", tmp_path / "processed"
+    raw_dir, processed = raw_root / chapter_id, processed_root / chapter_id
+    raw_dir.mkdir(parents=True)
+    processed.mkdir(parents=True)
+    monkeypatch.setattr(app.config, "RAW_DIR", raw_root)
+    monkeypatch.setattr(app.config, "PROCESSED_DIR", processed_root)
+    monkeypatch.setattr(manifests, "PROCESSED_DIR", processed_root)
+    monkeypatch.setattr(render_commit, "OUTPUT_DIR", tmp_path / "output")
+    from app import mask_store
+
+    monkeypatch.setattr(mask_store, "PROCESSED_DIR", processed_root)
+    raw_path, clean_path = raw_dir / "page.png", processed / "clean.png"
+    raw_color = (232, 183, 60)
+    clean = Image.new("RGB", (265, 120), "#f9f0d0")
+    clean.save(clean_path)
+    raw = clean.copy()
+    region = {"x1": 20, "y1": 20, "x2": 245, "y2": 100}
+    mask = np.zeros((80, 225), np.uint8)
+    mask[20:58, 32:48] = 255
+    mask[20:58, 70:86] = 255
+    pixels = np.asarray(raw).copy()
+    pixels[20:100, 20:245][mask != 0] = raw_color
+    Image.fromarray(pixels).save(raw_path)
+    boxes = [{"id": "box_1", **region, "letters_mask": encode_mask(mask),
+              "ocr_color_profile": {"fill": "#927366"}}]
+    obj = {"id": "text_1", "region": region, "source_boxes": ["box_1"], "container": "bubble",
+           "ocr_color_profile": {"fill": "#927366"}, "lettering_color": "#332211",
+           "translation": "Chào bạn", "style": {"color": "auto", "fontSize": "28"}}
+    manifests.save_manifest_raw(chapter_id, {"chapter_id": chapter_id, "pages": [
+        {"original": str(raw_path), "clean": str(clean_path), "boxes": boxes, "text_objects": [obj]}
+    ]})
+    req = RenderRequest(chapter_id=chapter_id, page_index=0, translations={"text_1": obj["translation"]})
+    assert render_commit.render_page(req)["committed"]
+    saved = json.loads((processed / "manifest.json").read_text())["pages"][0]
+    profile = saved["text_objects"][0]["ocr_color_profile"]
+    assert profile["fill"] == "#e8b73c"
+    assert saved["boxes"][0]["ocr_color_profile"] == profile
+    assert _vision_candidates(saved, force=True)[0]["source_ink"] == profile["fill"]
+    output = tmp_path / "output" / chapter_id / "page_000.png"
+    assert np.count_nonzero(np.all(np.asarray(Image.open(output)) == raw_color, axis=2)) > 30
+
+    req.colors = {"text_1": "#0044ff"}
+    assert render_commit.render_page(req)["committed"]
+    pixels = np.asarray(Image.open(output))
+    assert np.count_nonzero(np.all(pixels == (0, 68, 255), axis=2)) > 30
+    assert not np.any(np.all(pixels == raw_color, axis=2))
+
+
+def test_measured_gradient_spans_both_lines_of_a_translation():
+    image = Image.new("RGB", (300, 155), "#eeeeee")
+    profile = {
+        "source": "raw", "sample_version": 1, "fill": "#ab6993",
+        "gradient": {"direction": "vertical", "stops": ["#ee4b32", "#5849ee"]},
+    }
+    render_text_in_box(image, "ÉTAGE\nÉTAGE", (12, 8, 288, 147), font_size=36,
+                       color_profile=profile, adapt_contrast=True)
+    rgb = np.asarray(image).astype(int)
+    painted = np.ptp(rgb, axis=2) > 65
+    top, bottom = np.array_split(rgb[:, :, 0] - rgb[:, :, 2], 2)
+    top_mask, bottom_mask = np.array_split(painted, 2)
+    assert np.median(top[top_mask]) > 45
+    assert np.median(bottom[bottom_mask]) < -45

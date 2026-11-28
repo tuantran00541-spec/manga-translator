@@ -227,14 +227,13 @@ def stamp_machine_cache(
     box["ocr_retry_applied"] = bool(_metadata_value(metadata, "retry_applied", False))
 
     text_color = str(_metadata_value(metadata, "text_color", "") or "").strip()
-    if text_color:
-        box["ocr_text_color"] = text_color
-
-    from app.ocr.visual_metadata import normalize_color_profile
+    from app.ocr.visual_metadata import has_raw_color_profile, normalize_color_profile, set_source_color
 
     color_profile = normalize_color_profile(_metadata_value(metadata, "color_profile"))
-    if color_profile:
-        existing_profile = normalize_color_profile(box.get("ocr_color_profile"))
+    existing_profile = normalize_color_profile(box.get("ocr_color_profile"))
+    if has_raw_color_profile(color_profile):
+        set_source_color(box, color_profile)
+    elif not has_raw_color_profile(existing_profile):
         def _profile_rank(p: dict | None) -> tuple:
             if not p:
                 return (0, 0, 0, 0.0)
@@ -244,7 +243,9 @@ def stamp_machine_cache(
                 1 if "stroke_color" in p else 0,
                 float(p.get("lab_span") or 0.0),
             )
-        if _profile_rank(color_profile) >= _profile_rank(existing_profile):
+        if text_color:
+            box["ocr_text_color"] = text_color
+        if color_profile and _profile_rank(color_profile) >= _profile_rank(existing_profile):
             box["ocr_color_profile"] = color_profile
             if not text_color:
                 box["ocr_text_color"] = color_profile["fill"]

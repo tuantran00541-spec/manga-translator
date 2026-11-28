@@ -173,6 +173,8 @@ def _resolve_text_provider(provider_id: str):
 
 
 def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
+    from app.ocr.visual_metadata import has_raw_color_profile
+
     candidates: list[dict] = []
     seen: set[str] = set()
     for obj in page.get("text_objects") or []:
@@ -202,6 +204,9 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
             "fit_region": list(letter_box(obj, tuple(rect)) or rect),
             "initial_translation": str(obj.get("translation") or ""),
         }
+        profile = obj.get("ocr_color_profile")
+        if has_raw_color_profile(profile):
+            candidate["source_ink"] = profile["fill"]
         mask = obj.get("bubble_mask")
         source = box_bounds(obj.get("letter_bounds"))
         if source and obj.get("verified_balloon") and isinstance(mask, dict) and mask.get("kind") == "bubble":
@@ -388,7 +393,8 @@ def _committed_duplicate(page: dict, candidate: dict, value: str, source: str) -
 def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
     from app.render.font_catalog import resolve_font_id
     from app.render.font_guide import DEFAULT_LETTERING_FONT
-    from app.render.source_size import char_budget, source_cap_px, source_ink_hex
+    from app.ocr.visual_metadata import sample_source_text_color_profile
+    from app.render.source_size import char_budget, source_cap_px
 
     from app.image_io import read_image
 
@@ -396,9 +402,11 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
     font_path = resolve_font_id(DEFAULT_LETTERING_FONT)
     for candidate in candidates:
         source_region = candidate.get("source_region") or candidate["region"]
-        ink = source_ink_hex(raw, candidate["region"])
-        if ink:
-            candidate["source_ink"] = ink
+        if not candidate.get("source_ink"):
+            region = dict(zip(("x1", "y1", "x2", "y2"), source_region))
+            profile = sample_source_text_color_profile(raw, region, None)
+            if profile:
+                candidate["source_ink"] = profile["fill"]
         short = len("".join(str(candidate.get("text") or "").split())) <= 2
         cap_bounds = source_region if candidate.get("balloon_mask") else candidate.get("fit_region")
         cap = candidate.get("source_cap_px") or source_cap_px(
@@ -614,7 +622,7 @@ async def translate_page_in_context(
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
                 review += 1
-            color = getattr(translated, "colors", {}).get(candidate["id"]) or candidate.get("source_ink")
+            color = candidate.get("source_ink") or getattr(translated, "colors", {}).get(candidate["id"])
             if color:
                 obj["lettering_color"] = color
             if candidate["id"] in getattr(translated, "enlarge_ids", ()):

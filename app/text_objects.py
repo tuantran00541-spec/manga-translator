@@ -67,9 +67,14 @@ def source_box_ids(obj: dict) -> set[str]:
 
 
 def _sync_ocr_metadata(obj: dict, box: dict, *, skip_geometry: bool = False) -> bool:
+    from app.ocr.visual_metadata import has_manual_color_profile
+
     changed = False
+    keep_color = has_manual_color_profile(obj.get("ocr_color_profile"))
     for key in OCR_METADATA_FIELDS:
         if skip_geometry and key == "ocr_text_region":
+            continue
+        if keep_color and key in ("ocr_text_color", "ocr_color_profile"):
             continue
         if key in box:
             value = copy.deepcopy(box[key])
@@ -126,6 +131,9 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
             changed = True
         changed = _sync_ocr_metadata(obj, box, skip_geometry=merged) or changed
     else:
+        from app.ocr.visual_metadata import sync_raw_source_color
+
+        changed = sync_raw_source_color(obj, [box]) or changed
         for color_key in ("ocr_text_color", "ocr_color_profile"):
             if color_key in box and not obj.get(color_key):
                 obj[color_key] = copy.deepcopy(box[color_key])
@@ -200,8 +208,12 @@ def _update_fields(obj, updates):
 
 
 def _sync_balloon_ocr(obj, members):
-    if not members or str(obj.get("ocr_text") or "") != str(obj.get("auto_ocr_text") or ""):
+    if not members:
         return False
+    if str(obj.get("ocr_text") or "") != str(obj.get("auto_ocr_text") or ""):
+        from app.ocr.visual_metadata import sync_raw_source_color
+
+        return sync_raw_source_color(obj, members)
     if len(members) == 1:
         text = str(members[0].get("ocr_text") or "")
         changed = _sync_ocr_metadata(obj, members[0])

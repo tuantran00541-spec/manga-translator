@@ -549,6 +549,9 @@ function _ensureColorProfile(obj) {
       : (obj.ocr_text_color || "#111111");
     obj.ocr_color_profile = { fill: /^#[0-9a-f]{6}$/i.test(baseFill) ? baseFill.toLowerCase() : "#111111" };
   }
+  obj.ocr_color_profile.source = "manual";
+  delete obj.ocr_color_profile.sample_version;
+  delete obj.ocr_color_profile.sample_pixels;
   return obj.ocr_color_profile;
 }
 
@@ -565,7 +568,7 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   swatchRow.className = "color-swatch-row";
 
   const colors = [
-    { name: "Tự động tương phản / Màu gốc OCR", value: "auto", bg: "linear-gradient(135deg, #000 50%, #fff 50%)" },
+    { name: "Màu chữ gốc / Tự động", value: "auto", bg: "linear-gradient(135deg, #000 50%, #fff 50%)" },
     { name: "Trắng", value: "#ffffff", bg: "#ffffff" },
     { name: "Đen", value: "#000000", bg: "#000000" },
     { name: "Đỏ", value: "#e8432c", bg: "#e8432c" },
@@ -821,7 +824,7 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
     b.addEventListener("click", () => {
       if (dir === "none") {
         if (obj.ocr_color_profile && typeof obj.ocr_color_profile === "object") {
-          delete obj.ocr_color_profile.gradient;
+          delete _ensureColorProfile(obj).gradient;
         }
       } else {
         const p = _ensureColorProfile(obj);
@@ -880,8 +883,9 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   glowToggle.addEventListener("click", () => {
     const on = Boolean(obj.ocr_color_profile?.glow_color);
     if (on) {
-      delete obj.ocr_color_profile.glow_color;
-      delete obj.ocr_color_profile.glow_radius;
+      const p = _ensureColorProfile(obj);
+      delete p.glow_color;
+      delete p.glow_radius;
     } else {
       const p = _ensureColorProfile(obj);
       p.glow_color = glowColorPicker.value || "#ff5522";

@@ -131,7 +131,11 @@ function _renderOverlayPreview(overlay, obj, width, height) {
   const strokeC = (style.strokeColor && style.strokeColor !== "auto")
     ? style.strokeColor
     : (profile?.stroke_color || autoContrastStroke);
-  const strokeW = style.strokeWidth === "0" || style.strokeWidth === 0 ? 0 : Math.min(3, Math.max(1, Number(style.strokeWidth) || 1));
+  const autoWidth = !style.strokeWidth && style.strokeWidth !== 0 || style.strokeWidth === "auto";
+  const autoStrokeColor = !style.strokeColor || style.strokeColor === "auto";
+  const usesSavedPalette = profile?.source === "raw" || profile?.source === "manual";
+  const defaultWidth = autoStrokeColor && usesSavedPalette ? (profile.stroke_color ? 2 : 0) : 1;
+  const strokeW = autoWidth ? defaultWidth : Math.min(3, Math.max(0, Number(style.strokeWidth) || 0));
 
   if (hasGradient) {
     // text-shadow paints over background-clip:text in Chromium; use filter drop-shadow so gradient stays crisp.

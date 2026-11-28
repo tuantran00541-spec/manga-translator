@@ -277,18 +277,7 @@ class PageProcessingMixin:
             detector_records[index]["removed"] = True
             detector_records[index]["screened_art"] = True
 
-        # Automatically capture source text color & color profile (fill, gradient, stroke, glow)
-        # directly from the original uncleaned page using Kiuyha's exact glyph masks so rendering
-        # reuses original lettering colors even when OCR is skipped (e.g., AI Mode or manual edit).
-        from app.ocr.visual_metadata import sample_source_text_color_profile
-
-        for record in detector_records:
-            if record.get("removed"):
-                continue
-            profile = sample_source_text_color_profile(image, record, None)
-            if profile:
-                record["ocr_text_color"] = profile["fill"]
-                record["ocr_color_profile"] = profile
+        from app.ocr.visual_metadata import sample_source_text_color_profile, set_source_color
 
         assign_stable_detector_box_ids(detector_records, existing_boxes)
         old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
@@ -329,6 +318,10 @@ class PageProcessingMixin:
                 record.get("overlap_context_only")
                 and not record.get("geometry_overridden")
             )
+            if not record.get("removed") and record.get("ocr_eligible"):
+                profile = sample_source_text_color_profile(image, record, None)
+                if profile:
+                    set_source_color(record, profile)
             if (
                 not record.get("removed")
                 and not skip_auto_overlap_inpaint

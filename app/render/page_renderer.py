@@ -18,6 +18,7 @@ from app.render.placement import (
     user_position,
 )
 from app.render.size_bands import preferred_dialogue_cap, uses_dialogue_size
+from app.ocr.visual_metadata import has_manual_color_profile, has_raw_color_profile
 from app.render.source_size import source_cap_px, source_ink_hex
 from app.render.text_fitting import _derived_mask
 from app.render.text_renderer import render_text_in_box
@@ -350,6 +351,15 @@ def _object_translation(req, obj):
     return style_get(req.translations, obj.get("id")) or obj.get("translation", "")
 
 
+def _default_color(obj: dict, profile: dict):
+    if has_raw_color_profile(profile) or has_manual_color_profile(profile):
+        return profile.get("fill")
+    lettering = obj.get("lettering_color")
+    if not _is_auto_style(lettering):
+        return lettering
+    return obj.get("ocr_text_color") or profile.get("fill")
+
+
 def _same_lettering_style(obj, other, style_maps):
     fields = ("style", "speaker", "enlarge")
     if ((obj.get("typography_role") or "dialogue") != (other.get("typography_role") or "dialogue")
@@ -360,10 +370,8 @@ def _same_lettering_style(obj, other, style_maps):
     a, b = [profile if isinstance(profile, dict) else {} for profile in profiles]
     if any(a.get(key) != b.get(key) for key in ("gradient", "stroke_color", "glow_color")):
         return False
-    ac = (parse_color(obj.get("lettering_color"), default=None)
-          or parse_color(obj.get("ocr_text_color") or a.get("fill"), default=None))
-    bc = (parse_color(other.get("lettering_color"), default=None)
-          or parse_color(other.get("ocr_text_color") or b.get("fill"), default=None))
+    ac = parse_color(_default_color(obj, a), default=None)
+    bc = parse_color(_default_color(other, b), default=None)
     if ac is None or bc is None or max(abs(x - y) for x, y in zip(ac, bc)) <= 24:
         return True
     return all(max(c) - min(c) <= 12 and max(c) <= 140 for c in (ac, bc))
@@ -922,21 +930,12 @@ def render_text_objects(
             requested_color if requested_color is not None else stored_color
         )
         raw_color_profile = obj.get("ocr_color_profile")
-        profile_fill_default = (
-            raw_color_profile.get("fill")
-            if isinstance(raw_color_profile, dict) and raw_color_profile.get("fill")
-            else None
-        )
+        saved_palette = has_raw_color_profile(raw_color_profile) or has_manual_color_profile(raw_color_profile)
         lettering_c = obj.get("lettering_color")
-        ocr_color_default = (
-            lettering_c
-            if lettering_c and str(lettering_c).lower() != "auto"
-            else (obj.get("ocr_text_color") or profile_fill_default or lettering_c)
-        )
         box_color = _resolve_ocr_style(
             requested_color,
             stored_color,
-            ocr_color_default,
+            _default_color(obj, raw_color_profile if isinstance(raw_color_profile, dict) else {}),
             "auto",
         )
         active_color_profile = (
@@ -1039,7 +1038,7 @@ def render_text_objects(
             anchor = tuple(int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
             if _boxes_overlap(anchor, coords_raw):
                 style["source_letter_box"] = anchor
-        if (user_color_auto and _is_auto_style(lettering_c) and auto_text
+        if (user_color_auto and not saved_palette and _is_auto_style(lettering_c) and auto_text
                 and _uses_auto_geometry(original) and source_image_loader is not None
                 and not (active_color_profile or {}).get("gradient")):
             colour = parse_color(box_color, default=None)
@@ -1148,7 +1147,8 @@ def render_text_objects(
                               and not style["enlarge"]
                               and "letters_box" in style and source_image_loader is not None
                               and str(obj.get("font_selection_mode") or "").lower() not in ("user", "legacy")
-                              and user_color_auto and _is_auto_style(stroke_w) and _is_auto_style(stroke_c)
+                              and user_color_auto and not has_manual_color_profile(active_color_profile)
+                              and _is_auto_style(stroke_w) and _is_auto_style(stroke_c)
                               and str(bg_c or "").lower() in ("", "none", "transparent"))
         attempts = [coords] if authorized is not None or has_outline or moved_by_user else fit_attempts(obj, coords)
         render_text = translation.strip()

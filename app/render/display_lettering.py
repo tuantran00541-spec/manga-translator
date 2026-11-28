@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 
 from app.render.font_metrics import font_draws_text, get_font_object, get_font_path
 from app.render.lettering_plane import LetteringPlane, reconstruct_lettering_plane
+from app.ocr.visual_metadata import has_raw_color_profile
 from app.render.text_renderer import _parse_color_profile
 
 
@@ -195,15 +196,17 @@ def render_source_sfx(raw: Image.Image, clean: Image.Image, letters: np.ndarray,
     cleared = cv2.absdiff(original, background).max(axis=2) >= 30
     if np.mean(cleared[frame.ink]) < .85:
         return None
-    colors = original[frame.ink & cleared]
-    if fill is not None:
-        matching = cv2.absdiff(colors.reshape(-1, 1, 3), tuple(float(c) for c in fill) + (0.0,)).max(axis=2).ravel() <= 48
-        if np.mean(matching) >= .35:
-            colors = colors[matching]
-    low, middle, high = np.percentile(colors, (15, 50, 85), axis=0)
-    if np.max(high - low) > 96:
-        return None
-    fill = tuple(int(round(c)) for c in middle)
+    measured = has_raw_color_profile(color_profile)
+    if not measured or fill is None:
+        colors = original[frame.ink & cleared]
+        if fill is not None:
+            matching = cv2.absdiff(colors.reshape(-1, 1, 3), tuple(float(c) for c in fill) + (0.0,)).max(axis=2).ravel() <= 48
+            if np.mean(matching) >= .35:
+                colors = colors[matching]
+        low, middle, high = np.percentile(colors, (15, 50, 85), axis=0)
+        if np.max(high - low) > 96:
+            return None
+        fill = tuple(int(round(c)) for c in middle)
     fw, fh = frame.size
     halo = min(12, max(3, round(.05 * fh)))
     near = cv2.dilate(frame.ink.astype(np.uint8), cv2.getStructuringElement(
@@ -219,6 +222,8 @@ def render_source_sfx(raw: Image.Image, clean: Image.Image, letters: np.ndarray,
         return None
     surface = reconstruct_lettering_plane(frame.quad, (w, h), (fw, fh)) if frame.tapered else None
     radius = _stroke_radius(original, cleared, frame.ink, outline)
+    if measured and outline is not None and not radius:
+        return None
     contrast = None if radius else cv2.absdiff(background, (*map(float, fill), 0.0)).max(axis=2)
     for plane in (surface, None) if surface is not None else (None,):
         layers = _project_glyphs(path, text, bold, frame, plane, (w, h), radius)

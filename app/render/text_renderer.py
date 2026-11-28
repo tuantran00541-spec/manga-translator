@@ -95,17 +95,18 @@ def _gradient_rgb_array(
     width: int,
     direction: str,
     stops_rgb: list[tuple[int, int, int]],
+    extent: tuple[float, float] = (0.0, 1.0),
 ) -> np.ndarray:
     h = max(1, int(height))
     w = max(1, int(width))
     xp = np.linspace(0.0, 1.0, len(stops_rgb))
     stops_arr = np.asarray(stops_rgb, dtype=np.float32)
     if direction == "horizontal":
-        t = np.linspace(0.0, 1.0, w)
+        t = np.linspace(*extent, w)
         ramp = np.stack([np.interp(t, xp, stops_arr[:, ch]) for ch in range(3)], axis=1)
         rgb = np.broadcast_to(ramp[None, :, :], (h, w, 3))
     else:
-        t = np.linspace(0.0, 1.0, h)
+        t = np.linspace(*extent, h)
         ramp = np.stack([np.interp(t, xp, stops_arr[:, ch]) for ch in range(3)], axis=1)
         rgb = np.broadcast_to(ramp[:, None, :], (h, w, 3))
     return np.clip(np.rint(rgb), 0, 255).astype(np.uint8)
@@ -161,6 +162,7 @@ def _draw_gradient_line(
     is_bold: bool,
     direction: str,
     stops_rgb: list[tuple[int, int, int]],
+    gradient_box: tuple[int, int, int, int] | None = None,
 ) -> None:
     gx0, gy0, gx1, gy1 = draw.textbbox((start_x, cur_y), line, font=font)
     bold = 1 if is_bold else 0
@@ -179,7 +181,17 @@ def _draw_gradient_line(
     ny0, ny1 = int(ys.min()), int(ys.max()) + 1
     nx0, nx1 = int(xs.min()), int(xs.max()) + 1
     sub_alpha = alpha[ny0:ny1, nx0:nx1]
-    grad_rgb = _gradient_rgb_array(ny1 - ny0, nx1 - nx0, direction, stops_rgb)
+    extent = (0.0, 1.0)
+    if gradient_box is not None:
+        if direction == "horizontal":
+            start, end = lx0 + nx0, lx0 + nx1
+            lo, hi = gradient_box[0], gradient_box[2]
+        else:
+            start, end = ly0 + ny0, ly0 + ny1
+            lo, hi = gradient_box[1], gradient_box[3]
+        length = max(1, hi - lo - 1)
+        extent = ((start - lo) / length, (end - 1 - lo) / length)
+    grad_rgb = _gradient_rgb_array(ny1 - ny0, nx1 - nx0, direction, stops_rgb, extent)
     rgba = np.dstack([grad_rgb, sub_alpha])
     _composite_rgba(image, Image.fromarray(rgba, mode="RGBA"), lx0 + nx0, ly0 + ny0)
 
@@ -410,6 +422,13 @@ def render_text_in_box(
         profile_glow_rgb,
         profile_glow_radius,
     ) = _parse_color_profile(color_profile)
+    from app.ocr.visual_metadata import has_manual_color_profile, has_raw_color_profile
+
+    measured_palette = has_raw_color_profile(color_profile)
+    saved_palette = (
+        (measured_palette or has_manual_color_profile(color_profile))
+        and (fill in (None, "auto", "") or parse_color(fill, default=None) == profile_fill)
+    )
 
     if fill is None or fill == "auto" or fill == "":
         if profile_fill is not None:
@@ -441,7 +460,9 @@ def render_text_in_box(
             stroke_w = RENDER_AUTO_STROKE_WIDTH
             stroke_w_auto = True
 
-    if stroke_w_auto:
+    if stroke_w_auto and saved_palette and stroke_color in (None, "auto", ""):
+        stroke_w = max(stroke_w, 2) if profile_stroke_rgb is not None else 0
+    elif stroke_w_auto:
         if bg_color and bg_color not in ("transparent", "none", ""):
             bg_ref = parse_color(bg_color, default=(255, 255, 255))
         else:
@@ -465,7 +486,7 @@ def render_text_in_box(
         stroke_auto = False
         stroke_c = parse_color(stroke_color, default=(0, 0, 0))
 
-    art_auto_ink = (str(container or "").lower() == "free" and adapt_contrast is True
+    art_auto_ink = (not saved_palette and str(container or "").lower() == "free" and adapt_contrast is True
                     and stroke_w_auto and stroke_auto
                     and str(bg_color or "").lower() in ("", "none", "transparent"))
     if art_auto_ink:
@@ -778,7 +799,7 @@ def render_text_in_box(
                            for gx0, gy0, gx1, gy1 in glyph_boxes]
             ink_box = (ix1 + nudge_x, iy1 + nudge_y, ix2 + nudge_x, iy2 + nudge_y)
 
-    if adapt_contrast is True or (adapt_contrast is None and explicit_fill):
+    if not saved_palette and (adapt_contrast is True or (adapt_contrast is None and explicit_fill)):
         if art_auto_ink:
             backgrounds = _background_luminances(image, glyph_boxes, glyph_layouts, font, stroke_w)
         else:
@@ -834,6 +855,10 @@ def render_text_in_box(
         )
 
     use_gradient = bool(profile_grad_dir and profile_grad_stops and len(profile_grad_stops) >= 2)
+    gradient_box = None
+    if measured_palette and use_gradient and glyph_boxes:
+        gradient_box = (min(g[0] for g in glyph_boxes) + stroke_w, min(g[1] for g in glyph_boxes) + stroke_w,
+                        max(g[2] for g in glyph_boxes) - stroke_w, max(g[3] for g in glyph_boxes) - stroke_w)
     for start_x, cur_y, line in line_layouts:
         if use_gradient:
             if stroke_w > 0:
@@ -857,6 +882,7 @@ def render_text_in_box(
                 is_bold,
                 profile_grad_dir,
                 profile_grad_stops,
+                gradient_box,
             )
         else:
             for dx, dy in offsets:
