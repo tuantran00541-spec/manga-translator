@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import re
 import time
+import tempfile
+import stat
 import unicodedata
 
 import requests
@@ -107,7 +109,7 @@ def _replace(text: str, old: str, new: str, replace_all: bool, where: str = "") 
         raise ToolError(f"{where}old_text matches {count} places; add more surrounding lines or set replace_all")
     lines = text.splitlines(keepends=True)
     want = old.strip("\r\n").splitlines()
-    for level in (1, 2):
+    for level in (1,):
         wanted = [_loose(line, level) for line in want]
         have = [_loose(line, level) for line in lines]
         hits = [i for i in range(len(lines) - len(wanted) + 1) if wanted and have[i:i + len(wanted)] == wanted]
@@ -120,6 +122,22 @@ def _replace(text: str, old: str, new: str, replace_all: bool, where: str = "") 
         if len(hits) > 1:
             raise ToolError(f"{where}old_text matches {len(hits)} places once spacing is ignored; add more surrounding lines")
     raise ToolError(f"{where}old_text was not found; read the file again and copy it exactly" + _closest(lines, want))
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+    fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(text.encode("utf-8"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        if mode is not None:
+            tmp.chmod(mode)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _closest(lines: list[str], want: list[str]) -> str:
@@ -513,7 +531,7 @@ class Workspace:
             raise ToolError(f"{path!r} is a folder")
         self._fresh(target, path, overwrite=True)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(str(content), encoding="utf-8")
+        _atomic_write_text(target, str(content))
         return f"Wrote {self.rel(target)} ({len(str(content).splitlines())} lines)"
 
     def _tool_edit_file(self, path: str, old_text: str | None = None, new_text: str | None = None, replace_all: bool = False,
@@ -530,14 +548,14 @@ class Workspace:
             edits = [{"old_text": old_text, "new_text": new_text}]
         if not isinstance(edits, list) or not edits:
             raise ToolError("edits must be a non-empty list of {old_text, new_text}")
-        text, changes = target.read_text(encoding="utf-8"), 0
+        text, changes = target.read_bytes().decode("utf-8"), 0
         for number, edit in enumerate(edits, 1):
             where = f"edit {number}: " if len(edits) > 1 else ""
             if not isinstance(edit, dict) or "old_text" not in edit or "new_text" not in edit:
                 raise ToolError(f"{where}each edit needs old_text and new_text")
             text, count = _replace(text, str(edit["old_text"]), str(edit["new_text"]), bool(replace_all), where)
             changes += count
-        target.write_text(text, encoding="utf-8")
+        _atomic_write_text(target, text)
         return f"Edited {self.rel(target)} ({changes} change{'s' if changes != 1 else ''})"
 
     def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False, background: bool = False, tty: bool = False) -> str:

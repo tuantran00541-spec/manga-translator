@@ -674,3 +674,16 @@ def test_overlapping_regions_with_separate_letters_both_stay():
     assert drop_overlapping_letters(manifest) == []
     texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
     assert texts == {"shaanxi": "Thiểm Tây", "anhui": "An Huy"}
+
+
+def test_overlapping_bubble_masks_use_source_coordinates_across_slices():
+    manifest = _chapter()
+    top = manifest["pages"][0]["text_objects"][0]
+    bottom = manifest["pages"][1]["text_objects"][0]
+    top["bubble_mask"] = {"kind": "bubble", "bbox": [100, 1900, 500, 2200],
+                          "rows": [[[0, 400]]] * 32}
+    bottom["bubble_mask"] = {"kind": "bubble", "bbox": [100, 668, 500, 968],
+                             "rows": [[[0, 400]]] * 32}
+    assert seam_mirror_ids(manifest, 0) == {"a"}
+    bottom["bubble_mask"]["bbox"] = [800, 668, 1200, 968]
+    assert seam_mirror_ids(manifest, 0) == set()

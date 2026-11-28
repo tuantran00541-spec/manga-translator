@@ -14,7 +14,7 @@ from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ
 from app.security import validate_url
 from app.translation.cost import usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
-from app.visual_qc.gemini import _encode_for_gemini
+from app.visual_qc.gemini import encode_image_strips
 from app.visual_qc.gemini_interactions import (
     GEMINI_INTERACTIONS_URL,
     extract_output_text as gemini_output_text,
@@ -155,7 +155,9 @@ def request_vision_json(
             for chunk in chunks
         ])
     try:
-        encoded = [(label, _encode_for_gemini(image)) for label, image in images]
+        encoded = [part for label, image in images for part in encode_image_strips(image, label)]
+        if len(encoded) > len(images):
+            prompt += "\nSome images are overlapping vertical strips. All coordinates refer to the full original image."
         if provider.protocol == "gemini":
             return _gemini(model, key, prompt, encoded, schema=schema, max_tokens=max_tokens)
         return _openai(

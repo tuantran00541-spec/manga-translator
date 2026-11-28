@@ -20,6 +20,7 @@ from app.parameters import (
     SLICE_FALLBACK_TOLERANCE_RATIO,
     SLICE_MAX_HEIGHT,
     SLICE_MIN_HEIGHT,
+    SLICE_OVERLAP_CONTEXT,
     SLICE_SAFE_CUT_BAND as SAFE_CUT_BAND,
     SLICE_SEARCH_WINDOW,
     SLICE_TARGET_HEIGHT,
@@ -71,6 +72,7 @@ def slice_image(
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     occupied = _get_content_row_mask(gray, h, w, color=image)
     cut_rows = _find_cut_rows(gray, h, w, unsafe_rows=occupied)
+    safe_cuts = set(map(int, _safe_cut_rows(occupied)))
     del gray, occupied
 
     boundaries = [0] + cut_rows + [h]
@@ -80,7 +82,11 @@ def slice_image(
         core_start, core_end = int(boundaries[i]), int(boundaries[i + 1])
         if core_end <= core_start:
             continue
-        segment = image[core_start:core_end, :]
+        unsafe_before = core_start > 0 and core_start not in safe_cuts
+        unsafe_after = core_end < h and core_end not in safe_cuts
+        source_start = max(0, core_start - SLICE_OVERLAP_CONTEXT) if unsafe_before else core_start
+        source_end = min(h, core_end + SLICE_OVERLAP_CONTEXT) if unsafe_after else core_end
+        segment = image[source_start:source_end, :]
         out_path = out_dir / f"{prefix}_{i:02d}{ext}"
         write_image(out_path, segment)
         paths.append(out_path)
@@ -88,15 +94,15 @@ def slice_image(
             {
                 "path": out_path,
                 "width": w,
-                "height": core_end - core_start,
-                "source_y1": core_start,
-                "source_y2": core_end,
-                "core_y1": 0,
-                "core_y2": core_end - core_start,
+                "height": source_end - source_start,
+                "source_y1": source_start,
+                "source_y2": source_end,
+                "core_y1": core_start - source_start,
+                "core_y2": core_end - source_start,
                 "core_source_y1": core_start,
                 "core_source_y2": core_end,
-                "unsafe_before": False,
-                "unsafe_after": False,
+                "unsafe_before": unsafe_before,
+                "unsafe_after": unsafe_after,
                 "source_height": h,
             }
         )
@@ -112,8 +118,6 @@ def _find_cut_rows(
     if unsafe_rows is None:
         unsafe_rows = _get_content_row_mask(gray, h, w)
     safe_rows = _safe_cut_rows(unsafe_rows)
-    if not safe_rows.size:
-        return []
     scores = _get_row_scores(gray)
 
     cuts: list[int] = []
@@ -142,6 +146,9 @@ def _find_cut_rows(
             cut = _find_safe_cut(
                 safe_rows, scores, allowed_hi + 1, h - min_height, target
             )
+
+        if (cut is None or cut - y > SLICE_MAX_HEIGHT + SLICE_OVERLAP_CONTEXT * 2) and remaining > SLICE_MAX_HEIGHT + SLICE_OVERLAP_CONTEXT * 2:
+            cut = _find_low_content_cut(scores, lo, hi, target, unsafe_rows=unsafe_rows)
 
         if cut is None or cut <= y:
             break

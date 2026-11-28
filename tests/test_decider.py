@@ -160,3 +160,24 @@ def test_cloud_polish_uses_gateway_judge_or_selected_model(monkeypatch, native_s
     result = polish.judge(provider, "job-token", "passage", {"clear": polish.QUESTIONS["clear"]}, "cloud-model")
     assert result == (native_scores or {"clear": 2})
     assert calls == ([] if native_scores else [("manga-cloud", "cloud-model", "job-token")])
+
+
+def test_art_screen_stops_calls_after_unknown_cost(monkeypatch):
+    from app.detector.boxes import BubbleBox
+
+    calls = []
+    remaining = [0.01]
+
+    def vision(*args, **kwargs):
+        calls.append(True)
+        return SimpleNamespace(data={'kind': 'text'}, estimated_cost_usd=None)
+
+    monkeypatch.setattr(decider, 'request_vision_json', vision)
+    boxes = [BubbleBox(10, 10, 30, 30, 0.9, None), BubbleBox(40, 10, 60, 30, 0.9, None)]
+    def cost(value):
+        remaining[0] = 0 if value is None else remaining[0] - value
+
+    screen = decider.screen_for(PROVIDERS['openai'], 'k', 'm', cost, can_call=lambda: remaining[0] >= 0.001)
+    assert screen(np.zeros((50, 80, 3), np.uint8), boxes) == set()
+    assert len(calls) == 1
+    assert boxes[1].needs_review and not boxes[1].ocr_eligible

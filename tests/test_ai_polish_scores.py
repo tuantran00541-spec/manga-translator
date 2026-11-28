@@ -16,3 +16,13 @@ def test_settled_english_line_needs_a_first_person_pronoun():
     memory = {"address": [{"from": "A", "to": "B", "self": "ta", "other": "ngÆ°Æ¡i"}], "glossary": {}}
     address, _terms = settled(line, memory)
     assert address == ['self "ta"']
+
+
+def test_settled_multiple_listeners_uses_named_addressee():
+    line = Line(page_index=0, id='1', source='Nephis, are you ready?', text='...', speaker='Sunny')
+    memory = {'address': [
+        {'from': 'Sunny', 'to': 'Nephis', 'self': 'tôi', 'other': 'cô'},
+        {'from': 'Sunny', 'to': 'Kai', 'self': 'tôi', 'other': 'cậu'},
+    ]}
+    address, _ = settled(line, memory)
+    assert address == ['to Nephis: "cô"']

@@ -210,7 +210,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
             if clean_image is None:
                 clean_image = read_image(Path(clean_path_posix))
             lama_candidate = self._exact_manual_repaint_candidate(
-                image,
+                clean_image,
                 lama_mask,
                 force_lama=True,
             )

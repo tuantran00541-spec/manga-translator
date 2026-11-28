@@ -173,8 +173,8 @@ def docker_ready() -> bool:
 
 
 def backend() -> str:
-    if settings()["engine"] == "docker" and docker_ready():
-        return "docker"
+    if settings()["engine"] == "docker":
+        return "docker" if docker_ready() else "unavailable"
     return _os_backend()
 
 
@@ -244,6 +244,8 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
     kind = backend()
     if policy.mode == "full-access" or kind == "none":
         return ([BASH, "-c", command], False) if BASH else (command, True)
+    if kind == "unavailable":
+        raise RuntimeError("Docker sandbox is configured but unavailable")
     if kind == "docker":
         image = settings()["image"]
         root_real = os.path.realpath(root)
@@ -257,14 +259,17 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
             *_docker_mount_args(scratch, "/tmp", readonly=False),
             "-w", "/workspace", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp",
         ]
-        if os.name == "posix" and os.path.exists("/dev/null"):
-            root_path = Path(root_real)
-            for secret in workspace_secrets(root_path):
+        root_path = Path(root_real)
+        secrets = workspace_secrets(root_path)
+        if secrets:
+            placeholder = Path(scratch) / ".agent-hidden-secret"
+            placeholder.touch(mode=0o600, exist_ok=True)
+            for secret in secrets:
                 try:
                     rel = Path(secret).relative_to(root_path).as_posix()
                 except ValueError:
                     continue
-                args += _docker_mount_args("/dev/null", f"/workspace/{rel}", readonly=True)
+                args += _docker_mount_args(str(placeholder), f"/workspace/{rel}", readonly=True)
         if not policy.network:
             args += ["--network", "none"]
         if hasattr(os, "getuid"):

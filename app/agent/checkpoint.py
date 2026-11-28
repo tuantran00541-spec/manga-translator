@@ -63,7 +63,7 @@ class Checkpoints:
                     return
                 if st.st_size <= MAX_FILE_BYTES:
                     data = _read(path, max_bytes=MAX_FILE_BYTES)
-                    if data is None or data is _TOO_LARGE:
+                    if data is None or data is _TOO_LARGE or data is _READ_FAILED:
                         self.skipped[-1].add(key)
                     else:
                         self.turns[-1][key] = data
@@ -116,18 +116,22 @@ class Checkpoints:
         if not self.turns:
             self.begin()
         files = {}
+        unreadable = set()
         for key in self.turns[-1]:
             p = Path(key)
             if _is_link(p):
+                unreadable.add(key)
                 continue
             data = _read(p, max_bytes=MAX_FILE_BYTES)
-            if data is _TOO_LARGE:
+            if data is _TOO_LARGE or data is _READ_FAILED:
+                unreadable.add(key)
                 continue
             files[key] = None if data is None else self._blob(data)
         self.marks.pop(name, None)
         self.marks[name] = {
             "turn": self.first + len(self.turns) - 1,
             "files": files,
+            "unreadable": unreadable,
             "note": note,
             "auto": auto,
             "ran": self.ran_total,
@@ -144,6 +148,8 @@ class Checkpoints:
         state: dict[str, bytes | None] = {}
         for turn in self.turns[mark["turn"] - self.first :]:
             for key, data in turn.items():
+                if key in mark.get("unreadable", ()):
+                    continue
                 if key not in state:
                     held = mark["files"][key] if key in mark["files"] else data
                     state[key] = self.blobs[held] if isinstance(held, str) else held
@@ -157,7 +163,9 @@ class Checkpoints:
                 continue
             path = Path(name)
             existing = _read(path, max_bytes=MAX_FILE_BYTES)
-            if not _is_link(path) and existing is not _TOO_LARGE and existing == data:
+            if existing is _READ_FAILED or existing is _TOO_LARGE or _is_link(path):
+                continue
+            if existing == data:
                 continue
             self.save(path)
             if _write(path, data):
@@ -179,15 +187,16 @@ class Checkpoints:
 
 
 _TOO_LARGE = object()
+_READ_FAILED = object()
 
 
 def _read(path: Path, *, max_bytes: int | None = None):
     try:
-        if _is_link(path) or not path.is_file():
-            return None
+        if _is_link(path):
+            return _READ_FAILED
         st = path.lstat()
         if not stat.S_ISREG(st.st_mode):
-            return None
+            return _READ_FAILED
         if max_bytes is not None and st.st_size > max_bytes:
             return _TOO_LARGE
         with path.open("rb") as handle:
@@ -195,8 +204,10 @@ def _read(path: Path, *, max_bytes: int | None = None):
                 return handle.read()
             data = handle.read(max_bytes + 1)
             return _TOO_LARGE if len(data) > max_bytes else data
-    except OSError:
+    except FileNotFoundError:
         return None
+    except OSError:
+        return _READ_FAILED
 
 
 def _write(path: Path, data: bytes | None) -> bool:

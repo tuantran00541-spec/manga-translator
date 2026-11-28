@@ -647,6 +647,7 @@ class Inpainter:
         model: str | None = None,
         quality: str | None = None,
         pack_atlas: bool = True,
+        max_calls: int | None = None,
     ) -> np.ndarray:
         """Redraw user-brushed mask components via the configured AI image-edit API."""
         self._begin_metrics()
@@ -723,6 +724,7 @@ class Inpainter:
             model=model,
             quality=quality,
             pack_atlas=pack_atlas,
+            max_calls=max_calls,
         )
         for entry, ai_crop in zip(entries, api_outputs):
             if ai_crop is None:

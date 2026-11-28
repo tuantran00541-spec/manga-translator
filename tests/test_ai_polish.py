@@ -48,7 +48,7 @@ def test_the_stage_keeps_a_rewrite_only_when_the_judge_grades_it_better(monkeypa
               "Tôi đi ngay bây giờ.": {"natural": 1.2, "clear": 2.0, "faithful": 2.0},
               "Cút khỏi đây ngay!": {"natural": 2.8, "clear": 2.0, "faithful": 2.0},
               "Tôi đi luôn đây.": {"natural": 0.5, "clear": 1.0, "faithful": 1.0}}
-    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked, model, cost: graded[state.split("\n")[1].split(": ", 1)[1]])
+    monkeypatch.setattr(polish, "judge_batch", lambda provider, key, items, model, cost: [graded[state.split("\n")[1].split(": ", 1)[1]] for state, asked in items])
     monkeypatch.setattr(polish, "rewrite", lambda *a: ({"a": "Cút khỏi đây ngay!", "b": "Tôi đi luôn đây."}, None))
     job = AIModeJob("j", AIModeSettings(url="u", provider="openai", model="m", polish=True))
     job.stages = {"polish": {}}
@@ -133,7 +133,7 @@ def test_the_stage_drops_a_judge_approved_rewrite_the_script_gate_trips(monkeypa
     manifest = {"pages": pages}
     graded = {"Ngươi hãy ra khỏi nơi này lập tức!": {"natural": 1.0, "clear": 2.0, "faithful": 2.0},
               "SENIOR BROTHER!": {"natural": 2.8, "clear": 2.0, "faithful": 2.0}}
-    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked, model, cost: graded[state.split("\n")[1].split(": ", 1)[1]])
+    monkeypatch.setattr(polish, "judge_batch", lambda provider, key, items, model, cost: [graded[state.split("\n")[1].split(": ", 1)[1]] for state, asked in items])
     monkeypatch.setattr(polish, "rewrite", lambda *a: ({"a": "SENIOR BROTHER!"}, None))
     runner = _manifest_runner(monkeypatch, manifest)
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
@@ -199,3 +199,45 @@ def test_the_judge_and_the_rewrite_follow_the_target_language():
     asked = polish.questions(line, {}, "Spanish")
     assert "as Spanish" in asked["natural"]["instructions"] and "Vietnamese" not in json.dumps(asked)
     assert polish.questions(line, {}) == polish.QUESTIONS, "Vietnamese keeps the calibrated wording"
+
+
+def test_batch_judge_rejects_invalid_scores_without_applying_them_to_other_lines(monkeypatch):
+    requests = []
+
+    def request(*args, **kwargs):
+        requests.append(kwargs)
+        return VisionJSONResult({'results': [
+            {'id': 1, 'scores': {'clear': 99}},
+            {'id': 0, 'scores': {'clear': 2}},
+        ]}, {}, 0.001)
+
+    monkeypatch.setattr(polish, 'request_vision_json', request)
+    charged = []
+    items = [('one', {'clear': polish.QUESTIONS['clear']}), ('two', {'clear': polish.QUESTIONS['clear']})]
+    result = polish.judge_batch(PROVIDERS['openai'], 'k', items, 'm', charged.append)
+    assert result == [{'clear': 2.0}, None]
+    assert charged == [0.001] and len(requests) == 1
+
+
+def test_polish_waits_for_cost_before_starting_next_batch(monkeypatch):
+    from dataclasses import replace
+
+    pages = [{'text_objects': [_obj(str(i), 'Tôi sẽ đi ngay bây giờ.') for i in range(17)]}]
+    for provider_id, expected_size in [('openai', 8), ('manga-cloud', 1)]:
+        provider = replace(PROVIDERS['openai'], id=provider_id, tracks_cost=True)
+        job = AIModeJob('j', AIModeSettings(url='u', provider='openai', model='m', polish=True, budget_usd=0.01))
+        job.stages, job.stage = {'polish': {}}, 'polish'
+        runner = AIModeRunner(job, provider, 'k')
+        monkeypatch.setattr(runner, '_manifest', lambda: {'pages': pages})
+        monkeypatch.setattr(runner, '_active_pages', lambda: [0])
+        calls = []
+
+        def judge_batch(_provider, _key, items, _model, add_cost):
+            calls.append(len(items))
+            add_cost(None)
+            return [{'natural': 3.0, 'clear': 2.0, 'faithful': 2.0} for _ in items]
+
+        monkeypatch.setattr(polish, 'judge_batch', judge_batch)
+        asyncio.run(runner.polish())
+        assert calls == [expected_size]
+        assert runner._remaining_budget() == 0.0

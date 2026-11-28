@@ -66,6 +66,9 @@ def _source_frame(letters: np.ndarray) -> _SourceFrame | None:
     if np.count_nonzero(ink) < .70 * np.count_nonzero(letters):
         return None
     basis = np.array([[1., _stem_slope(ink, height)], [slope, 1.]])
+    basis /= np.linalg.norm(basis, axis=0)
+    if abs(np.linalg.det(basis)) < 0.1:
+        return None
     inverse = np.linalg.inv(basis)
     py, px = np.nonzero(ink)
     points = np.column_stack((px, py)) @ inverse.T
@@ -151,7 +154,14 @@ def _stroke_radius(raw, cleared, ink, color) -> int:
 
 def _project_glyphs(path, text, bold, frame, plane: LetteringPlane | None, image_size, radius):
     fw, fh = plane.size if plane is not None else frame.size
-    brush = max(1, round(radius / plane.pixels_per_texel())) if radius and plane is not None else 0
+    if min(fw, fh) < 2:
+        return None
+    brush = 0
+    if radius and plane is not None:
+        scale = plane.pixels_per_texel()
+        if not np.isfinite(scale) or scale < 1e-6:
+            return None
+        brush = max(1, round(radius / scale))
     raster = _text_alpha(path, text, max(48, round(fh * 1.4)), bold)
     if not raster.getbbox():
         return None

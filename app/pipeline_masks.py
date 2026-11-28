@@ -282,12 +282,16 @@ class PipelineMasksMixin:
                 base_clean = original.copy()
 
             restore_path = self._restore_mask_path(processed_dir, img_path)
+            manual_paths = [
+                self._manual_mask_path(processed_dir, img_path),
+                self._manual_mask_path(processed_dir, img_path, force_lama=True),
+            ]
             with self._page_artifact_transaction(
                 processed_dir,
                 img_path,
                 page_index,
                 target_clean_revision,
-                [restore_path],
+                [restore_path, *manual_paths],
             ) as artifact_tx:
                 auto_clean_path = self._auto_clean_path(processed_dir, img_path)
                 if not auto_clean_path.exists():
@@ -311,6 +315,7 @@ class PipelineMasksMixin:
                     model=model,
                     quality=quality,
                     pack_atlas=bool(settings.get("pack_atlas", True)),
+                    max_calls=max(1, min(20, int(settings.get("max_api_calls_per_chapter", 3)))),
                 )
                 for region in preserve_regions or []:
                     if not isinstance(region, dict):
@@ -324,6 +329,29 @@ class PipelineMasksMixin:
                     ry1, ry2 = max(0, ry1), min(img_h, ry2)
                     if rx2 > rx1 and ry2 > ry1:
                         updated_clean[ry1:ry2, rx1:rx2] = original[ry1:ry2, rx1:rx2]
+
+                changed_pixels = np.any(updated_clean != base_clean, axis=2)
+                ai_path, ai_mask_path = self._ai_repaint_paths(processed_dir, img_path)
+                previous_mask = self._read_manual_mask(ai_mask_path, (img_h, img_w))
+                if previous_mask is not None and ai_path.exists():
+                    ai_image = _ed("read_image", read_image)(ai_path)
+                    if ai_image.shape != updated_clean.shape:
+                        raise ValueError("Saved AI repaint dimensions do not match the page")
+                else:
+                    ai_image = base_clean.copy()
+                    previous_mask = np.zeros((img_h, img_w), np.uint8)
+                ai_image[changed_pixels] = updated_clean[changed_pixels]
+                previous_mask[changed_pixels] = 255
+                _ed("write_image", write_image)(ai_path, ai_image)
+                _ed("write_image", write_image)(ai_mask_path, previous_mask)
+                for manual_path in manual_paths:
+                    manual = self._read_manual_mask(manual_path, (img_h, img_w))
+                    if manual is not None:
+                        manual[changed_pixels] = 0
+                        if np.any(manual):
+                            _ed("write_image", write_image)(manual_path, manual)
+                        else:
+                            manual_path.unlink()
 
                 final_clean_path = processed_dir / f"clean_{img_path.name}"
                 tmp_clean_path = (
@@ -444,6 +472,9 @@ class PipelineMasksMixin:
                 target_clean_revision,
                 [manual_mask_path, manual_lama_mask_path, restore_path],
             ) as artifact_tx:
+                for mask_path in (manual_mask_path, manual_lama_mask_path, restore_path, *self._ai_repaint_paths(processed_dir, img_path)):
+                    if mask_path.exists():
+                        mask_path.unlink()
                 clean_path_posix = self._do_reinpaint(
                     processed_dir,
                     img_path,
@@ -455,15 +486,6 @@ class PipelineMasksMixin:
                     apply_manual_mask=False,
                     preserve_regions=preserve_regions,
                 )
-
-                for mask_path in (manual_mask_path, manual_lama_mask_path, restore_path):
-                    if mask_path.exists():
-                        try:
-                            mask_path.unlink()
-                        except OSError as exc:
-                            raise RuntimeError(
-                                f"Cannot remove manual mask: {exc}"
-                            ) from exc
 
                 with _ed("get_manifest_lock", get_manifest_lock)(chapter_id):
                     manifest = _ed("load_manifest_raw", load_manifest_raw)(chapter_id)
@@ -491,6 +513,18 @@ class PipelineMasksMixin:
     def _auto_clean_path(processed_dir: Path, img_path: Path) -> Path:
         return processed_dir / f"auto_clean_{img_path.name}"
 
+    @staticmethod
+    def _ai_repaint_paths(processed_dir: Path, img_path: Path) -> tuple[Path, Path]:
+        return processed_dir / f"ai_repaint_{img_path.name}", processed_dir / f"ai_repaint_mask_{img_path.name}"
+
+    def _apply_ai_repaint(self, image: np.ndarray, processed_dir: Path, img_path: Path) -> None:
+        ai_path, mask_path = self._ai_repaint_paths(processed_dir, img_path)
+        mask = self._read_manual_mask(mask_path, image.shape[:2])
+        if mask is not None and ai_path.is_file():
+            patch = _ed("read_image", read_image)(ai_path)
+            if patch.shape == image.shape:
+                image[mask > MANUAL_MASK_THRESHOLD] = patch[mask > MANUAL_MASK_THRESHOLD]
+
     def _page_artifact_transaction(
         self,
         processed_dir: Path,
@@ -502,6 +536,7 @@ class PipelineMasksMixin:
         paths = [
             processed_dir / f"clean_{img_path.name}",
             self._auto_clean_path(processed_dir, img_path),
+            *self._ai_repaint_paths(processed_dir, img_path),
         ]
         paths.extend(extra_paths or [])
         return _ed("PageArtifactTransaction", PageArtifactTransaction)(
@@ -664,6 +699,7 @@ class PipelineMasksMixin:
         else:
             clean_image = clean_image.copy()
 
+        self._apply_ai_repaint(clean_image, processed_dir, img_path)
         manual_mask_path = (
             Path(manual_mask_posix)
             if manual_mask_posix
@@ -688,6 +724,11 @@ class PipelineMasksMixin:
                     clean_image = self.inpainter.inpaint_mask(
                         clean_image, manual_mask, force_lama=force_lama
                     )
+
+        if apply_manual_mask:
+            if preserve_regions:
+                self._restore_preserve_pixels(clean_image, image, preserve_regions)
+            self._apply_restore_mask(clean_image, image, processed_dir, img_path)
 
         clean_path = processed_dir / f"clean_{img_path.name}"
         tmp_clean_path = (

@@ -38,3 +38,22 @@ def _encode_for_gemini(image: np.ndarray) -> str:
     if not ok:
         raise RuntimeError("Could not encode page for Gemini")
     return base64.b64encode(buf.tobytes()).decode("ascii")
+
+
+def encode_image_strips(image: np.ndarray, label: str) -> list[tuple[str, str]]:
+    """Encode overlapping vertical strips while retaining original page coordinates."""
+    height, width = image.shape[:2]
+    if height <= 2400:
+        return [(label, _encode_for_gemini(image))]
+    strip_height = max(512, min(2048, round(width * 2.0)))
+    overlap = min(384, strip_height // 4)
+    parts = []
+    top = 0
+    while top < height:
+        bottom = min(height, top + strip_height)
+        strip_label = f"{label} (original y={top}..{bottom}, original size {width}x{height})"
+        parts.append((strip_label, _encode_for_gemini(image[top:bottom])))
+        if bottom == height:
+            break
+        top = bottom - overlap
+    return parts

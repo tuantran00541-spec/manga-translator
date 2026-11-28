@@ -206,7 +206,7 @@ def _scan_stage(monkeypatch, scans, pages=8, provider=None):
     job = ai_job.AIModeJob(job_id="j", settings=replace(SETTINGS, images_per_request=4), chapter_id=CHAPTER,
                            stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
     if provider is None:
-        monkeypatch.setattr(ai_job.decider, "storyless_slices", lambda provider, key, indices, load, model, cost:
+        monkeypatch.setattr(ai_job.decider, "storyless_slices", lambda provider, key, indices, load, model, cost, **kwargs:
                             (list(indices), dict.fromkeys(indices, 0.0)))
     runner = AIModeRunner(job, provider or PROVIDERS["deepseek"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
@@ -283,7 +283,7 @@ def test_with_a_decider_only_agreement_skips_a_slice(monkeypatch):
     from app.ai_mode import decider
     from app.ai_providers import resolve_provider
 
-    monkeypatch.setattr(decider, "storyless_slices", lambda provider, key, indices, load, model, cost: (
+    monkeypatch.setattr(decider, "storyless_slices", lambda provider, key, indices, load, model, cost, **kwargs: (
         [3, 4, 7], {**{i: 0.9 for i in indices}, 3: 0.05, 4: 0.01, 6: None, 7: 0.0}))
     minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
     runner, skipped, _ = _scan_stage(monkeypatch, [
@@ -1081,3 +1081,15 @@ def test_unconfirmed_box_stays_covered_but_out_of_repaint(monkeypatch):
     runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [box]}]})
     assert runner._page_boxes(0) == [(0, 0, 5, 5)]
     assert runner._page_boxes(0, for_repaint=True) == []
+
+
+def test_scan_stops_after_unknown_cost_and_preserves_unjudged_pages(monkeypatch):
+    runner, _, _ = _scan_stage(monkeypatch, [])
+    runner.job.cost_usd = 0.0
+    calls = []
+    monkeypatch.setattr(ai_job, 'scan_slices', lambda provider, model, key, images: (
+        calls.append([index for index, _ in images]) or [], None, []))
+    asyncio.run(runner.scan())
+    assert len(calls) == 1
+    assert runner._remaining_budget() == 0
+    assert any(item['error'] == 'Scan budget exhausted' for item in runner.report['scan_errors'])

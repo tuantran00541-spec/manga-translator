@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 from app.agent import gitguard, isolate
 from app.agent.checkpoint import Checkpoints, MAX_FILE_BYTES
@@ -50,3 +51,32 @@ def test_undo_reports_large_file_not_saved(tmp_path):
     file.write_text('changed')
     assert cp.undo() == []
     assert cp.last_undo_skipped == [str(file)]
+
+
+def test_checkpoint_does_not_restore_or_record_unreadable_file(tmp_path, monkeypatch):
+    from app.agent import checkpoint
+
+    file = tmp_path / "locked.txt"
+    file.write_bytes(b"before")
+    history = checkpoint.Checkpoints()
+    history.begin()
+    history.save(file)
+    file.write_bytes(b"modified")
+    original_open = Path.open
+
+    def denied(path, *args, **kwargs):
+        if path == file:
+            raise PermissionError("locked")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", denied)
+    history.mark("locked")
+    assert history.at("locked") == {}
+    assert history.restore({str(file): None}) == []
+    with original_open(file, "rb") as handle:
+        assert handle.read() == b"modified"
+
+
+def test_isolate_rejects_windows_drive_relative_paths():
+    assert not isolate._is_safe_rel("C:secret.txt")
+    assert not isolate._is_safe_rel("C:\\secret.txt")

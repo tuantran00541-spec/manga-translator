@@ -378,7 +378,7 @@ class AgentToolsMixin:
             raise ToolError("The chain was not run, because its code calls tools that cannot work:\n" + "\n".join(problems[:10]))
         looks = tool.get("kind") == "read"
         policy = sandbox.Policy("read-only", False) if looks else sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else self.workspace.policy
-        state = self._outputs_dir() / "state"
+        state = self._outputs_dir() / "state" / f"{policy.mode}-{'net' if policy.network else 'offline'}"
         state.mkdir(parents=True, exist_ok=True)
         docker = sandbox.backend() == "docker" and policy.mode != "full-access"
         self._write_library(state)
@@ -402,13 +402,26 @@ class AgentToolsMixin:
         top = not self.plan_mode and not str(call.get("id", "")).startswith(("chain-", "script-", "mcp-", "plugin-"))
         if top:
             self._auto_mark(f"before-{tool['name']}")
-        if self._repl is None:
-            self._repl = repl.Kernel(state)
-        job = self._repl.start(run_id, target, policy, self.workspace.root, where, docker)
-        note = job.note if job is not None else "[ran in a fresh process because another tool call was still running, so memo started empty]\n"
-        if job is None:
-            job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
-            job.close_input()
+        if "_kernel_lock" not in self.__dict__:
+            self._kernel_lock = threading.Lock()
+        with self._kernel_lock:
+            restarted = False
+            busy = self._repl is not None and self._repl.current is not None and self._repl.current.code is None
+            if self._repl is not None and self._repl.state != state and not busy:
+                self._repl.close()
+                self._repl = None
+                restarted = True
+            if self._repl is None:
+                self._repl = repl.Kernel(state)
+            job = None if self._repl.state != state else self._repl.start(
+                run_id, target, policy, self.workspace.root, where, docker
+            )
+            note = job.note if job is not None else "[ran in a fresh process because another tool call was still running, so memo started empty]\n"
+            if restarted:
+                note = "[the tool process restarted, so memo was cleared]\n" + note
+            if job is None:
+                job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
+                job.close_input()
         server = threading.Thread(target=self._serve_chain, args=(rpc, job, None, looks), name=f"agent-chain-{self.id}", daemon=True)
         server.start()
         output = self._await_job(job, _ses("CREATED_TIMEOUT"), guard)
@@ -481,7 +494,7 @@ class AgentToolsMixin:
     def _command_job(self, command: str, policy: "sandbox.Policy", tty: bool = False) -> "sandbox.Job":
         if not self._bridged(policy):
             return sandbox.Job(command, policy, self.workspace.root, tty=tty)
-        state = self._outputs_dir() / "state"
+        state = self._outputs_dir() / "state" / f"{policy.mode}-{'net' if policy.network else 'offline'}"
         self._write_library(state)
         rpc = state / "rpc" / uuid.uuid4().hex[:12]
         rpc.mkdir(parents=True)
@@ -557,8 +570,10 @@ class AgentToolsMixin:
                     tool = self._root().created.get(str(args.get("name") or ""))
                     output, ok = (tool["code"], True) if tool else ("no such created tool", False)
                 elif name in ("_branch", "_adopt"):
-                    output, ok = (("a branch cannot branch or adopt; return what it found and choose at the top", False) if ws is not None
-                                  else self._branch(args) if name == "_branch" else self._adopt(args))
+                    if ws is not None:
+                        output, ok = "a branch cannot branch or adopt; return what it found and choose at the top", False
+                    else:
+                        output, ok = self._run_call({"id": f"{origin}{uuid.uuid4().hex[:8]}", "name": name[1:], "args": args})
                 elif ws is not None and name in BRANCH_LOCAL:
                     output, ok = self._run_branch_tool(ws, name, args)
                 elif name not in targets:
@@ -566,10 +581,13 @@ class AgentToolsMixin:
                 elif name == "skill":
                     found = self.skills.get(str(args.get("name") or ""))
                     output, ok = (skills.load(found), True) if found else (f"No skill named {args.get('name')!r}; known: {', '.join(self.skills)}", False)
-                elif name == "think":
-                    output, ok = self._think(str(args.get("question") or ""), str(args.get("answer") or ""), str(args.get("model") or "")), True
-                elif name == "vote":
-                    output, ok = self._vote(args), True
+                elif name in ("think", "vote"):
+                    output, ok = self._spend_chain(name)
+                    if ok:
+                        if name == "think":
+                            output = self._think(str(args.get("question") or ""), str(args.get("answer") or ""), str(args.get("model") or ""))
+                        else:
+                            output = self._vote(args)
                 elif name == "models":
                     output, ok = self._models(str(args.get("source") or ""), str(args.get("query") or "")), True
                 elif name == "agent":
@@ -619,12 +637,13 @@ class AgentToolsMixin:
 
     def _run_branch_tool(self, ws: Workspace, name: str, args: dict) -> tuple[str, bool]:
         call = {"id": f"chain-{uuid.uuid4().hex[:8]}", "name": name, "args": args}
-        lock = self.__dict__.setdefault("_branch_ws_lock", threading.Lock())
-        with lock:
-            real = self.workspace
-            call["args"] = self._on_copy(args, ws.root)
-            self.workspace = ws
-            try:
-                return self._run_call(call)
-            finally:
-                self.workspace = real
+        previous = getattr(self._workspace_local, "current", None)
+        call["args"] = self._on_copy(args, ws.root)
+        self._workspace_local.current = ws
+        try:
+            return self._run_call(call)
+        finally:
+            if previous is None:
+                del self._workspace_local.current
+            else:
+                self._workspace_local.current = previous

@@ -78,3 +78,25 @@ def test_slicer_preserves_a_source_with_no_safe_cut(tmp_path, edge_color):
     assert part["source_y1"] == 0 and part["source_y2"] == image.shape[0]
     assert not part["unsafe_before"] and not part["unsafe_after"]
     assert np.array_equal(cv2.imread(str(part["path"])), image)
+
+
+def test_very_tall_connected_page_has_overlapping_unsafe_seams(tmp_path):
+    height = SLICE_MAX_HEIGHT * 3
+    image = np.full((height, 120, 3), 255, dtype=np.uint8)
+    image[:, 65] = (0, 0, 0)
+    source = tmp_path / "long.png"
+    assert cv2.imwrite(str(source), image)
+
+    parts = slice_image(source, tmp_path, "long", return_metadata=True)
+
+    assert len(parts) > 1
+    assert parts[0]["unsafe_after"] and parts[1]["unsafe_before"]
+    for first, second in zip(parts, parts[1:]):
+        assert first["core_source_y2"] == second["core_source_y1"]
+        assert first["source_y2"] > second["source_y1"]
+        assert first["core_y2"] == first["core_source_y2"] - first["source_y1"]
+        assert second["core_y1"] == second["core_source_y1"] - second["source_y1"]
+        assert np.array_equal(
+            cv2.imread(str(first["path"]))[second["source_y1"] - first["source_y1"] :],
+            cv2.imread(str(second["path"]))[: first["source_y2"] - second["source_y1"]],
+        )

@@ -44,21 +44,31 @@ class AIModeSeamsMixin:
         append_fn = _j("_append")
         detail_fn = _j("_detail")
 
-        async def grade(line, text=None):
+        async def grade_batch(candidates):
             nonlocal unavailable
             async with gate:
-                if unavailable or self.job.cancel_requested:
-                    return None
+                remaining = self._remaining_budget()
+                if unavailable or self.job.cancel_requested or (remaining is not None and remaining < 0.001):
+                    return [None] * len(candidates)
                 try:
                     return await ai_call(
-                        polish.judge, self.provider, self.api_key,
-                        polish.line_state(line, text, memory, language),
-                        polish.questions(line, memory, language), self.settings.model, self._add_cost,
+                        polish.judge_batch, self.provider, self.api_key,
+                        [(polish.line_state(line, text, memory, language), polish.questions(line, memory, language))
+                         for line, text in candidates], self.settings.model, self._add_cost,
                     )
                 except (RuntimeError, ValueError, OSError, requests.RequestException) as exc:
                     append_fn(stats["errors"], detail_fn(exc)[:200])
                     unavailable = unavailable or " 404" in detail_fn(exc)
-                    return None
+                    return [None] * len(candidates)
+
+        async def grades(candidates):
+            from app.ai_providers import CLOUD_PROVIDER_ID
+
+            size = 1 if self.provider.id == CLOUD_PROVIDER_ID else polish.REWRITE_BATCH
+            result = []
+            for i in range(0, len(candidates), size):
+                result.extend(await grade_batch(candidates[i:i + size]))
+            return result
 
         self._progress(0, len(lines))
         pending = lines
@@ -66,7 +76,7 @@ class AIModeSeamsMixin:
         for _round in range(_j("POLISH_ROUNDS", 2)):
             if not pending or self.job.cancel_requested:
                 break
-            scores = await asyncio.gather(*(grade(line) for line in pending))
+            scores = await grades([(line, None) for line in pending])
             judged = [(line, found) for line, found in zip(pending, scores) if found]
             for line, found in judged:
                 line.scores = found
@@ -83,6 +93,9 @@ class AIModeSeamsMixin:
             batches = [flagged[i:i + polish.REWRITE_BATCH] for i in range(0, len(flagged), polish.REWRITE_BATCH)]
             kept, approved = [], []
             for batch in batches:
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    break
                 try:
                     texts, cost = await ai_call(
                         polish.rewrite, self.provider, self.settings.model, self.api_key,
@@ -93,7 +106,7 @@ class AIModeSeamsMixin:
                     continue
                 self._add_cost(cost if self.provider.tracks_cost else None)
                 candidates = [(line, texts[line.id]) for line in batch if texts.get(line.id, line.text) != line.text]
-                regraded = await asyncio.gather(*(grade(line, text) for line, text in candidates))
+                regraded = await grades(candidates)
                 for (line, text), found in zip(candidates, regraded):
                     if found and polish.better(found, line.scores):
                         approved.append((line, text, line.text, line.scores, found))
@@ -286,6 +299,8 @@ class AIModeSeamsMixin:
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
 
         remaining = self._remaining_budget()
+        if remaining is not None and remaining < 0.001:
+            raise HTTPException(409, "Translation budget exhausted")
         data = await translate_page_in_context(
             TranslateVisionPageRequest(
                 chapter_id=self.job.chapter_id, page_index=page_index,

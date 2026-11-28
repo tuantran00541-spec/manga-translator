@@ -109,7 +109,7 @@ class AgentCommandsMixin:
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{tool['name']}_server.py"
         spec = {"name": tool["name"], "description": tool.get("about") or tool["description"], "inputSchema": tool["parameters"]}
-        path.write_text(MCP_EXPORT.format(code=tool["code"], spec=json.dumps(spec, ensure_ascii=False), name=tool["name"]), encoding="utf-8")
+        path.write_text(MCP_EXPORT.format(code=tool["code"], spec=repr(spec), name=tool["name"]), encoding="utf-8")
         return (f"Đã xuất {path}. Thêm vào MCP của agent khác, ví dụ:\n"
                 + json.dumps({"mcpServers": {tool["name"]: {"command": "python3", "args": [str(path)]}}}, indent=1))
 

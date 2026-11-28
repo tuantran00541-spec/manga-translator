@@ -27,9 +27,20 @@ def remap_local_mask_page_space(
     if source_w <= 0 or source_h <= 0 or target_w <= 0 or target_h <= 0:
         return None
 
-    source_mask = mask
+    source_mask = np.asarray(mask)
+    if source_mask.dtype == bool:
+        source_mask = source_mask.astype(np.uint8) * 255
     if source_mask.ndim == 3:
-        source_mask = cv2.cvtColor(source_mask, cv2.COLOR_BGR2GRAY)
+        if source_mask.shape[2] == 1:
+            source_mask = source_mask[:, :, 0]
+        elif source_mask.shape[2] == 4:
+            source_mask = cv2.cvtColor(source_mask, cv2.COLOR_BGRA2GRAY)
+        elif source_mask.shape[2] == 3:
+            source_mask = cv2.cvtColor(source_mask, cv2.COLOR_BGR2GRAY)
+        else:
+            return None
+    if source_mask.ndim != 2:
+        return None
     if source_mask.shape[:2] != (source_h, source_w):
         source_mask = cv2.resize(
             source_mask, (source_w, source_h), interpolation=cv2.INTER_NEAREST
@@ -52,14 +63,16 @@ def reconcile_detector_geometry_override(new_box: dict, existing_box: dict) -> b
 
     source_geometry = geometry_dict(new_box)
     target_geometry = geometry_dict(existing_box)
-    new_box["_mask_array"] = remap_local_mask_page_space(
-        new_box.get("_mask_array"), source_geometry, target_geometry
-    )
+    for key in ("_mask_array", "_letters_array"):
+        if key in new_box:
+            mapped = remap_local_mask_page_space(new_box.get(key), source_geometry, target_geometry)
+            new_box[key] = mapped if mapped is not None and np.any(mapped) else None
+    if source_geometry != target_geometry:
+        new_box["bubble_mask"] = None
     new_box.update(target_geometry)
     new_box["geometry_overridden"] = True
 
     anchor = existing_box.get("detector_anchor")
     new_box["detector_anchor"] = copy.deepcopy(anchor if isinstance(anchor, dict) else source_geometry)
 
-    existing_box["geometry_overridden"] = False
     return True

@@ -233,8 +233,10 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
                 self.job.cost_usd += float(cost)
 
     def _remaining_budget(self) -> float | None:
-        if not self.provider.tracks_cost or self.job.cost_usd is None:
+        if not self.provider.tracks_cost:
             return None
+        if self.job.cost_usd is None:
+            return 0.0
         return max(0.0, self.settings.budget_usd - self.job.cost_usd)
 
     def _manifest(self) -> dict:
@@ -293,7 +295,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
                     "error": f"Malformed scan entry (slice {slice_value!r}): {bad.get('reason')}",
                 })
 
-        gate = asyncio.Semaphore(SCAN_CONCURRENCY)
+        gate = asyncio.Semaphore(1 if self.provider.tracks_cost else SCAN_CONCURRENCY)
         finished = 0
 
         last_scan_started = 0.0
@@ -314,6 +316,10 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
             async with gate:
                 if self.job.cancel_requested:
                     return
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    _append(self.report["scan_errors"], {"pages": [index + 1], "error": "Scan budget exhausted"})
+                    return
                 await _pace_scan()
                 try:
                     await scan_images([index])
@@ -330,6 +336,10 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
             nonlocal finished
             async with gate:
                 if self.job.cancel_requested:
+                    return True
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    _append(self.report["scan_errors"], {"pages": _one_based(batch), "error": "Scan budget exhausted"})
                     return True
                 await _pace_scan()
                 try:
@@ -366,12 +376,22 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         scan_textless = {scan.page_index for scan in scans if scan.no_text}
         skip_candidates = sorted(scan_credits | scan_textless)
         storyless = None
+        remaining = self._remaining_budget()
+        budget_exhausted = remaining is not None and remaining < 0.001
+        if budget_exhausted:
+            judge_status = {**judge_status, "available": False, "reason": "scan budget exhausted"}
         if judge_status["available"] and skip_candidates:
-            storyless = await asyncio.to_thread(
-                decider.storyless_slices, self.provider, self.api_key, skip_candidates, load,
-                self.settings.model, self._add_cost,
-            )
+            arguments = (self.provider, self.api_key, skip_candidates, load, self.settings.model, self._add_cost)
+            if self.provider.tracks_cost:
+                storyless = await asyncio.to_thread(
+                    decider.storyless_slices, *arguments,
+                    can_call=lambda: (self._remaining_budget() or 0.0) >= 0.001,
+                )
+            else:
+                storyless = await asyncio.to_thread(decider.storyless_slices, *arguments)
         elif judge_status["available"]:
+            storyless = ([], {})
+        elif budget_exhausted:
             storyless = ([], {})
         else:
             logger.warning("Decider judge unavailable (provider {}: {}); the scan alone decides skips",
@@ -458,7 +478,11 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
     def _art_screen(self):
         from app.ai_mode.decider import screen_for
 
-        screen = screen_for(self.provider, self.api_key, self.settings.model, self._add_cost)
+        if self.provider.tracks_cost:
+            screen = screen_for(self.provider, self.api_key, self.settings.model, self._add_cost,
+                                can_call=lambda: (self._remaining_budget() or 0.0) >= 0.001)
+        else:
+            screen = screen_for(self.provider, self.api_key, self.settings.model, self._add_cost)
         if screen is None:
             status = decider.judge_status(self.provider, self.api_key)
             logger.warning("Decider art screen unavailable (provider {}: {}); "

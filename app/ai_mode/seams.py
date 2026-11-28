@@ -263,6 +263,14 @@ def _separate_lobes(a: dict, b: dict) -> bool:
     return bubble_masks_are_separate_lobes(a.get("bubble_mask"), b.get("bubble_mask"))
 
 
+def _global_bubble(obj: dict, offset: int) -> dict:
+    mask = obj.get("bubble_mask")
+    if not isinstance(mask, dict) or not isinstance(mask.get("bbox"), (list, tuple)) or len(mask["bbox"]) != 4:
+        return obj
+    x1, y1, x2, y2 = mask["bbox"]
+    return {**obj, "bubble_mask": {**mask, "bbox": [x1, y1 + offset, x2, y2 + offset]}}
+
+
 def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = False):
     page = pages[page_index]
     core = _core(page)
@@ -286,7 +294,7 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
             continue
         if not _source_texts_agree(obj, best[0]):
             continue
-        if _separate_lobes(obj, best[0]):
+        if _separate_lobes(_global_bubble(obj, core[0]), _global_bubble(best[0], other_core[0])):
             continue
         center = (min(rect[1], best[1][1]) + max(rect[3], best[1][3])) / 2
         if other_core[1] <= center < other_core[2]:

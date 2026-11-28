@@ -97,7 +97,6 @@ function applyManifestResponse(manifest, pageIndex, opts = {}) {
   const snapshot = opts.snapshot || null;
   const targetId = opts.id || editorState.selectedTextObjectId;
   const currentState = targetId ? collectPanelState(pageIndex, targetId) : null;
-  if (typeof window.capturePendingGeom === "function") window.capturePendingGeom();
   currentManifest = manifest;
   if (currentState) {
     const obj = findTextObject(pageIndex, targetId);
@@ -127,6 +126,7 @@ async function createTextObject(pageIndex, shape, region) {
     typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
   ]);
   if (chapterId !== currentChapterId) return;
+  const previousIds = new Set((currentManifest?.pages?.[pageIndex]?.text_objects || []).map((item) => item.id));
   const manifest = await apiTextObject("create", {
     chapter_id: chapterId,
     page_index: pageIndex,
@@ -136,7 +136,7 @@ async function createTextObject(pageIndex, shape, region) {
   if (chapterId !== currentChapterId) return;
   const page = manifest.pages[pageIndex];
   const objs = page.text_objects || [];
-  const obj = objs[objs.length - 1];
+  const obj = objs.find((item) => !previousIds.has(item.id));
   if (!obj) throw new Error("Không tạo được vùng chữ");
   editorState.selectedTextObjectId = obj.id;
   applyManifestResponse(manifest, pageIndex, { id: obj.id });
@@ -175,6 +175,7 @@ async function restoreTextObject(pageIndex, snap) {
   if (!chapterId || !snap?.region) return null;
   await window.flushAllPendingPersists?.();
   if (chapterId !== currentChapterId) return null;
+  const previousIds = new Set((currentManifest?.pages?.[pageIndex]?.text_objects || []).map((item) => item.id));
   const manifest = await apiTextObject("create", {
     chapter_id: chapterId,
     page_index: pageIndex,
@@ -182,7 +183,8 @@ async function restoreTextObject(pageIndex, snap) {
     region: snap.region,
   });
   const objs = manifest.pages[pageIndex].text_objects || [];
-  const created = objs[objs.length - 1];
+  if (chapterId !== currentChapterId) return null;
+  const created = objs.find((item) => !previousIds.has(item.id));
   if (!created) return null;
   const updated = await apiTextObject("update", {
     chapter_id: chapterId,
@@ -329,8 +331,8 @@ async function ensureAutoTextObjects(pageIndexOrList) {
         throw new Error(getError(response.status, data));
       }
       if (chapterId !== window.currentChapterId) return null;
-      window.currentManifest = data;
-      latestData = data;
+      applyManifestResponse(data, window.editorState?.activePageIndex ?? indices[0]);
+      latestData = window.currentManifest;
     }
     return latestData;
   })();
@@ -449,7 +451,7 @@ function buildChapterExportButton() {
         throw new Error(getErr(response.status, data));
       }
       if (chapterId !== window.currentChapterId) return;
-      window.currentManifest = data;
+      applyManifestResponse(data, window.editorState?.activePageIndex);
       if (window.editorState && Number.isInteger(window.editorState.activePageIndex)) {
         window.renderEditorPanel?.(window.editorState.activePageIndex);
       }

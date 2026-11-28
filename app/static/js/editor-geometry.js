@@ -5,6 +5,7 @@
   let geomSaving = 0;
   let geomHasError = false;
   let geomGeneration = 0;
+  let geomInFlight = null;
   const geomDirty = new Map();
 
 
@@ -68,6 +69,10 @@
   async function flushGeomPersist(pageIndex, chapterId = window.currentChapterId) {
     clearTimeout(geomTimer);
     geomTimer = null;
+    if (geomInFlight) {
+      await geomInFlight;
+      return flushGeomPersist(pageIndex, chapterId);
+    }
     if (geomDirty.size === 0) return;
     const keys = [];
     geomDirty.forEach((entry, k) => {
@@ -77,7 +82,8 @@
     if (keys.length === 0) return;
     if (!chapterId) return;
 
-    const currentGen = ++geomGeneration;
+    const snapshots = new Map(keys.map((key) => [key, geomDirty.get(key)]));
+    const currentGen = geomGeneration;
     const controller = new AbortController();
     geomController = controller;
     geomBatchKeys = keys;
@@ -88,10 +94,10 @@
 
     const failures = [];
     try {
-      await Promise.all(keys.map(async (k) => {
+      geomInFlight = Promise.all(keys.map(async (k) => {
         const [pi, id] = k.split(":");
         const pIndex = Number(pi);
-        const region = geomDirty.get(k)?.region;
+        const region = snapshots.get(k)?.region;
         if (!region || typeof region !== "object") {
           geomDirty.delete(k);
           return;
@@ -116,16 +122,18 @@
             : (s, d) => (d && d.detail) || `lỗi ${s}`;
           const data = await parse(resp);
           if (!resp.ok) throw new Error(getErr(resp.status, data));
-          if (currentGen === geomGeneration) {
+          if (currentGen === geomGeneration && geomDirty.get(k) === snapshots.get(k)) {
             geomDirty.delete(k);
           }
         } catch (err) {
-          if (err.name === "AbortError") return;
+          if (err.name === "AbortError" && currentGen !== geomGeneration) return;
           geomHasError = true;
           failures.push(err);
         }
       }));
+      await geomInFlight;
     } finally {
+      geomInFlight = null;
       geomSaving -= keys.length;
       if (geomController === controller) geomController = null;
       if (geomBatchKeys === keys) geomBatchKeys = [];
@@ -139,16 +147,16 @@
       }
       throw new Error("Không lưu được vị trí vùng");
     }
+    if (geomDirty.size && !geomTimer) {
+      geomTimer = setTimeout(() => { flushGeomPersist().catch(() => {}); }, 300);
+    }
+    if (currentGen === geomGeneration && keys.some((key) => geomDirty.has(key))) {
+      return flushGeomPersist(pageIndex, chapterId);
+    }
   }
   window.flushGeomPersist = flushGeomPersist;
 
   function scheduleGeomPersist(pageIndex, id) {
-    geomGeneration += 1;
-    if (geomController) {
-      geomController.abort();
-      geomController = null;
-      geomBatchKeys = [];
-    }
     const obj = textObject(pageIndex, id);
     if (!obj || !obj.region) return;
     window.editorHistory?.touch(pageIndex, id);
@@ -169,7 +177,6 @@
   window.scheduleGeomPersist = scheduleGeomPersist;
 
   function removePendingGeom(pageIndex, id) {
-    geomGeneration += 1;
     geomDirty.delete(`${pageIndex}:${id}`);
     geomBatchKeys = geomBatchKeys.filter((k) => k !== `${pageIndex}:${id}`);
     if (typeof window.refreshSaveStatus === "function") {

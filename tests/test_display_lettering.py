@@ -117,3 +117,18 @@ def test_only_sfx_render_identity_depends_on_its_source_reading(tmp_path):
     first = render_input_signature(manifest, 0)
     obj["source_read"] = "OTHER"
     assert render_input_signature(manifest, 0) == first
+
+
+def test_slanted_frame_width_uses_true_distance_along_baseline():
+    from app.render.display_lettering import _source_frame
+
+    image = Image.new("L", (750, 750))
+    font = get_font_object(str(get_font_path("emphasis.bungee")), 110)
+    layer = Image.new("L", (600, 150))
+    ImageDraw.Draw(layer).text((10, 95), "SLASH", fill=255, font=font, anchor="ls")
+    rotated = layer.rotate(39, expand=True, resample=Image.Resampling.BICUBIC)
+    image.paste(rotated, (40, 40))
+    frame = _source_frame(np.asarray(image))
+    assert frame is not None
+    top_edge = np.linalg.norm(frame.quad[1] - frame.quad[0])
+    assert frame.size[0] == pytest.approx(top_edge, rel=0.01)

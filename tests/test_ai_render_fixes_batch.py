@@ -562,3 +562,82 @@ def test_vision_salvage_entries_preserves_metadata_and_language_filters_protect_
     assert _line_is_english("IN AN") is False
     assert _line_is_english("Were you talking to me?") is True
     assert _line_is_english("GO TO ME") is True
+
+
+def test_render_one_retries_concurrent_render_conflicts(monkeypatch):
+    from fastapi import HTTPException
+    from app.routers import export, render_commit
+
+    manifest = {"pages": [{"text_objects": []}]}
+    attempts = []
+
+    def render(_req):
+        attempts.append(1)
+        if len(attempts) <= 2:
+            raise HTTPException(409, "Slice changed")
+        return {"skipped_objects": []}
+
+    monkeypatch.setattr(render_commit, "render_page", render)
+    monkeypatch.setattr(export, "_render_request_from_page", lambda *_: None)
+    job = AIModeJob(job_id="j", settings=AIModeSettings(url="https://x", provider="openai", model="m"),
+                    chapter_id="a1b2c3d6", stage="render",
+                    stages={"render": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda _: None)
+    asyncio.run(runner._render_one(0))
+    assert len(attempts) == 3
+    assert runner.report["render_errors"] == []
+
+
+def test_overset_verdicts_remain_layout_conflicts(monkeypatch):
+    from app.routers import render_commit
+
+    def fake_render(image, req, objects, *args, verdicts=None, **kwargs):
+        verdicts.extend([{"id": "bubble", "guard": "balloon_overset", "review": True},
+                         {"id": "free", "guard": "placement_overset", "review": True}])
+        return 0
+
+    monkeypatch.setattr(render_commit, "render_text_objects", fake_render)
+    monkeypatch.setattr(render_commit, "_resolve_snapshot_fonts", lambda *_: None)
+    request = RenderRequest(chapter_id="a1b2c3d6", page_index=0, translations={})
+    page = {"text_objects": [{"id": "bubble"}, {"id": "free"}]}
+    conflicts, issues = [], {}
+    count, skipped = render_commit._render_snapshot(
+        Image.new("RGB", (80, 80)), request, page, {}, render_commit._request_style_maps(request),
+        layout_conflicts=conflicts, layout_issue_types=issues)
+    assert count == 0
+    assert skipped == []
+    assert issues == {"bubble": "balloon_overset", "free": "placement_overset"}
+
+
+def test_ai_render_restores_overset_machine_translation_but_keeps_user_edit(monkeypatch):
+    from app.dependencies import pipeline
+    from app.routers import export, render_commit
+
+    region = {"x1": 10, "y1": 20, "x2": 60, "y2": 40}
+    manifest = {"pages": [{"text_objects": [
+        {"id": "auto", "region": region, "translation": "Dài", "auto_translation": "Dài", "auto_generated": True},
+        {"id": "edited", "region": region, "translation": "Tự sửa", "auto_translation": "Dài", "auto_generated": True},
+    ]}]}
+    calls, preserved = [], []
+
+    def render(_req):
+        calls.append(1)
+        return {"skipped_objects": [], "layout_issue_types": {
+            "auto": "balloon_overset", "edited": "placement_overset"}} if len(calls) == 1 else {}
+
+    monkeypatch.setattr(render_commit, "render_page", render)
+    monkeypatch.setattr(export, "_render_request_from_page", lambda *_: None)
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda _chapter, _index, regions: preserved.extend(regions))
+    job = AIModeJob(job_id="j", settings=AIModeSettings(url="https://x", provider="openai", model="m"),
+                    chapter_id="a1b2c3d6", stage="render",
+                    stages={"render": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda _: None)
+    asyncio.run(runner._render_one(0))
+    assert preserved == [region]
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == ""
+    assert manifest["pages"][0]["text_objects"][1]["translation"] == "Tự sửa"

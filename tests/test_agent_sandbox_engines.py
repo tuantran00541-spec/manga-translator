@@ -37,7 +37,9 @@ def test_engine_choice_is_saved_checked_and_shown(home, monkeypatch):
     assert not shell and args[:2] == ["docker", "run"] and mount in args and "--network" in args and args[-4:] == ["node:20-slim", "sh", "-c", "ls"]
     assert "/workspace" in sandbox.Policy().describe(home)
     monkeypatch.setattr(sandbox, "docker_ready", lambda: False)
-    assert sandbox.backend() != "docker", "a chosen engine that does not answer falls back to the OS sandbox"
+    assert sandbox.backend() == "unavailable"
+    with pytest.raises(RuntimeError, match="Docker sandbox"):
+        sandbox.wrap("true", sandbox.Policy("read-only", False), home, str(home))
 
 
 def test_the_engine_endpoint_saves_the_choice(home, monkeypatch):

@@ -130,3 +130,29 @@ def test_an_empty_restore_stroke_is_refused(chapter):
     pipeline, _ = chapter
     with pytest.raises(ValueError, match="empty"):
         pipeline.restore_mask("abcd1234", 0, np.zeros((40, 60), np.uint8))
+
+
+def test_ai_repaint_survives_other_brushes_and_reset_removes_it(chapter, monkeypatch):
+    import app.inpaint.api_inpaint as api
+
+    pipeline, manifest = chapter
+    monkeypatch.setattr(api, 'load_inpaint_settings', lambda: {'max_api_calls_per_chapter': 2})
+    calls = []
+
+    def paint_ai(image, mask, **kwargs):
+        calls.append(kwargs['max_calls'])
+        result = image.copy()
+        result[mask > 127] = 160
+        return result
+
+    pipeline._inpainter.inpaint_mask_via_api = paint_ai
+    pipeline.restore_mask('abcd1234', 0, _mask(1, 2, 1, 2))
+    pipeline.repaint_mask_ai('abcd1234', 0, _mask(10, 20, 10, 20))
+    pipeline.repaint_mask('abcd1234', 0, _mask(25, 35, 40, 55))
+    assert (_clean(manifest)[10:20, 10:20] == 160).all()
+    pipeline.restore_mask('abcd1234', 0, _mask(10, 15, 10, 20))
+    assert (_clean(manifest)[10:15, 10:20] == 10).all()
+    assert (_clean(manifest)[15:20, 10:20] == 160).all()
+    pipeline.reset_manual_mask('abcd1234', 0)
+    assert (_clean(manifest) == 100).all()
+    assert calls == [2]

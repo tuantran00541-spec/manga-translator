@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 def test_i18n_switcher_wiring_and_contracts():
@@ -10,7 +11,7 @@ def test_i18n_switcher_wiring_and_contracts():
     workspace_js = (root / "app" / "static" / "js" / "review-workspace.js").read_text(encoding="utf-8")
     app_css = (root / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
 
-    assert '<script src="/static/js/i18n.js"></script>' in index_html
+    assert re.search(r'<script\s+src="/static/js/i18n\.js(?:\?[^"]*)?"></script>', index_html)
     assert 'id="lang-toggle"' in index_html
     assert ".lang-toggle" in app_css
     assert 'data-ui-lang-select' in workspace_js

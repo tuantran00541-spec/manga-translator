@@ -10,6 +10,7 @@ function setProcessingUi(snapshot) {
   const active = snapshot?.status === "pending" || snapshot?.status === "running";
   processingButtons().forEach((btn) => {
     if (!btn || !btn.isConnected) return;
+    btn.disabled = active;
     if (active) {
       btn.setAttribute("aria-busy", "true");
       btn.textContent = `Đang xử lý ${completed}/${total}…`;
@@ -106,6 +107,7 @@ async function monitorProcessingJob(initialSnapshot, chapterId, options = {}) {
   }
 }
 
+let processRequestActive = false;
 window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPagesOnce() {
   const pages = currentManifest?.pages || [];
   const indices = pages
@@ -121,10 +123,13 @@ window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPage
     return;
   }
 
+  if (processRequestActive) return;
+  processRequestActive = true;
   const chapterId = currentChapterId;
   processingButtons().forEach((btn) => {
     if (!btn || !btn.isConnected) return;
     btn.setAttribute("aria-busy", "true");
+    btn.disabled = true;
     btn.textContent = "Đang lưu vùng giữ nguyên…";
   });
 
@@ -149,6 +154,7 @@ window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPage
       showToast("Xử lý trang thất bại: " + err.message, "error");
     }
   } finally {
+    processRequestActive = false;
     if (chapterId === currentChapterId && document.body?.dataset?.appStage === "preview") {
       try {
         const latest = await getCurrentProcessingJob(chapterId);
@@ -295,6 +301,13 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
       event.stopImmediatePropagation();
     }
   }, true);
+
+  window.addEventListener("blur", () => {
+    spaceDown = false;
+    if (pan?.viewport) pan.viewport.classList.remove("is-panning", "review-space-pan");
+    pan = null;
+    currentReviewWorkspace()?.querySelector(".review-document-viewport")?.classList.remove("review-space-pan");
+  });
 
   document.addEventListener("pointerdown", (event) => {
     const workspace = currentReviewWorkspace();

@@ -19,18 +19,24 @@ class LetteringPlane:
 
     def projection(self) -> np.ndarray:
         width, height = self.size
+        if width < 2 or height < 2:
+            raise ValueError("Lettering plane dimensions must be at least two pixels")
         return (self.camera @ self.surface) / np.array([width - 1, height - 1, 1])
 
     def pixels_per_texel(self) -> float:
         matrix = self.projection()
         width, height = self.size
         point = matrix @ np.array([(width - 1) / 2, (height - 1) / 2, 1])
+        if not np.isfinite(point).all() or abs(point[2]) < 1e-9:
+            return 0.0
         derivative = (matrix[:2, :2] - np.outer(point[:2] / point[2], matrix[2, :2])) / point[2]
         return sqrt(abs(float(np.linalg.det(derivative))))
 
 
 def reconstruct_lettering_plane(quad, image_size, texture_size) -> LetteringPlane | None:
     """Lift a tapered image quadrilateral into a plausible rectangular camera-facing surface."""
+    if min(texture_size) < 2 or min(image_size) < 2:
+        return None
     homography = cv2.getPerspectiveTransform(_UNIT_SQUARE, quad)
     if not np.isfinite(homography).all():
         return None

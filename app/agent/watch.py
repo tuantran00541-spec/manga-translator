@@ -48,15 +48,17 @@ class Watch:
     def scan(self) -> dict[str, tuple[int, int]]:
         found: dict[str, tuple[int, int]] = {}
         stack = [self.root]
+        from app.agent.tools import ROOT_SKIP_DIRS
         while stack and len(found) < MAX_FILES:
             try:
-                with os.scandir(stack.pop()) as entries:
+                folder = stack.pop()
+                with os.scandir(folder) as entries:
                     for entry in entries:
                         if len(found) >= MAX_FILES:
                             break
                         try:
                             if entry.is_dir(follow_symlinks=False):
-                                if entry.name not in SKIP:
+                                if entry.name not in SKIP and not (folder == self.root and entry.name in ROOT_SKIP_DIRS):
                                     stack.append(Path(entry.path))
                             elif entry.is_file(follow_symlinks=False):
                                 st = entry.stat(follow_symlinks=False)

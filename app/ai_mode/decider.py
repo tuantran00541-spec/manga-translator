@@ -59,6 +59,7 @@ def _classify(provider, model, api_key, image, prompt, stage, add_cost):
 
                 time.sleep(2.0)
                 continue
+            logger.warning("Vision classification failed during {}: {}", stage, exc)
             return None
     if add_cost is not None:
         add_cost(reply.estimated_cost_usd)
@@ -77,13 +78,15 @@ def _is_confident_speech_bubble(box) -> bool:
     return False
 
 
-def screen_for(provider, api_key: str, model: str, add_cost=None):
+def screen_for(provider, api_key: str, model: str, add_cost=None, can_call=None):
     if not judge_status(provider, api_key)["available"]:
         return None
-    return functools.partial(art_boxes, provider, model, api_key, add_cost=add_cost)
+    call_lock = threading.Lock() if can_call is not None else None
+    return functools.partial(art_boxes, provider, model, api_key, add_cost=add_cost,
+                             can_call=can_call, call_lock=call_lock)
 
 
-def art_boxes(provider, model, api_key, image, boxes, *, add_cost=None) -> set[int]:
+def art_boxes(provider, model, api_key, image, boxes, *, add_cost=None, can_call=None, call_lock=None) -> set[int]:
     height, width = image.shape[:2]
 
     def classify(box):
@@ -95,7 +98,12 @@ def art_boxes(provider, model, api_key, image, boxes, *, add_cost=None) -> set[i
         if crop.size:
             cv2.rectangle(crop, (box.x1 - x - 1, box.y1 - y - 1),
                           (box.x2 - x, box.y2 - y), (0, 255, 0), 1)
-        return _classify(provider, model, api_key, crop, LETTERING, "review", add_cost)
+        if call_lock is None:
+            return _classify(provider, model, api_key, crop, LETTERING, "review", add_cost)
+        with call_lock:
+            if can_call is not None and not can_call():
+                return None
+            return _classify(provider, model, api_key, crop, LETTERING, "review", add_cost)
 
     art = set()
     with ThreadPoolExecutor(WORKERS) as pool:
@@ -111,7 +119,7 @@ def art_boxes(provider, model, api_key, image, boxes, *, add_cost=None) -> set[i
     return art
 
 
-def storyless_slices(provider, api_key, indices, load, model, add_cost=None):
+def storyless_slices(provider, api_key, indices, load, model, add_cost=None, can_call=None):
     if not indices:
         return [], {}
 
@@ -120,6 +128,8 @@ def storyless_slices(provider, api_key, indices, load, model, add_cost=None):
             image = load(index)
             height, width = image.shape[:2]
             for y in range(0, height, width):
+                if can_call is not None and not can_call():
+                    return None
                 kind = _classify(provider, model, api_key, image[y:y + width + 60], STORY, "scan", add_cost)
                 if kind == "story":
                     return 1.0
@@ -130,6 +140,6 @@ def storyless_slices(provider, api_key, indices, load, model, add_cost=None):
             logger.warning("Slice {} could not be judged for story text: {}", index, exc)
             return None
 
-    with ThreadPoolExecutor(WORKERS) as pool:
+    with ThreadPoolExecutor(1 if can_call is not None else WORKERS) as pool:
         chances = dict(zip(indices, pool.map(judge, indices)))
     return sorted(index for index, chance in chances.items() if chance == 0.0), chances

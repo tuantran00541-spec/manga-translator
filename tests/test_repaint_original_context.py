@@ -88,7 +88,7 @@ def test_lama_repaint_uses_exact_user_mask_without_growth(tmp_path: Path):
     assert len(fake_inpainter.manual_inputs) == 1
     force_lama, model_input, model_mask = fake_inpainter.manual_inputs[0]
     assert force_lama is True
-    assert np.array_equal(model_input, original)
+    assert np.all(model_input == 100)
     assert np.array_equal(model_mask, effective_user_mask)
 
     stats = pipeline._last_repaint_detector_stats

@@ -66,7 +66,9 @@ class AgentSession(
         self.key_prompt: dict | None = None
         self._key_choice: str | None = None
         self._key_lock = threading.Lock()
-        self.workspace, self.mode, self.store, self.depth = workspace, mode, store, depth
+        self._workspace_local = threading.local()
+        self._workspace = workspace
+        self.mode, self.store, self.depth = mode, store, depth
         self._raw_complete = complete
         self.complete = _Keyed(self, complete)
         self.trust = trust or context.TrustStore(None)
@@ -188,6 +190,15 @@ class AgentSession(
         self._plain = False
         self._mcp_ready = depth > 0
         self._started = False
+
+    @property
+    def workspace(self):
+        local = getattr(self, "_workspace_local", None)
+        return getattr(local, "current", self._workspace)
+
+    @workspace.setter
+    def workspace(self, value):
+        self._workspace = value
 
     def _outputs_dir(self) -> Path:
         return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / self.id.split("-")[0]

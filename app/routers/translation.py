@@ -450,57 +450,64 @@ async def translate_page_in_context(
 
     await run_in_threadpool(prepare_page_balloons, req.chapter_id, req.page_index)
 
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        pages = manifest.get("pages", [])
-        if req.page_index >= len(pages):
-            raise HTTPException(404, "Page is not present in this chapter")
-        page = pages[req.page_index]
-        if page.get("skipped") or page.get("process_required") or not page.get("clean"):
-            raise HTTPException(409, "Page must finish inpainting before vision translation")
-        if not page.get("original"):
-            raise HTTPException(409, "Original image is missing")
-        if req.force and req.object_ids is None:
-            _, ensured = ensure_page_text_objects(page, regroup_machine=True)
-        else:
-            _, ensured = ensure_page_text_objects(page)
-        if ensured:
-            invalidate_page_render(manifest, req.page_index)
-            save_manifest_raw(req.chapter_id, manifest)
-        try:
-            candidates = _vision_candidates(page, force=req.force)
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from exc
-        elsewhere: list[list[int]] = []
-        if skip_seam_mirrors:
-            from app.ai_mode.seams import seam_mirror_ids
+    def prepare_snapshot():
+        with get_manifest_lock(req.chapter_id):
+            manifest = load_manifest_raw(req.chapter_id)
+            pages = manifest.get("pages", [])
+            if req.page_index >= len(pages):
+                raise HTTPException(404, "Page is not present in this chapter")
+            page = pages[req.page_index]
+            if page.get("skipped") or page.get("process_required") or not page.get("clean"):
+                raise HTTPException(409, "Page must finish inpainting before vision translation")
+            if not page.get("original"):
+                raise HTTPException(409, "Original image is missing")
+            if req.force and req.object_ids is None:
+                _, ensured = ensure_page_text_objects(page, regroup_machine=True)
+            else:
+                _, ensured = ensure_page_text_objects(page)
+            if ensured:
+                invalidate_page_render(manifest, req.page_index)
+                save_manifest_raw(req.chapter_id, manifest)
+            try:
+                candidates = _vision_candidates(page, force=req.force)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            elsewhere: list[list[int]] = []
+            if skip_seam_mirrors:
+                from app.ai_mode.seams import seam_mirror_ids
 
-            mirrors = seam_mirror_ids(manifest, req.page_index)
-            elsewhere = [candidate["region"] for candidate in candidates if candidate["id"] in mirrors]
-            candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
-        if req.object_ids is not None:
-            wanted = set(req.object_ids)
-            candidates = [
-                candidate for candidate in candidates if candidate["id"] in wanted
-                or wanted.intersection(auto_object_id(box_id) for box_id in candidate.get("balloon_sources", ()))
-            ]
-        if len(candidates) > 100:
-            raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
-        total_candidates = len(candidates)
-        if req.max_objects is not None:
-            candidates = candidates[:req.max_objects]
-        original_path = validate_managed_path(page["original"], RAW_DIR / req.chapter_id)
-        clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / req.chapter_id)
-        snapshot = {
-            key: copy.deepcopy(page.get(key))
-            for key in ("original", "clean", "source_revision", "clean_revision",
-                        "skipped", "process_required")
-        }
-        page_number = req.page_index
+                mirrors = seam_mirror_ids(manifest, req.page_index)
+                elsewhere = [candidate["region"] for candidate in candidates if candidate["id"] in mirrors]
+                candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
+            if req.object_ids is not None:
+                wanted = set(req.object_ids)
+                candidates = [
+                    candidate for candidate in candidates if candidate["id"] in wanted
+                    or wanted.intersection(auto_object_id(box_id) for box_id in candidate.get("balloon_sources", ()))
+                ]
+            if len(candidates) > 100:
+                raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
+            total_candidates = len(candidates)
+            if req.max_objects is not None:
+                candidates = candidates[:req.max_objects]
+            original_path = validate_managed_path(page["original"], RAW_DIR / req.chapter_id)
+            clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / req.chapter_id)
+            snapshot = {
+                key: copy.deepcopy(page.get(key))
+                for key in ("original", "clean", "source_revision", "clean_revision",
+                            "skipped", "process_required")
+            }
+            page_number = req.page_index
+
+        return (manifest, ensured, candidates, elsewhere, total_candidates, original_path,
+                clean_path, snapshot, page_number)
+
+    (manifest, ensured, candidates, elsewhere, total_candidates, original_path,
+     clean_path, snapshot, page_number) = await run_in_threadpool(prepare_snapshot)
 
     if ensured:
         from app.dependencies import pipeline
-        pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+        await run_in_threadpool(pipeline._sync_output_dir, req.chapter_id, manifest, [req.page_index])
 
     if not candidates:
         result = urlify_manifest(manifest)
@@ -536,110 +543,116 @@ async def translate_page_in_context(
     story_blank_ids: list[str] = []
     art_regions: list[dict] = []
     duplicate_ids = _duplicate_translation_ids(candidates, translated)
-    with get_manifest_lock(req.chapter_id):
-        latest = load_manifest_raw(req.chapter_id)
-        pages = latest.get("pages", [])
-        if page_number >= len(pages) or any(
-            pages[page_number].get(key) != value for key, value in snapshot.items()
-        ):
-            raise HTTPException(409, "Slice changed while AI was translating; no text was overwritten")
-        page = pages[page_number]
-        changed = False
-        for candidate in candidates:
-            obj = _find_object(page, candidate["id"])
-            if (
-                obj is None or obj.get("source_missing")
-                or text_object_in_preserve_region(page, obj)
-                or str(obj.get("ocr_text") or "").strip() != candidate["text"]
-                or str(obj.get("translation") or "") != candidate["initial_translation"]
-                or not isinstance(obj.get("region"), dict)
-                or [obj["region"].get(k) for k in ("x1", "y1", "x2", "y2")]
-                   != candidate["region"]
-                or ("balloon_mask" in candidate and (
-                    not obj.get("verified_balloon") or obj.get("bubble_mask") != candidate["balloon_mask"]
-                    or obj.get("source_boxes") != candidate["balloon_sources"]))
+    def commit_snapshot():
+        nonlocal committed, stale, unreadable, review
+        with get_manifest_lock(req.chapter_id):
+            latest = load_manifest_raw(req.chapter_id)
+            pages = latest.get("pages", [])
+            if page_number >= len(pages) or any(
+                pages[page_number].get(key) != value for key, value in snapshot.items()
             ):
-                stale += 1
-                continue
-            value = collapse_repeated_lines(translated.translations[candidate["id"]])
-            if isinstance(value, str):
-                value = value.strip()
-            role = getattr(translated, "roles", {}).get(candidate["id"])
-            source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
-            if role == "sfx" and not obj.get("verified_balloon") and drawn_in_art(source):
-                value = ""
-            duplicate_reason = duplicate_ids.get(candidate["id"])
-            if duplicate_reason is not None:
-                value = ""
-            elif value:
-                duplicate_reason = _committed_duplicate(page, candidate, value, source)
+                raise HTTPException(409, "Slice changed while AI was translating; no text was overwritten")
+            page = pages[page_number]
+            changed = False
+            for candidate in candidates:
+                obj = _find_object(page, candidate["id"])
+                if (
+                    obj is None or obj.get("source_missing")
+                    or text_object_in_preserve_region(page, obj)
+                    or str(obj.get("ocr_text") or "").strip() != candidate["text"]
+                    or str(obj.get("translation") or "") != candidate["initial_translation"]
+                    or not isinstance(obj.get("region"), dict)
+                    or [obj["region"].get(k) for k in ("x1", "y1", "x2", "y2")]
+                       != candidate["region"]
+                    or ("balloon_mask" in candidate and (
+                        not obj.get("verified_balloon") or obj.get("bubble_mask") != candidate["balloon_mask"]
+                        or obj.get("source_boxes") != candidate["balloon_sources"]))
+                ):
+                    stale += 1
+                    continue
+                value = collapse_repeated_lines(translated.translations[candidate["id"]])
+                if isinstance(value, str):
+                    value = value.strip()
+                role = getattr(translated, "roles", {}).get(candidate["id"])
+                source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
+                if role == "sfx" and not obj.get("verified_balloon") and drawn_in_art(source):
+                    value = ""
+                duplicate_reason = duplicate_ids.get(candidate["id"])
                 if duplicate_reason is not None:
                     value = ""
-            if not value:
-                unreadable += 1
-                if candidate["id"] not in getattr(translated, "missing_ids", ()):
-                    blank_ids.append(candidate["id"])
-                    obj["translation_attempted"] = True
-                    if role != "sfx" and duplicate_reason is None:
-                        story_blank_ids.append(candidate["id"])
-                    manual = {str(box.get("id")) for box in page.get("boxes") or []
-                              if isinstance(box, dict) and box.get("manual")}
-                    if ((duplicate_reason == "source" and str(role or "").strip().lower() in _SFX_LIKE_ROLES)
-                            or (role == "sfx" and drawn_in_art(source)
-                                and not set(map(str, obj.get("source_boxes") or [])) & manual)):
-                        art_regions.append(dict(obj["region"]))
-                continue
-            obj["translation"] = value
-            obj["translation_source"] = provider.id
-            if candidate.get("source_cap_px"):
-                obj["source_cap_px"] = candidate["source_cap_px"]
-            obj["translation_model"] = translated.model
-            obj["translation_input_text"] = candidate["text"]
-            source_read = getattr(translated, "sources", {}).get(candidate["id"])
-            if source_read:
-                obj["source_read"] = source_read
-            speaker = getattr(translated, "speakers", {}).get(candidate["id"])
-            if speaker:
-                obj["speaker"] = speaker
-            obj["auto_translation"] = value
-            if role:
-                obj["typography_role"] = role
-            container = getattr(translated, "containers", {}).get(candidate["id"])
-            rejected_container = bool(
-                container and obj.get("verified_balloon")
-                and container not in ("bubble", "spiky", "box", "screen")
-            )
-            if container and not rejected_container:
-                obj["container"] = container
-            font_choice = getattr(translated, "font_choices", {}).get(candidate["id"])
-            if rejected_container and isinstance(font_choice, dict):
-                from app.render.font_guide import font_for
-                font_choice = {
-                    **font_choice,
-                    "font_id": font_for(obj.get("typography_role"), obj.get("container")),
-                }
-            _apply_ai_font_choice(obj, font_choice)
-            if candidate["id"] in getattr(translated, "review_ids", ()):
-                obj["needs_review"] = True
-                review += 1
-            color = candidate.get("source_ink") or getattr(translated, "colors", {}).get(candidate["id"])
-            if color:
-                obj["lettering_color"] = color
-            if candidate["id"] in getattr(translated, "enlarge_ids", ()):
-                obj["enlarge"] = True
-            else:
-                obj.pop("enlarge", None)
-            committed += 1
-            changed = True
-        if changed:
-            invalidate_page_render(latest, page_number)
-            save_manifest_raw(req.chapter_id, latest)
-        elif blank_ids:
-            save_manifest_raw(req.chapter_id, latest)
+                elif value:
+                    duplicate_reason = _committed_duplicate(page, candidate, value, source)
+                    if duplicate_reason is not None:
+                        value = ""
+                if not value:
+                    unreadable += 1
+                    if candidate["id"] not in getattr(translated, "missing_ids", ()):
+                        blank_ids.append(candidate["id"])
+                        obj["translation_attempted"] = True
+                        if role != "sfx" and duplicate_reason is None:
+                            story_blank_ids.append(candidate["id"])
+                        manual = {str(box.get("id")) for box in page.get("boxes") or []
+                                  if isinstance(box, dict) and box.get("manual")}
+                        if ((duplicate_reason == "source" and str(role or "").strip().lower() in _SFX_LIKE_ROLES)
+                                or (role == "sfx" and drawn_in_art(source)
+                                    and not set(map(str, obj.get("source_boxes") or [])) & manual)):
+                            art_regions.append(dict(obj["region"]))
+                    continue
+                obj["translation"] = value
+                obj["translation_source"] = provider.id
+                if candidate.get("source_cap_px"):
+                    obj["source_cap_px"] = candidate["source_cap_px"]
+                obj["translation_model"] = translated.model
+                obj["translation_input_text"] = candidate["text"]
+                source_read = getattr(translated, "sources", {}).get(candidate["id"])
+                if source_read:
+                    obj["source_read"] = source_read
+                speaker = getattr(translated, "speakers", {}).get(candidate["id"])
+                if speaker:
+                    obj["speaker"] = speaker
+                obj["auto_translation"] = value
+                if role:
+                    obj["typography_role"] = role
+                container = getattr(translated, "containers", {}).get(candidate["id"])
+                rejected_container = bool(
+                    container and obj.get("verified_balloon")
+                    and container not in ("bubble", "spiky", "box", "screen")
+                )
+                if container and not rejected_container:
+                    obj["container"] = container
+                font_choice = getattr(translated, "font_choices", {}).get(candidate["id"])
+                if rejected_container and isinstance(font_choice, dict):
+                    from app.render.font_guide import font_for
+                    font_choice = {
+                        **font_choice,
+                        "font_id": font_for(obj.get("typography_role"), obj.get("container")),
+                    }
+                _apply_ai_font_choice(obj, font_choice)
+                if candidate["id"] in getattr(translated, "review_ids", ()):
+                    obj["needs_review"] = True
+                    review += 1
+                color = candidate.get("source_ink") or getattr(translated, "colors", {}).get(candidate["id"])
+                if color:
+                    obj["lettering_color"] = color
+                if candidate["id"] in getattr(translated, "enlarge_ids", ()):
+                    obj["enlarge"] = True
+                else:
+                    obj.pop("enlarge", None)
+                committed += 1
+                changed = True
+            if changed:
+                invalidate_page_render(latest, page_number)
+                save_manifest_raw(req.chapter_id, latest)
+            elif blank_ids:
+                save_manifest_raw(req.chapter_id, latest)
+
+        return changed, latest
+
+    changed, latest = await run_in_threadpool(commit_snapshot)
 
     if changed:
         from app.dependencies import pipeline
-        pipeline._sync_output_dir(req.chapter_id, latest, [page_number])
+        await run_in_threadpool(pipeline._sync_output_dir, req.chapter_id, latest, [page_number])
 
     rendered_pages: list[int] = []
     render_skipped: list[str] = []
@@ -659,8 +672,11 @@ async def translate_page_in_context(
         except Exception:
             render_error = "Automatic rendering failed; translations were saved"
 
-    with get_manifest_lock(req.chapter_id):
-        current = load_manifest_raw(req.chapter_id)
+    def load_current():
+        with get_manifest_lock(req.chapter_id):
+            return load_manifest_raw(req.chapter_id)
+
+    current = await run_in_threadpool(load_current)
     result = urlify_manifest(current)
     result["translation_run"] = {
         "translated": committed, "unreadable": unreadable, "stale": stale, "review": review,
@@ -704,6 +720,25 @@ async def translate_pages_batch_in_context(
         }
 
     first = reqs[0]
+    if any((r.chapter_id, r.provider, r.model, r.source_lang, r.target_lang) !=
+           (first.chapter_id, first.provider, first.model, first.source_lang, first.target_lang) for r in reqs):
+        raise HTTPException(400, "Batch requests must use the same chapter, provider, model and languages")
+    if any(r.translate_provider and r.translate_model for r in reqs):
+        provider = _resolve_vision_provider(first.provider)
+        remaining = min(r.budget_usd for r in reqs)
+        results = {}
+        for r in reqs:
+            if provider.tracks_cost and remaining < 0.001:
+                break
+            request = r.model_copy(update={"budget_usd": max(0.001, min(r.budget_usd, remaining))})
+            result = await translate_page_in_context(
+                request, memory=memory, slice_total=slice_total, skip_seam_mirrors=skip_seam_mirrors,
+            )
+            results[r.page_index] = result
+            if provider.tracks_cost:
+                cost = result.get("translation_run", {}).get("estimated_cost_usd")
+                remaining = max(0.0, remaining - cost) if cost is not None else 0.0
+        return results
     validate_chapter_id(first.chapter_id)
     try:
         provider = _resolve_vision_provider(first.provider)
@@ -722,60 +757,74 @@ async def translate_pages_batch_in_context(
     prepared: list[dict] = []
     empty_results: dict[int, dict] = {}
     setting = None
-    with get_manifest_lock(first.chapter_id):
-        manifest = load_manifest_raw(first.chapter_id)
-        setting = manifest.get("setting")
-        pages = manifest.get("pages", [])
-        changed_any: list[int] = []
-        for r in reqs:
-            if r.page_index >= len(pages):
-                continue
-            page = pages[r.page_index]
-            if page.get("skipped") or page.get("process_required") or not page.get("clean") or not page.get("original"):
-                continue
-            _, ensured = ensure_page_text_objects(page)
-            if ensured:
-                invalidate_page_render(manifest, r.page_index)
-                changed_any.append(r.page_index)
-            candidates = _vision_candidates(page, force=r.force)
-            elsewhere: list[list[int]] = []
-            if skip_seam_mirrors:
-                from app.ai_mode.seams import seam_mirror_ids
+    def prepare_snapshots():
+        with get_manifest_lock(first.chapter_id):
+            manifest = load_manifest_raw(first.chapter_id)
+            setting = manifest.get("setting")
+            pages = manifest.get("pages", [])
+            changed_any: list[int] = []
+            for r in reqs:
+                if r.page_index >= len(pages):
+                    continue
+                page = pages[r.page_index]
+                if page.get("skipped") or page.get("process_required") or not page.get("clean") or not page.get("original"):
+                    continue
+                _, ensured = ensure_page_text_objects(page)
+                if ensured:
+                    invalidate_page_render(manifest, r.page_index)
+                    changed_any.append(r.page_index)
+                candidates = _vision_candidates(page, force=r.force)
+                if r.object_ids is not None:
+                    wanted = set(r.object_ids)
+                    candidates = [candidate for candidate in candidates
+                                  if candidate["id"] in wanted or wanted.intersection(
+                                      auto_object_id(box_id) for box_id in candidate.get("balloon_sources", ()))]
+                if len(candidates) > 100:
+                    raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
+                if r.max_objects is not None:
+                    candidates = candidates[:r.max_objects]
+                elsewhere: list[list[int]] = []
+                if skip_seam_mirrors:
+                    from app.ai_mode.seams import seam_mirror_ids
 
-                mirrors = seam_mirror_ids(manifest, r.page_index)
-                elsewhere = [c["region"] for c in candidates if c["id"] in mirrors]
-                candidates = [c for c in candidates if c["id"] not in mirrors]
-            if not candidates:
-                empty_results[r.page_index] = {
-                    "translation_run": {
-                        "translated": 0, "unreadable": 0, "stale": 0, "model": model,
-                        "rendered_pages": [], "estimated_cost_usd": 0.0 if provider.tracks_cost else None,
+                    mirrors = seam_mirror_ids(manifest, r.page_index)
+                    elsewhere = [c["region"] for c in candidates if c["id"] in mirrors]
+                    candidates = [c for c in candidates if c["id"] not in mirrors]
+                if not candidates:
+                    empty_results[r.page_index] = {
+                        "translation_run": {
+                            "translated": 0, "unreadable": 0, "stale": 0, "model": model,
+                            "rendered_pages": [], "estimated_cost_usd": 0.0 if provider.tracks_cost else None,
+                        }
                     }
+                    continue
+                orig_path = validate_managed_path(page["original"], RAW_DIR / r.chapter_id)
+                clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / r.chapter_id)
+                if not orig_path.is_file() or not clean_path.is_file():
+                    continue
+                snapshot = {
+                    key: copy.deepcopy(page.get(key))
+                    for key in ("original", "clean", "source_revision", "clean_revision",
+                                "skipped", "process_required")
                 }
-                continue
-            orig_path = validate_managed_path(page["original"], RAW_DIR / r.chapter_id)
-            clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / r.chapter_id)
-            if not orig_path.is_file() or not clean_path.is_file():
-                continue
-            snapshot = {
-                key: copy.deepcopy(page.get(key))
-                for key in ("original", "clean", "source_revision", "clean_revision",
-                            "skipped", "process_required")
-            }
-            prepared.append({
-                "req": r,
-                "page_index": r.page_index,
-                "candidates": candidates,
-                "elsewhere": elsewhere,
-                "original_path": orig_path,
-                "cleaned_path": clean_path,
-                "snapshot": snapshot,
-            })
-        if changed_any:
-            save_manifest_raw(first.chapter_id, manifest)
+                prepared.append({
+                    "req": r,
+                    "page_index": r.page_index,
+                    "candidates": candidates,
+                    "elsewhere": elsewhere,
+                    "original_path": orig_path,
+                    "cleaned_path": clean_path,
+                    "snapshot": snapshot,
+                })
+            if changed_any:
+                save_manifest_raw(first.chapter_id, manifest)
+        return manifest, setting, changed_any
+
+    manifest, setting, changed_any = await run_in_threadpool(prepare_snapshots)
+
     if changed_any:
         from app.dependencies import pipeline
-        pipeline._sync_output_dir(first.chapter_id, manifest, changed_any)
+        await run_in_threadpool(pipeline._sync_output_dir, first.chapter_id, manifest, changed_any)
 
     if len(prepared) <= 1:
         out = dict(empty_results)
@@ -785,6 +834,10 @@ async def translate_pages_batch_in_context(
                 r, memory=memory, slice_total=slice_total, skip_seam_mirrors=skip_seam_mirrors,
             )
         return out
+
+    if provider.tracks_cost and sum(preflight_cost_usd(item["candidates"]) for item in prepared) > min(
+            item["req"].budget_usd for item in prepared):
+        raise HTTPException(409, "Batch lower-bound estimate exceeds remaining budget")
 
     for item in prepared:
         await run_in_threadpool(_add_fit_budgets, item["original_path"], item["candidates"])
@@ -811,14 +864,8 @@ async def translate_pages_batch_in_context(
             slice_total=slice_total,
             setting=setting,
         )
-    except Exception:
-        out = dict(empty_results)
-        for item in prepared:
-            r = item["req"]
-            out[r.page_index] = await translate_page_in_context(
-                r, memory=memory, slice_total=slice_total, skip_seam_mirrors=skip_seam_mirrors,
-            )
-        return out
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(502, str(exc)) from exc
 
     out = dict(empty_results)
     for item in prepared:
@@ -837,89 +884,106 @@ async def translate_pages_batch_in_context(
         story_blank_ids: list[str] = []
         art_regions: list[dict] = []
         duplicate_ids = _duplicate_translation_ids(candidates, translated)
-        with get_manifest_lock(r.chapter_id):
-            latest = load_manifest_raw(r.chapter_id)
-            pages = latest.get("pages", [])
-            if pidx >= len(pages) or any(
-                pages[pidx].get(key) != value for key, value in item["snapshot"].items()
-            ):
-                stale = len(candidates)
-                changed = False
-            else:
-                page = pages[pidx]
-                changed = False
-                for candidate in candidates:
-                    obj = _find_object(page, candidate["id"])
-                    if (
-                        obj is None or obj.get("source_missing")
-                        or text_object_in_preserve_region(page, obj)
-                        or str(obj.get("ocr_text") or "").strip() != candidate["text"]
-                        or str(obj.get("translation") or "") != candidate["initial_translation"]
-                    ):
-                        stale += 1
-                        continue
-                    value = collapse_repeated_lines(translated.translations.get(candidate["id"], ""))
-                    if isinstance(value, str):
-                        value = value.strip()
-                    role = getattr(translated, "roles", {}).get(candidate["id"])
-                    source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
-                    if role == "sfx" and not obj.get("verified_balloon") and drawn_in_art(source):
-                        value = ""
-                    duplicate_reason = duplicate_ids.get(candidate["id"])
-                    if duplicate_reason is not None:
-                        value = ""
-                    elif value:
-                        duplicate_reason = _committed_duplicate(page, candidate, value, source)
+        def commit_snapshot():
+            nonlocal committed, stale, unreadable, review
+            with get_manifest_lock(r.chapter_id):
+                latest = load_manifest_raw(r.chapter_id)
+                pages = latest.get("pages", [])
+                if pidx >= len(pages) or any(
+                    pages[pidx].get(key) != value for key, value in item["snapshot"].items()
+                ):
+                    stale = len(candidates)
+                    changed = False
+                else:
+                    page = pages[pidx]
+                    changed = False
+                    for candidate in candidates:
+                        obj = _find_object(page, candidate["id"])
+                        if (
+                            obj is None or obj.get("source_missing")
+                            or text_object_in_preserve_region(page, obj)
+                            or str(obj.get("ocr_text") or "").strip() != candidate["text"]
+                            or str(obj.get("translation") or "") != candidate["initial_translation"]
+                            or not isinstance(obj.get("region"), dict)
+                            or [obj["region"].get(k) for k in ("x1", "y1", "x2", "y2")] != candidate["region"]
+                            or ("balloon_mask" in candidate and (
+                                not obj.get("verified_balloon") or obj.get("bubble_mask") != candidate["balloon_mask"]
+                                or obj.get("source_boxes") != candidate["balloon_sources"]))
+                        ):
+                            stale += 1
+                            continue
+                        value = collapse_repeated_lines(translated.translations.get(candidate["id"], ""))
+                        if isinstance(value, str):
+                            value = value.strip()
+                        role = getattr(translated, "roles", {}).get(candidate["id"])
+                        source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
+                        if role == "sfx" and not obj.get("verified_balloon") and drawn_in_art(source):
+                            value = ""
+                        duplicate_reason = duplicate_ids.get(candidate["id"])
                         if duplicate_reason is not None:
                             value = ""
-                    if not value:
-                        unreadable += 1
-                        if candidate["id"] not in getattr(translated, "missing_ids", ()):
-                            blank_ids.append(candidate["id"])
-                            obj["translation_attempted"] = True
-                            if role != "sfx" and duplicate_reason is None:
-                                story_blank_ids.append(candidate["id"])
-                        continue
-                    obj["translation"] = value
-                    obj["translation_source"] = provider.id
-                    if candidate.get("source_cap_px"):
-                        obj["source_cap_px"] = candidate["source_cap_px"]
-                    obj["translation_model"] = translated.model
-                    obj["translation_input_text"] = candidate["text"]
-                    source_read = getattr(translated, "sources", {}).get(candidate["id"])
-                    if source_read:
-                        obj["source_read"] = source_read
-                    speaker = getattr(translated, "speakers", {}).get(candidate["id"])
-                    if speaker:
-                        obj["speaker"] = speaker
-                    obj["auto_translation"] = value
-                    if role:
-                        obj["typography_role"] = role
-                    container = getattr(translated, "containers", {}).get(candidate["id"])
-                    if container and (not obj.get("verified_balloon") or container in ("bubble", "spiky", "box", "screen")):
-                        obj["container"] = container
-                    _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
-                    if candidate["id"] in getattr(translated, "review_ids", ()):
-                        obj["needs_review"] = True
-                        review += 1
-                    color = candidate.get("source_ink") or getattr(translated, "colors", {}).get(candidate["id"])
-                    if color:
-                        obj["lettering_color"] = color
-                    if candidate["id"] in getattr(translated, "enlarge_ids", ()):
-                        obj["enlarge"] = True
-                    else:
-                        obj.pop("enlarge", None)
-                    committed += 1
-                    changed = True
-                if changed:
-                    invalidate_page_render(latest, pidx)
-                    save_manifest_raw(r.chapter_id, latest)
-                elif blank_ids:
-                    save_manifest_raw(r.chapter_id, latest)
+                        elif value:
+                            duplicate_reason = _committed_duplicate(page, candidate, value, source)
+                            if duplicate_reason is not None:
+                                value = ""
+                        if not value:
+                            unreadable += 1
+                            if candidate["id"] not in getattr(translated, "missing_ids", ()):
+                                blank_ids.append(candidate["id"])
+                                obj["translation_attempted"] = True
+                                if role != "sfx" and duplicate_reason is None:
+                                    story_blank_ids.append(candidate["id"])
+                                manual = {str(box.get("id")) for box in page.get("boxes") or []
+                                          if isinstance(box, dict) and box.get("manual")}
+                                if ((duplicate_reason == "source" and str(role or "").strip().lower() in _SFX_LIKE_ROLES)
+                                        or (role == "sfx" and drawn_in_art(source)
+                                            and not set(map(str, obj.get("source_boxes") or [])) & manual)):
+                                    art_regions.append(dict(obj["region"]))
+                            continue
+                        obj["translation"] = value
+                        obj["translation_source"] = provider.id
+                        if candidate.get("source_cap_px"):
+                            obj["source_cap_px"] = candidate["source_cap_px"]
+                        obj["translation_model"] = translated.model
+                        obj["translation_input_text"] = candidate["text"]
+                        source_read = getattr(translated, "sources", {}).get(candidate["id"])
+                        if source_read:
+                            obj["source_read"] = source_read
+                        speaker = getattr(translated, "speakers", {}).get(candidate["id"])
+                        if speaker:
+                            obj["speaker"] = speaker
+                        obj["auto_translation"] = value
+                        if role:
+                            obj["typography_role"] = role
+                        container = getattr(translated, "containers", {}).get(candidate["id"])
+                        if container and (not obj.get("verified_balloon") or container in ("bubble", "spiky", "box", "screen")):
+                            obj["container"] = container
+                        _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
+                        if candidate["id"] in getattr(translated, "review_ids", ()):
+                            obj["needs_review"] = True
+                            review += 1
+                        color = candidate.get("source_ink") or getattr(translated, "colors", {}).get(candidate["id"])
+                        if color:
+                            obj["lettering_color"] = color
+                        if candidate["id"] in getattr(translated, "enlarge_ids", ()):
+                            obj["enlarge"] = True
+                        else:
+                            obj.pop("enlarge", None)
+                        committed += 1
+                        changed = True
+                    if changed:
+                        invalidate_page_render(latest, pidx)
+                        save_manifest_raw(r.chapter_id, latest)
+                    elif blank_ids:
+                        save_manifest_raw(r.chapter_id, latest)
+
+            return changed, latest
+
+        changed, latest = await run_in_threadpool(commit_snapshot)
 
         if changed:
             from app.dependencies import pipeline
-            pipeline._sync_output_dir(r.chapter_id, latest, [pidx])
+            await run_in_threadpool(pipeline._sync_output_dir, r.chapter_id, latest, [pidx])
 
         rendered_pages: list[int] = []
         render_error = None

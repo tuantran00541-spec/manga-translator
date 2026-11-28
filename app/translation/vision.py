@@ -21,7 +21,7 @@ from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt, text_system_prompt, setting_question, parse_setting
 from app.translation.cost import language_name, response_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
-from app.visual_qc.gemini import _encode_for_gemini, _read_image
+from app.visual_qc.gemini import _read_image, encode_image_strips
 from app.visual_qc.gemini_interactions import (
     GEMINI_INTERACTIONS_URL,
     extract_output_text as gemini_output_text,
@@ -729,7 +729,9 @@ class VisionPageTranslator:
             + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
             + "Write dialogue in sentence case even when the source is all-caps, EXCEPT keep uppercase for acronyms (HP, MP, SSS) or emphatic skill/title/shout banners when appropriate."
         )
-        marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
+        marked_b64 = encode_image_strips(mark_objects(original, objects, elsewhere), "RAW SLICE WITH TEXT BOXES")
+        if len(marked_b64) > 1:
+            prompt += "\nThe images are overlapping vertical strips of the same slice. Coordinates refer to the full original slice."
         ids = set(real)
         if self.provider.protocol == "gemini":
             result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
@@ -915,7 +917,7 @@ class VisionPageTranslator:
             if page_elsewhere:
                 elsewhere_by_slice[str(snum)] = [list(map(int, b)) for b in page_elsewhere]
             marked_img = mark_objects(orig, page_objs, page_elsewhere)
-            marked_parts.append((f"RAW SLICE {snum} WITH TEXT BOXES", _encode_for_gemini(marked_img)))
+            marked_parts.extend(encode_image_strips(marked_img, f"RAW SLICE {snum} WITH TEXT BOXES"))
 
         source_name = (
             "the original language shown in the image"
@@ -952,6 +954,8 @@ class VisionPageTranslator:
             + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
             + "Write dialogue in sentence case even when the source is all-caps, EXCEPT keep uppercase for acronyms (HP, MP, SSS) or emphatic skill/title/shout banners when appropriate."
         )
+        if len(marked_parts) > len(pages_spec):
+            prompt += "\nSome images are overlapping vertical strips of the same slice. Coordinates refer to each full original slice."
         ids = set(real_map)
         if self.provider.protocol == "gemini":
             result, data = self._gemini(system, prompt, marked_parts, api_key=api_key, ids=ids, max_tokens=max_tokens)

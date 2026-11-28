@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import os
 from pathlib import Path
 import re
@@ -17,7 +18,7 @@ _NICK_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _is_safe_rel(rel: str) -> bool:
-    if not rel or os.path.isabs(rel) or "\x00" in rel:
+    if not rel or os.path.isabs(rel) or ntpath.splitdrive(rel)[0] or "\x00" in rel:
         return False
     parts = Path(rel).parts
     return bool(parts) and all(p not in ("", ".", "..") for p in parts)
@@ -177,6 +178,8 @@ def merge(
         if not _is_safe_rel(rel):
             return False
         target = folder / rel
+        if folder != root and (_has_symlink_component(folder, root) or not _is_within(folder, root)):
+            return False
         if not _is_within(target, folder) or _has_symlink_component(target, folder):
             return False
         if target.exists() and target.is_dir():

@@ -17,7 +17,7 @@
       if ([...select.options].some((option) => option.value === selected)) select.value = selected;
       else if (savedActive && [...select.options].some((option) => option.value === savedActive)) select.value = savedActive;
       else if (select.options.length) select.value = select.options[0].value;
-      select.dispatchEvent(new Event("ai-providers-updated", { bubbles: true }));
+      select.dispatchEvent(new Event("ai-providers-updated"));
     });
     document.dispatchEvent(new Event("ai-providers-updated"));
   }
@@ -290,6 +290,9 @@
     syncInpaintMasterUI(false);
 
     let inpaintReady = false;
+    let inpaintLoad = null;
+    let inpaintSaveQueue = Promise.resolve();
+    let inpaintEditVersion = 0;
     let inpaintModelFetchSeq = 0;
     const CUSTOM_MODEL_OPT = "__custom__";
     const DEFAULT_INPAINT_MODEL = "openai/gpt-image-2.5-flare";
@@ -343,10 +346,14 @@
     };
 
     const loadInpaintSettingsUI = async () => {
+      if (inpaintLoad) return inpaintLoad;
+      const version = inpaintEditVersion;
+      inpaintLoad = (async () => {
       try {
         const res = await fetch("/api/inpaint/settings");
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) return;
+        if (!res.ok) throw new Error("Không đọc được cấu hình AI inpaint");
+        if (version !== inpaintEditVersion) return;
         const providers = Array.isArray(data.providers) ? data.providers : [];
         inpaintProvider.replaceChildren();
         if (!providers.length) {
@@ -370,36 +377,49 @@
         inpaintReady = true;
         void refreshInpaintModelHints(inpaintProvider.value || providers[0]?.id || "", { autoSwitch: false });
       } catch (_err) {
-        // Leave defaults if unavailable.
+        inpaintStatusEl.textContent = "Không đọc được cấu hình. Mở lại mục này để thử lại.";
+      } finally {
+        inpaintLoad = null;
       }
+      })();
+      return inpaintLoad;
     };
 
     let saveInpaintTimer = null;
     const persistInpaintSettings = async () => {
-      if (!inpaintReady) return;
+      if (!inpaintReady) {
+        inpaintStatusEl.textContent = "Không thể lưu khi chưa tải được cấu hình. Mở lại mục này để thử lại.";
+        return;
+      }
+      ++inpaintEditVersion;
       inpaintStatusEl.textContent = "Đang lưu…";
       const hybridOn = Boolean(inpaintHybridOn);
       const cap = Math.max(1, Math.min(20, Number(inpaintMaxCalls.value) || 3));
       inpaintMaxCalls.value = String(cap);
-      try {
-        const res = await fetch("/api/inpaint/settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            enabled: hybridOn,
-            hybrid_auto: hybridOn,
-            rescue_only: Boolean(rescueToggle.box.checked),
-            provider_id: inpaintProvider.value || "",
-            model: getEffectiveInpaintModel() || DEFAULT_INPAINT_MODEL,
-            quality: ["low", "medium", "high"].includes(inpaintQuality.value) ? inpaintQuality.value : "low",
-            max_api_calls_per_chapter: cap,
-            pack_atlas: Boolean(atlasToggle.box.checked),
-          }),
-        });
-        inpaintStatusEl.textContent = res.ok ? "Đã lưu" : "Lỗi lưu";
-      } catch (_err) {
-        inpaintStatusEl.textContent = "Lỗi kết nối";
-      }
+      const payload = {
+        enabled: hybridOn,
+        hybrid_auto: hybridOn,
+        rescue_only: Boolean(rescueToggle.box.checked),
+        provider_id: inpaintProvider.value || "",
+        model: getEffectiveInpaintModel() || DEFAULT_INPAINT_MODEL,
+        quality: ["low", "medium", "high"].includes(inpaintQuality.value) ? inpaintQuality.value : "low",
+        max_api_calls_per_chapter: cap,
+        pack_atlas: Boolean(atlasToggle.box.checked),
+      };
+      const version = inpaintEditVersion;
+      inpaintSaveQueue = inpaintSaveQueue.then(async () => {
+        try {
+          const res = await fetch("/api/inpaint/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (version === inpaintEditVersion) inpaintStatusEl.textContent = res.ok ? "Đã lưu" : "Lỗi lưu";
+        } catch (_err) {
+          if (version === inpaintEditVersion) inpaintStatusEl.textContent = "Lỗi kết nối";
+        }
+      });
+      return inpaintSaveQueue;
     };
     const scheduleSaveInpaint = () => {
       clearTimeout(saveInpaintTimer);
@@ -956,6 +976,7 @@
     async function refresh() {
       try {
         const response = await fetch("/api/visual_qc/settings");
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         window.aiProviderSettings = data.providers || {};
         const userInfos = Object.values(data.providers || {}).filter((info) => !info.builtin || info.configured);

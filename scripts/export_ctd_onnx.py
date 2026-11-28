@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+import os
 
 import numpy as np
 import onnx
@@ -43,7 +44,8 @@ class Poly(nn.Module):
 def swap(module: nn.Module) -> nn.Module:
     for name, child in module.named_children():
         if isinstance(child, nn.ConvTranspose2d) and child.kernel_size == (4, 4) and child.stride == (2, 2) \
-                and child.padding == (1, 1) and child.groups == 1:
+                and child.padding == (1, 1) and child.output_padding == (0, 0) \
+                and child.dilation == (1, 1) and child.groups == 1:
             setattr(module, name, Poly(child))
         else:
             swap(child)
@@ -69,10 +71,23 @@ def main() -> None:
             if a.dtype == np.float32:
                 init.CopyFrom(numpy_helper.from_array(np.where(np.abs(a) < 1.18e-38, 0, a).astype(np.float32), init.name))
         onnx.save(m, full)
-        utils.extract_model(full, str(MODEL), ["images"], ["seg"])
-    ref = ort.InferenceSession(str(src), providers=["CPUExecutionProvider"]).run(["seg"], {"images": x.numpy()})[0]
-    new = ort.InferenceSession(str(MODEL), providers=["CPUExecutionProvider"]).run(None, {"images": x.numpy()})[0]
-    print("max seg difference", float(np.abs(ref - new).max()))
+        candidate = Path(work) / "ctd_seg.onnx"
+        utils.extract_model(full, str(candidate), ["images"], ["seg"])
+        onnx.checker.check_model(str(candidate))
+        ref = ort.InferenceSession(str(src), providers=["CPUExecutionProvider"]).run(["seg"], {"images": x.numpy()})[0]
+        new = ort.InferenceSession(str(candidate), providers=["CPUExecutionProvider"]).run(None, {"images": x.numpy()})[0]
+        if ref.shape != new.shape or not np.isfinite(ref).all() or not np.isfinite(new).all():
+            raise ValueError("ONNX output shape or values are invalid")
+        difference = float(np.max(np.abs(ref - new)))
+        if not np.allclose(ref, new, rtol=1e-3, atol=1e-4):
+            raise ValueError(f"ONNX output differs from source model: {difference}")
+        temp_model = MODEL.with_name(f".{MODEL.name}.{os.getpid()}.tmp")
+        try:
+            temp_model.write_bytes(candidate.read_bytes())
+            os.replace(temp_model, MODEL)
+        finally:
+            temp_model.unlink(missing_ok=True)
+        print("max seg difference", difference)
 
 
 if __name__ == "__main__":

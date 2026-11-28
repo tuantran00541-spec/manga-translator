@@ -68,3 +68,17 @@ def test_surface_projection_preserves_image_space_alternative_when_it_hits_prote
     fallback, fallback_stats = display_lettering.render_source_sfx(raw, clean, glyphs, "ẦM!", **options)
     assert "sfx_depth_ratio" not in fallback_stats
     assert fallback.tobytes() == previous.tobytes()
+
+
+def test_plane_rejects_degenerate_texture_size_and_projection():
+    from app.render.lettering_plane import LetteringPlane
+
+    quad, _ = _projected_quad()
+    assert reconstruct_lettering_plane(quad, _SIZE, (1, 100)) is None
+    invalid = LetteringPlane(np.eye(3), np.eye(3), (1, 10), 1.0)
+    with pytest.raises(ValueError):
+        invalid.projection()
+    surface = np.eye(3)
+    surface[2, 2] = 0
+    plane = LetteringPlane(np.eye(3), surface, (100, 100), 1.0)
+    assert plane.pixels_per_texel() == 0

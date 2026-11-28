@@ -180,6 +180,7 @@ class PageProcessingMixin:
             page_data["tmp_auto_clean"] = tmp_auto_path.as_posix()
             write_image(tmp_auto_path, clean_image)
 
+        self._apply_ai_repaint(clean_image, processed_dir, img_path)
         metrics = page_data["processing_metrics"]
         timings = metrics["timing_ms"]
         manual_ms = 0.0
@@ -196,6 +197,7 @@ class PageProcessingMixin:
             page_data[field] = path.as_posix()
 
         if image is not None:
+            self._restore_preserve_pixels(clean_image, image, preserve_regions)
             self._apply_restore_mask(clean_image, image, processed_dir, img_path)
         write_started = time.perf_counter()
         write_image(Path(page_data["tmp_clean"]), clean_image)
@@ -295,9 +297,6 @@ class PageProcessingMixin:
                         record["detector_anchor"] = copy.deepcopy(old["detector_anchor"])
                     for key in ("x1", "y1", "x2", "y2"):
                         record[key] = int(old[key])
-                    record["_mask_array"] = None
-                    record["_letters_array"] = None
-                    record["bubble_mask"] = None
                     record["safe_to_inpaint"] = False
                     record["ocr_eligible"] = True
                     record["needs_review"] = True
@@ -402,7 +401,19 @@ class PageProcessingMixin:
                 break
             seen.update((box.x1, box.y1, box.x2, box.y2) for box in leftovers)
             second_pass_boxes += len(leftovers)
-            clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
+            if deferred_ai_items is None:
+                clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
+            else:
+                before = len(deferred_ai_items)
+                clean_image = self.inpainter.inpaint(
+                    clean_image, leftovers, protected_regions=preserve_regions,
+                    deferred_ai_items=deferred_ai_items,
+                )
+                deferred_regions_for_skip.extend(
+                    {"x1": c[0], "y1": c[1], "x2": c[2], "y2": c[3]}
+                    for item in deferred_ai_items[before:]
+                    for c in (item["crop_box"],)
+                )
             for box in leftovers:
                 _fold_leftover(inpainted_records, box)
             leftover_targets = leftovers

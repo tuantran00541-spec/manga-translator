@@ -193,3 +193,18 @@ def test_ink_component_cut_by_the_box_is_still_repaired():
     assert _component_in_box(98, 98, 104, 104, rect)
     # a shape far larger than the box is art, not a letter
     assert not _component_in_box(50, 50, 300, 300, rect)
+
+
+def test_reconcile_remaps_letter_masks_without_mutating_source_box():
+    from app.inpaint.mask_geometry import reconcile_detector_geometry_override
+
+    mask = np.zeros((5, 5), dtype=bool)
+    mask[2, 2] = True
+    target = {'x1': 1, 'y1': 1, 'x2': 6, 'y2': 6, 'geometry_overridden': True}
+    detector = {'x1': 0, 'y1': 0, 'x2': 5, 'y2': 5,
+                '_mask_array': mask, '_letters_array': mask, 'bubble_mask': {'kind': 'bubble'}}
+    assert reconcile_detector_geometry_override(detector, target)
+    assert detector['_mask_array'][1, 1] == 255
+    assert detector['_letters_array'][1, 1] == 255
+    assert detector['bubble_mask'] is None
+    assert target['geometry_overridden'] is True

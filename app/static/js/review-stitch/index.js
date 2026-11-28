@@ -684,9 +684,12 @@ export function mount(workspace) {
           if (opts.quality) form.append("quality", opts.quality);
         }
         form.append("mask", await canvasBlob(mask), "mask.png");
-        const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
+        if (signal.aborted || chapterId !== window.currentChapterId) return false;
+        const response = await fetch("/api/repaint_mask", { method: "POST", body: form, signal }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
+        if (signal.aborted || chapterId !== window.currentChapterId) return false;
         if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) { window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; } affected++;
       }
+      if (signal.aborted || chapterId !== window.currentChapterId) return false;
       for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey());
       const doneMsg = mode === "restore"
         ? "Đã khôi phục ảnh gốc ở các vùng được đánh dấu."
@@ -697,7 +700,7 @@ export function mount(workspace) {
       rerender();
       return affected > 0;
     } catch (err) {
-      window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error");
+      if (!signal.aborted && chapterId === window.currentChapterId) window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error");
       return false;
     } finally {
       busy(false);
@@ -808,12 +811,13 @@ export function mount(workspace) {
     if (!window.confirm(`Bỏ mọi vùng đã làm sạch bằng cọ trên lát ${pageIndex + 1}? Lát sẽ trở về kết quả xử lý tự động.`)) return;
     busy(true, "Đang khôi phục…");
     try {
-      const response = await fetch("/api/reset_manual_mask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }) });
+      const response = await fetch("/api/reset_manual_mask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }), signal });
       const parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response);
       if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
+      if (signal.aborted || chapterId !== window.currentChapterId) return;
       if (data.pages?.[pageIndex]) window.currentManifest.pages[pageIndex] = data.pages[pageIndex];
       window.showToast?.(`Đã khôi phục nền tự động trên lát ${pageIndex + 1}.`, "success"); rerender();
-    } catch (err) { window.showToast?.("Không thể khôi phục nền tự động: " + err.message, "error"); } finally { busy(false); }
+    } catch (err) { if (!signal.aborted && chapterId === window.currentChapterId) window.showToast?.("Không thể khôi phục nền tự động: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 
   

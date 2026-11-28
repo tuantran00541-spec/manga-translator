@@ -3443,7 +3443,8 @@ def test_a_chain_mixes_created_tools_mcp_tools_and_skills_through_the_agent(ws, 
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "combo", "code": chain, "args": {}, "keep": False}})
     assert '"doc": "doc for f"' in out and '"rule": true' in out and '"first": "def f():"' in out and '"missing": true' in out, out
     assert asked == [("lookup", {"q": "f"})], "the MCP call went through the agent's own call path"
-    assert not list((session._outputs_dir() / "state" / "rpc").iterdir()), "each run's request folder is removed when it ends"
+    rpc_dirs = list((session._outputs_dir() / "state").glob("*/rpc"))
+    assert rpc_dirs and all(not list(folder.iterdir()) for folder in rpc_dirs), "each run's request folder is removed when it ends"
 
 
 def test_a_lean_chain_reaches_mcp_tools_the_model_does_not_see(ws, home):
@@ -3557,7 +3558,9 @@ def test_run_command_uses_bash_and_stands_in_only_for_commands_the_machine_lacks
                                               "python3 -c 'print(6*7)'; command -v ls"})
     assert "bash" in out and "00000000: 4869 0074 6865 7265" in out and "Hi.there" in out and "same" in out and "42" in out, out
     assert "harness's small stand-in" in out and "harness's own Python" in out, "a stand-in says once that it is one"
-    bin_dir = session._outputs_dir() / "state" / "bin"
+    bin_dirs = list((session._outputs_dir() / "state").glob("*/bin"))
+    assert len(bin_dirs) == 1
+    bin_dir = bin_dirs[0]
     assert (bin_dir / "xxd").exists() and not (bin_dir / "ls").exists() and (bin_dir / "file").exists() == (real_which("file") is None)
     again = session._run_foreground({"command": "xxd b.bin >/dev/null"})
     assert "stand-in" not in again

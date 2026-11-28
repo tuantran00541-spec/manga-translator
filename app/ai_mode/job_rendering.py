@@ -118,11 +118,40 @@ class AIModeRenderingMixin:
                 })
             return True, objs
 
-        for attempt in range(restore_attempts + 1):
+        async def render_current_page():
+            for conflict_attempt in range(4):
+                page = self._manifest()["pages"][page_index]
+                try:
+                    return await asyncio.to_thread(
+                        render_page, _render_request_from_page(chapter_id, page_index, page))
+                except HTTPException as exc:
+                    if exc.status_code != 409 or conflict_attempt == 3:
+                        raise
+                    await asyncio.sleep(0.05 * (conflict_attempt + 1))
+
+        def restore_candidates(result):
+            if not isinstance(result, dict):
+                return []
+            skipped = [str(oid) for oid in result.get("skipped_objects") or []]
+            issues = result.get("layout_issue_types") or {}
+            page = self._manifest()["pages"][page_index]
+            for obj in page.get("text_objects") or []:
+                if not isinstance(obj, dict):
+                    continue
+                oid = str(obj.get("id") or "")
+                if (issues.get(oid) in ("balloon_overset", "placement_overset")
+                        and obj.get("auto_generated") and obj.get("translation")
+                        and obj.get("translation") == obj.get("auto_translation")
+                        and oid not in skipped):
+                    skipped.append(oid)
+            return skipped
+
+        attempt = 0
+        while attempt <= restore_attempts:
             page = self._manifest()["pages"][page_index]
             try:
-                result = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
-                skipped = [str(oid) for oid in (result.get("skipped_objects") if isinstance(result, dict) else None) or []]
+                result = await render_current_page()
+                skipped = restore_candidates(result)
                 if not skipped:
                     return
                 ok, objs = await restore_skipped(skipped)
@@ -130,19 +159,15 @@ class AIModeRenderingMixin:
                     return
                 if attempt == restore_attempts:
                     page = self._manifest()["pages"][page_index]
-                    rerender = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
-                    rerender_skipped = [
-                        str(oid) for oid in (rerender.get("skipped_objects") if isinstance(rerender, dict) else None) or []
-                    ]
+                    rerender = await render_current_page()
+                    rerender_skipped = restore_candidates(rerender)
                     if not rerender_skipped:
                         return
                     final_ok, final_objs = await restore_skipped(rerender_skipped)
                     if final_ok and final_objs:
                         page = self._manifest()["pages"][page_index]
-                        final_res = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
-                        rem = [
-                            str(oid) for oid in (final_res.get("skipped_objects") if isinstance(final_res, dict) else None) or []
-                        ]
+                        final_res = await render_current_page()
+                        rem = restore_candidates(final_res)
                         for oid in rem:
                             self._append_page_capped(self.report["review_list"], {
                                 "page": page_index + 1, "id": str(oid),
@@ -155,6 +180,7 @@ class AIModeRenderingMixin:
                                 "reason": "Bản dịch không vừa vùng chữ; đã hết lần thử lại — chưa giữ ảnh gốc",
                             })
                     return
+                attempt += 1
                 continue
             except HTTPException as exc:
                 detail = detail_fn(exc)
@@ -174,6 +200,7 @@ class AIModeRenderingMixin:
                 return
             await asyncio.to_thread(self._clear_restored_translations, page_index, {str(obj["id"])})
             self.report["restored_regions"] += 1
+            attempt += 1
             self._append_page_capped(self.report["review_list"], {
                 "page": page_index + 1, "id": obj["id"],
                 "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",

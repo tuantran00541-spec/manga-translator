@@ -938,3 +938,71 @@ def test_a_retry_matching_an_already_committed_line_is_blanked_not_doubled(saved
     assert info["art_regions"] == []
     obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][1]
     assert obj.get("translation_attempted") is True
+
+
+def test_long_source_images_are_split_into_readable_overlapping_strips():
+    import base64
+    import re
+
+    import cv2
+    import numpy as np
+
+    from app.visual_qc.gemini import encode_image_strips
+
+    image = np.full((12188, 900, 3), 255, np.uint8)
+    parts = encode_image_strips(image, "RAW SLICE 7")
+    assert len(parts) > 1
+    offsets = []
+    for label, encoded in parts:
+        start, end = map(int, re.search(r"original y=(\d+)\.\.(\d+)", label).groups())
+        decoded = cv2.imdecode(np.frombuffer(base64.b64decode(encoded), np.uint8), cv2.IMREAD_COLOR)
+        assert decoded.shape[1] == 900
+        assert decoded.shape[0] == end - start
+        offsets.append((start, end))
+    assert offsets[0][0] == 0 and offsets[-1][1] == image.shape[0]
+    assert all(a[1] > b[0] for a, b in zip(offsets, offsets[1:]))
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_manifest_lock_wait_does_not_block_event_loop(monkeypatch, batch):
+    import threading
+    from contextlib import contextmanager
+
+    entered, release = threading.Event(), threading.Event()
+
+    @contextmanager
+    def held_lock(_chapter):
+        entered.set()
+        release.wait(timeout=2)
+        yield
+
+    monkeypatch.setattr(translation_router, "get_manifest_lock", held_lock)
+    monkeypatch.setattr(translation_router, "load_manifest_raw", lambda _: {"pages": []})
+    monkeypatch.setattr(translation_router, "prepare_page_balloons", lambda *_: 0)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *_, **__: "test")
+    req = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="test"
+    )
+
+    async def exercise():
+        if batch:
+            other = req.model_copy(update={"page_index": 1})
+            task = asyncio.create_task(translation_router.translate_pages_batch_in_context([req, other]))
+        else:
+            task = asyncio.create_task(translation_router.translate_page_in_context(req))
+        try:
+            for _ in range(50):
+                if entered.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert entered.is_set()
+        finally:
+            release.set()
+        if batch:
+            assert await task == {}
+        else:
+            with pytest.raises(translation_router.HTTPException) as exc:
+                await task
+            assert exc.value.status_code == 404
+
+    asyncio.run(exercise())

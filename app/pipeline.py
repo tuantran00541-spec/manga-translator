@@ -82,6 +82,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
     def _apply_box_geometry(box: dict, new_geometry: dict[str, int]) -> None:
         source_geometry = geometry_dict(box)
         source_mask = decode_mask_value(box.get("mask"))
+        source_letters = decode_mask_value(box.get("letters_mask"))
         detector_origin = box.get("origin") == "detector" and not box.get("manual")
 
         if detector_origin:
@@ -96,6 +97,11 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         )
 
         box.update(new_geometry)
+        if source_geometry != new_geometry:
+            box.pop("bubble_mask", None)
+        if source_letters is not None:
+            letters = remap_local_mask_page_space(source_letters, source_geometry, new_geometry)
+            box["letters_mask"] = _encode_mask(letters) if letters is not None and np.any(letters) else None
         if remapped is None or not np.any(remapped > 127):
             box["mask"] = None
         else:

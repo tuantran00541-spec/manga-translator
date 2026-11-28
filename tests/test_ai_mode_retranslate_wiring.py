@@ -388,3 +388,17 @@ def test_gemini_retranslate_uses_minimal_thinking_for_gemma(monkeypatch):
     assert seen["payload"]["generation_config"]["thinking_level"] == "minimal"
     request_vision_json(PROVIDERS["gemini"], "gemini-3.7-flash", "k", "prompt", [], max_tokens=2048)
     assert seen["payload"]["generation_config"]["thinking_level"] == "low"
+
+
+def test_retry_refuses_to_call_translation_with_unknown_cost(monkeypatch):
+    from types import SimpleNamespace
+    import pytest
+    from fastapi import HTTPException
+    from app.ai_mode.job import AIModeJob, AIModeRunner, AIModeSettings
+
+    job = AIModeJob(job_id='job-1', chapter_id='chapter-1', cost_usd=None,
+                    settings=AIModeSettings(url=CHAPTER_URL, provider='openai', model='m'))
+    runner = AIModeRunner(job, SimpleNamespace(id='openai', tracks_cost=True), 'tok')
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(runner._translate_retry(0, 'en', None))
+    assert exc.value.status_code == 409

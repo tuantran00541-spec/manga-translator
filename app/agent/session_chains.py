@@ -103,7 +103,7 @@ class AgentChainsMixin:
                 "the one to keep or write new attempts, and run the check again on the real workspace before you finish."), True
 
     def _branch_run(self, ws: Workspace, code: str) -> str:
-        state = self._outputs_dir() / "state"
+        state = self._outputs_dir() / "state" / f"{ws.policy.mode}-{'net' if ws.policy.network else 'offline'}"
         (state / "lib").mkdir(parents=True, exist_ok=True)
         sources = {n: t["code"] for n, t in self._root().created.items()}
         (state / "lib" / "agent_tools.py").write_text(TOOLS_LIBRARY.format(sources=json.dumps(sources, ensure_ascii=False),
@@ -231,7 +231,9 @@ class AgentChainsMixin:
     def _spend_chain(self, kind: str) -> tuple[str, bool]:
         root = self._root()
         limit, label = {"_chain": (_ses("MAX_CHAINS"), "chains"), "_long": (_ses("MAX_LONG_CHAINS"), "chains of more than 10 steps"),
-                        "agent": (_ses("MAX_CHAIN_AGENTS"), "helper agents started from chains")}[kind]
+                        "agent": (_ses("MAX_CHAIN_AGENTS"), "helper agents started from chains"),
+                        "think": (_ses("MAX_CHAINS"), "think calls from chains"),
+                        "vote": (_ses("MAX_CHAINS"), "vote calls from chains")}[kind]
         with self._usage_lock:
             root.chain_budget[kind] = used = root.chain_budget.get(kind, 0) + 1
         if used > limit:

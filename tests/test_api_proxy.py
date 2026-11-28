@@ -552,3 +552,54 @@ def test_context_overflow_shrink_tool_sse_and_secret_redaction(monkeypatch):
     assert "x-goog-api-key" not in seen_headers[1][1]
     assert seen_headers[1][1]["Accept"] == "image/*"
 
+
+
+def test_image_retries_preserve_all_pages_and_ignore_old_image_caps():
+    api_proxy.wrap_target("https://api.openai.com/v1", "safe-m", image_cap=1)
+    payload = {"model": "safe-m", "messages": [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + _sample_img_b64(64, 64)}}
+        for _ in range(3)
+    ]}]}
+    seen = []
+    def post(url, **kw):
+        seen.append(api_proxy.count_payload_images(kw["json"]))
+        return _FakeResp(400, {"error": {"message": "at most 1 images"}})
+    response, final, _ = api_proxy.proxy_post(
+        url="https://api.openai.com/v1/chat/completions", headers={}, payload=payload,
+        provider=PROVIDERS["openai"], post_fn=post)
+    assert response.status_code == 400
+    assert seen == [3]
+    assert api_proxy.count_payload_images(final) == 3
+    assert api_proxy.extract_limit_number("Image 0 failed, image count limit 2", r"images?", 5) == 2
+    assert api_proxy.extract_limit_number("Image 0 failed", r"images?", 5) is None
+
+
+def test_payload_retry_starts_from_original_and_preserves_alpha():
+    original = np.random.default_rng(4).integers(0, 256, (1200, 1600, 4), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", original)
+    assert ok
+    source = base64.b64encode(buf.tobytes()).decode("ascii")
+    payload = {"input": [{"type": "image", "data": source, "mime_type": "image/png"}]}
+    first, changed = api_proxy.downsize_payload_images(payload, attempt=1, is_gemini=True)
+    assert changed
+    last, changed = api_proxy.downsize_payload_images(first, attempt=3, is_gemini=True, original_payload=payload)
+    direct, _ = api_proxy.downsize_payload_images(payload, attempt=3, is_gemini=True)
+    assert changed and last == direct
+    assert last["input"][0]["mime_type"] == "image/png"
+    image = cv2.imdecode(np.frombuffer(base64.b64decode(last["input"][0]["data"]), np.uint8), cv2.IMREAD_UNCHANGED)
+    assert image.shape[2] == 4
+
+
+def test_unrelated_http_400_does_not_strip_or_learn_optional_fields():
+    payload = {"model": "safe-fields", "messages": [{"role": "user", "content": "test"}],
+               "response_format": {"type": "json_object"}, "temperature": 0.2}
+    sent = []
+    def post(url, **kw):
+        sent.append(kw["json"].copy())
+        return _FakeResp(400, {"error": {"message": "invalid account configuration"}})
+    resp, final, _ = api_proxy.proxy_post(
+        url="https://api.openai.com/v1/chat/completions", headers={}, payload=payload,
+        provider=PROVIDERS["openai"], post_fn=post)
+    assert resp.status_code == 400 and len(sent) == 1
+    assert final["response_format"] == payload["response_format"]
+    assert final["temperature"] == 0.2

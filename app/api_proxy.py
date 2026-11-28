@@ -349,6 +349,7 @@ def apply_wrapped_rules(
         img_cap = entry.get("image_cap")
         if (
             apply_image_cap
+            and allow_image_strip
             and img_cap is not None
             and (img_cap >= 1 or allow_image_strip)
             and count_payload_images(updated, is_gemini=is_gemini) > img_cap
@@ -532,7 +533,7 @@ def extract_limit_number(detail: str, noun_pattern: str, ceiling: int) -> int | 
         return None
     patterns = (
         rf"(?:max(?:imum)?(?:\s+number\s+of)?|at most|up to|no more than|limit(?:ed)? to|<=|<)\s*[:=]?\s*(\d+)\s*(?:{noun_pattern})",
-        rf"(?:{noun_pattern})[^.\n]{{0,40}}?(?:<=|<|max(?:imum)?|is|of|length|count|limit)\s*[:=]?\s*(\d+)",
+        rf"(?:{noun_pattern})\s*(?:count\s*)?(?:<=|<|max(?:imum)?|limit(?:ed)?(?:\s+to)?)\s*[:=]?\s*(\d+)",
         rf"\b(\d+)\s*(?:{noun_pattern})\b",
     )
     found: list[int] = []
@@ -641,27 +642,45 @@ def rescue_payload_images_limit(
     return updated, desc
 
 
-def _shrink_b64_image(raw_b64: str, max_side: int, quality: int) -> str | None:
+def _shrink_b64_image_with_mime(raw_b64: str, max_side: int, quality: int) -> tuple[str, str] | None:
     try:
         raw_bytes = base64.b64decode(raw_b64, validate=False)
         arr = np.frombuffer(raw_bytes, dtype=np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
         if img is None:
             return None
         h, w = img.shape[:2]
-        scale = min(1.0, max_side / max(h, w))
+        scale = min(1.0, max(max_side / max(h, w), min(1.0, 256 / min(h, w))))
         if scale < 1.0:
             img = cv2.resize(img, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA)
-        ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+        has_alpha = img.ndim == 3 and img.shape[2] == 4
+        suffix = ".png" if has_alpha else ".jpg"
+        options = [cv2.IMWRITE_PNG_COMPRESSION, 9] if has_alpha else [cv2.IMWRITE_JPEG_QUALITY, quality]
+        ok, buf = cv2.imencode(suffix, img, options)
         if not ok:
             return None
         shrunk = base64.b64encode(buf.tobytes()).decode("ascii")
-        return shrunk if len(shrunk) < len(raw_b64) else None
+        return (shrunk, "image/png" if has_alpha else "image/jpeg") if len(shrunk) < len(raw_b64) else None
     except Exception:
         return None
 
 
-def downsize_payload_images(payload: dict, attempt: int = 1, *, is_gemini: bool = False) -> tuple[dict, bool]:
+def _shrink_b64_image(raw_b64: str, max_side: int, quality: int) -> str | None:
+    result = _shrink_b64_image_with_mime(raw_b64, max_side, quality)
+    return result[0] if result else None
+
+
+def _image_parts(payload: dict, is_gemini: bool):
+    if is_gemini:
+        return [part for part in payload.get("input") or []
+                if isinstance(part, dict) and part.get("type") == "image" and part.get("data")]
+    return [part for msg in payload.get("messages") or [] if isinstance(msg, dict)
+            for part in (msg.get("content") if isinstance(msg.get("content"), list) else [])
+            if isinstance(part, dict) and part.get("type") == "image_url"]
+
+
+def downsize_payload_images(payload: dict, attempt: int = 1, *, is_gemini: bool = False,
+                            original_payload: dict | None = None) -> tuple[dict, bool]:
     """Recompress and resize embedded base64 images to recover from 413/size errors."""
     sides = (1024, 720, 512)
     qualities = (68, 50, 38)
@@ -669,14 +688,23 @@ def downsize_payload_images(payload: dict, attempt: int = 1, *, is_gemini: bool 
     max_side, quality = sides[idx], qualities[idx]
     updated = copy.deepcopy(payload)
     changed = False
+    if original_payload is not None:
+        original_parts = _image_parts(original_payload, is_gemini)
+        current_parts = _image_parts(updated, is_gemini)
+        if len(original_parts) == len(current_parts):
+            for current, original in zip(current_parts, original_parts):
+                if is_gemini:
+                    current["data"] = original["data"]
+                    current["mime_type"] = original.get("mime_type", "image/jpeg")
+                else:
+                    current["image_url"] = copy.deepcopy(original["image_url"])
 
     if is_gemini:
         for item in updated.get("input") or []:
             if isinstance(item, dict) and item.get("type") == "image" and item.get("data"):
-                shrunk = _shrink_b64_image(str(item["data"]), max_side, quality)
+                shrunk = _shrink_b64_image_with_mime(str(item["data"]), max_side, quality)
                 if shrunk:
-                    item["data"] = shrunk
-                    item["mime_type"] = "image/jpeg"
+                    item["data"], item["mime_type"] = shrunk
                     changed = True
         return updated, changed
 
@@ -691,9 +719,10 @@ def downsize_payload_images(payload: dict, attempt: int = 1, *, is_gemini: bool 
             if not url.startswith("data:image/") or ";base64," not in url:
                 continue
             _, _, b64_part = url.partition(";base64,")
-            shrunk = _shrink_b64_image(b64_part, max_side, quality)
+            shrunk = _shrink_b64_image_with_mime(b64_part, max_side, quality)
             if shrunk:
-                part["image_url"]["url"] = f"data:image/jpeg;base64,{shrunk}"
+                data, mime = shrunk
+                part["image_url"]["url"] = f"data:{mime};base64,{data}"
                 changed = True
     return updated, changed
 
@@ -1208,15 +1237,18 @@ def proxy_post(
             img_count = count_payload_images(current_payload, is_gemini=is_gemini)
             cap = extract_limit_number(detail, r"images?", img_count)
             effective_cap = cap if cap is not None and 0 <= cap < img_count else max(1, img_count // 2)
-            wrap_kwargs["image_cap"] = effective_cap
+            if allow_image_strip:
+                wrap_kwargs["image_cap"] = effective_cap
             if raise_on_image_split and img_count > 1 and (cap is None or cap >= 1):
                 if hasattr(response, "close"):
                     response.close()
                 note = f"Chia nhỏ batch {img_count} ảnh (cap={cap or 'nửa'})"
-                wrap_target(
-                    api_base, model_name, url=current_url, provider_id=provider_id, provider_label=provider_label,
-                    api_key=api_key, image_cap=effective_cap, error_detail=detail, rescue_note=note,
-                )
+                if cap is not None:
+                    wrap_target(
+                        api_base, model_name, url=current_url, provider_id=provider_id,
+                        provider_label=provider_label, api_key=api_key, image_cap=cap,
+                        error_detail=detail, rescue_note=note,
+                    )
                 rescues_applied.append(note)
                 rescue_types.append("too_many_images")
                 record_event(
@@ -1229,8 +1261,8 @@ def proxy_post(
                 current_payload,
                 detail,
                 is_gemini=is_gemini,
-                allow_strip_all=allow_image_strip,
-            )
+                allow_strip_all=True,
+            ) if allow_image_strip else None
             if res is not None:
                 current_payload, rescued_desc = res
                 rescue_types.append("too_many_images")
@@ -1242,10 +1274,6 @@ def proxy_post(
                     response.close()
                 note = f"Chia batch {img_count} ảnh do lỗi dung lượng 413"
                 split_cap = max(1, img_count // 2)
-                wrap_target(
-                    api_base, model_name, url=current_url, provider_id=provider_id, provider_label=provider_label,
-                    api_key=api_key, image_cap=split_cap, error_detail=detail, rescue_note=note,
-                )
                 rescues_applied.append(note)
                 rescue_types.append("payload_too_large")
                 record_event(
@@ -1254,7 +1282,8 @@ def proxy_post(
                     errors_seen=errors_seen, rescues_applied=rescues_applied, rescue_types=rescue_types, detail=detail,
                 )
                 raise ImageLimitExceeded(split_cap, img_count, detail)
-            new_payload, did = downsize_payload_images(current_payload, attempt=downsize_attempts, is_gemini=is_gemini)
+            new_payload, did = downsize_payload_images(current_payload, attempt=downsize_attempts, is_gemini=is_gemini,
+                                                      original_payload=payload)
             if did:
                 current_payload = new_payload
                 rescued_desc = f"Nén & thu nhỏ ảnh lần {downsize_attempts} (HTTP {status_code})"
@@ -1317,19 +1346,6 @@ def proxy_post(
             time.sleep(min(2.0, 0.7 * transient_attempts))
             rescued_desc = f"Thử lại lỗi HTTP {status_code} (lần {transient_attempts})"
             rescue_types.append("transient_5xx")
-        elif category == "other_client_error" and not is_gemini:
-            # Generic 4xx fallback: try stripping optional fields cleanly before failing.
-            present = [k for k in OPTIONAL_FIELDS if k in current_payload]
-            if present:
-                for k in present:
-                    current_payload.pop(k, None)
-                    if k == "response_format":
-                        _append_json_hint(current_payload, is_gemini=False)
-                rescued_desc = f"Thử gỡ tham số tùy chọn ({', '.join(present)})"
-                rescue_types.append("unsupported_field")
-                wrap_kwargs["refused_fields"] = present
-                pending_refused.update(present)
-
         if rescued_desc:
             rescues_applied.append(rescued_desc)
             if wrap_kwargs:
